@@ -2549,14 +2549,14 @@ function initApp() {
   document.getElementById('loading-screen').style.display = 'flex';
 
   let loaded = 0;
-  const TOTAL = 13; // -1 stocks30l, -1 stocks33cl, +1 produits = 13
+  const TOTAL = 15;
 
-  // Timeout de secours : si Firebase ne répond pas en 8s, on affiche quand même l'app
+  // Timeout de secours : si tous les listeners ne répondent pas en 5s, on affiche quand même
   const fallbackTimer = setTimeout(() => {
-    console.warn("Firebase timeout — affichage forcé");
+    console.warn("Firebase timeout — affichage forcé après 5s");
     document.getElementById('loading-screen').style.display = 'none';
     renderAll();
-  }, 8000);
+  }, 5000);
 
   function onLoaded() {
     loaded++;
