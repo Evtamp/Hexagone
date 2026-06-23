@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- v2026-06-23 -->
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
@@ -1432,9 +1433,9 @@
     <div style="margin-top:14px">
       <div class="field-label">Catégorie</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px" id="mp-cat-btns">
-        <button onclick="selectMpCatModal('malt')"    id="mp-cat-malt"    class="mp-cat-btn active-cat">🌾 Malt</button>
-        <button onclick="selectMpCatModal('houblon')" id="mp-cat-houblon" class="mp-cat-btn">🌿 Houblon</button>
-        <button onclick="selectMpCatModal('levure')"  id="mp-cat-levure"  class="mp-cat-btn">🧫 Levure</button>
+        <button id="mp-cat-malt"    class="mp-cat-btn active-cat">🌾 Malt</button>
+        <button id="mp-cat-houblon" class="mp-cat-btn">🌿 Houblon</button>
+        <button id="mp-cat-levure"  class="mp-cat-btn">🧫 Levure</button>
       </div>
     </div>
 
@@ -1462,6 +1463,16 @@
         <input id="mp-modal-price" type="number" min="0" step="0.01" placeholder="0.00"
           style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:9px 12px;box-sizing:border-box" />
         <span id="mp-modal-price-unit" style="color:var(--muted);font-size:13px;white-space:nowrap">€ / kg</span>
+      </div>
+    </div>
+
+    <!-- %AA (houblon uniquement) -->
+    <div id="mp-modal-aa-row" style="margin-top:12px;display:none">
+      <div class="field-label">Teneur en acides alpha (%AA)</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <input id="mp-modal-aa" type="number" min="0" max="30" step="0.1" placeholder="ex: 12.5"
+          style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:14px;font-weight:700;padding:9px 12px;box-sizing:border-box" />
+        <span style="color:var(--muted);font-size:13px;white-space:nowrap">%AA</span>
       </div>
     </div>
 
@@ -1494,8 +1505,8 @@
     <div style="margin-top:6px;font-size:11px;color:var(--muted)">Seuil urgence = réappro immédiate · Seuil commande = à commander bientôt</div>
 
     <div style="display:flex;gap:8px;margin-top:18px">
-      <button onclick="closeMpModal()" style="flex:1;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:13px;padding:10px;cursor:pointer">Annuler</button>
-      <button onclick="saveMpModal()"  style="flex:2;background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:13px;font-weight:700;padding:10px;cursor:pointer">✓ Enregistrer</button>
+      <button id="btn-close-mp-modal" style="flex:1;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:13px;padding:10px;cursor:pointer">Annuler</button>
+      <button id="btn-save-mp-modal"  style="flex:2;background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:13px;font-weight:700;padding:10px;cursor:pointer">✓ Enregistrer</button>
     </div>
   </div>
 </div>
@@ -2595,6 +2606,7 @@ function initApp() {
       if (data && data['low_' + item.id]   !== undefined) item.low   = data['low_' + item.id];
       if (data && data['mid_' + item.id]   !== undefined) item.mid   = data['mid_' + item.id];
       if (data && data['lot_' + item.id]   !== undefined) item.lot   = data['lot_' + item.id];
+      if (data && data['aa_'  + item.id]   !== undefined) item.aa    = data['aa_'  + item.id];
     });
     // Migrer les max houblons à 15 si encore à l'ancienne valeur ≤ 5
     MP_DATA.houblon.forEach(item => {
@@ -3149,7 +3161,20 @@ const MP_UNITS = { malt: 'kg', houblon: 'kg', levure: 'pqt' };
 function openMpModal(editId) {
   mpModalEditId = editId || null;
   const modal = document.getElementById('mp-modal');
-  // Pré-remplir avec la catégorie active ou les données existantes
+
+  // Attacher les listeners une seule fois (cloner pour vider les anciens)
+  ['mp-cat-malt','mp-cat-houblon','mp-cat-levure'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) {
+      const cat = id.replace('mp-cat-','');
+      const newBtn = btn.cloneNode(true);
+      btn.parentNode.replaceChild(newBtn, btn);
+      newBtn.addEventListener('click', () => selectMpCatModal(cat));
+    }
+  });
+  document.getElementById('btn-close-mp-modal')?.addEventListener('click', closeMpModal);
+  document.getElementById('btn-save-mp-modal')?.addEventListener('click',  saveMpModal);
+
   if (editId) {
     const item = Object.values(MP_DATA).flat().find(i => i.id === editId);
     if (!item) return;
@@ -3163,6 +3188,7 @@ function openMpModal(editId) {
     document.getElementById('mp-modal-max').value   = item.max   ?? '';
     document.getElementById('mp-modal-low').value   = item.low   ?? '';
     document.getElementById('mp-modal-mid').value   = item.mid   ?? '';
+    document.getElementById('mp-modal-aa').value    = item.aa    ?? '';
     document.getElementById('mp-modal-name').disabled = true;
   } else {
     selectMpCatModal(currentMpCat || 'malt');
@@ -3174,6 +3200,7 @@ function openMpModal(editId) {
     document.getElementById('mp-modal-max').value   = '';
     document.getElementById('mp-modal-low').value   = '';
     document.getElementById('mp-modal-mid').value   = '';
+    document.getElementById('mp-modal-aa').value    = '';
     document.getElementById('mp-modal-name').disabled = false;
   }
   modal.style.display = 'flex';
@@ -3191,6 +3218,9 @@ function selectMpCatModal(cat) {
   const unit = MP_UNITS[cat] || 'kg';
   document.getElementById('mp-modal-unit-display').textContent  = unit;
   document.getElementById('mp-modal-price-unit').textContent    = '€ / ' + unit;
+  // Afficher %AA uniquement pour les houblons
+  const aaRow = document.getElementById('mp-modal-aa-row');
+  if (aaRow) aaRow.style.display = cat === 'houblon' ? 'block' : 'none';
 }
 
 function saveMpModal() {
@@ -3201,25 +3231,22 @@ function saveMpModal() {
   const max   = parseFloat(document.getElementById('mp-modal-max').value)   || 1000;
   const low   = parseFloat(document.getElementById('mp-modal-low').value)   || 0;
   const mid   = parseFloat(document.getElementById('mp-modal-mid').value)   || 0;
+  const aa    = parseFloat(document.getElementById('mp-modal-aa').value)    || 0;
 
   if (!name) { showToast('Le nom est obligatoire', true); return; }
 
   if (mpModalEditId) {
-    // Modifier existant
     const item = Object.values(MP_DATA).flat().find(i => i.id === mpModalEditId);
     if (!item) return;
-    item.val   = qty;
-    item.price = price;
-    item.lot   = lot;
-    item.max   = max;
-    item.low   = low;
-    item.mid   = mid;
+    item.val = qty; item.price = price; item.lot = lot;
+    item.max = max; item.low = low; item.mid = mid; item.aa = aa;
     fbSet('mp/' + mpModalEditId, qty);
     fbSet('mp/price_' + mpModalEditId, price);
     fbSet('mp/lot_'   + mpModalEditId, lot);
     fbSet('mp/max_'   + mpModalEditId, max);
     fbSet('mp/low_'   + mpModalEditId, low);
     fbSet('mp/mid_'   + mpModalEditId, mid);
+    fbSet('mp/aa_'    + mpModalEditId, aa);
   } else {
     // Vérifier doublon
     const exists = Object.values(MP_DATA).flat().find(i => i.name.toLowerCase() === name.toLowerCase());
@@ -3227,7 +3254,7 @@ function saveMpModal() {
     // Créer ID unique
     const newId = name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
     const unit  = MP_UNITS[mpModalCat] || 'kg';
-    const newItem = { id: newId, name, unit, val: qty, price, lot, max, low, mid };
+    const newItem = { id: newId, name, unit, val: qty, price, lot, max, low, mid, aa };
     MP_DATA[mpModalCat].push(newItem);
     fbSet('mp/' + newId, qty);
     fbSet('mp/price_' + newId, price);
@@ -3235,6 +3262,7 @@ function saveMpModal() {
     fbSet('mp/max_'   + newId, max);
     fbSet('mp/low_'   + newId, low);
     fbSet('mp/mid_'   + newId, mid);
+    fbSet('mp/aa_'    + newId, aa);
     fbSet('mp/meta_'  + newId, { name, unit, cat: mpModalCat });
     // Switcher sur la catégorie ajoutée
     const tabBtn = document.querySelector(`#mp-tabs button:nth-child(${['malt','houblon','levure'].indexOf(mpModalCat)+1})`);
@@ -3290,6 +3318,7 @@ function renderMP() {
           <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dotColor(item)};flex-shrink:0"></span>
           <div class="mp-name">${item.name}</div>
           ${item.lot ? `<span style="font-size:10px;color:var(--amber-lt);background:rgba(200,128,10,.15);border:1px solid rgba(200,128,10,.25);border-radius:3px;padding:1px 5px;font-family:monospace">${item.lot}</span>` : ''}
+          ${item.aa ? `<span style="font-size:10px;color:#7ab4e8;background:rgba(122,180,232,.1);border:1px solid rgba(122,180,232,.25);border-radius:3px;padding:1px 5px;font-weight:700">${item.aa}%AA</span>` : ''}
         </div>
         <div class="mp-bar-wrap"><div class="mp-bar ${barClass(item)}" style="width:${pct}%"></div></div>
       </div>
