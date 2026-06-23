@@ -1979,7 +1979,12 @@
     <!-- LEVURES -->
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#c47ae8;margin:14px 0 8px">🧫 Levures</div>
     <div id="recipe-levures"></div>
-    <button onclick="addRecipeLine('levure')" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:7px;cursor:pointer;margin-bottom:14px">+ Ajouter une levure</button>
+    <button onclick="addRecipeLine('levure')" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:7px;cursor:pointer;margin-bottom:4px">+ Ajouter une levure</button>
+
+    <!-- SELS MINÉRAUX -->
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#7ab4e8;margin:14px 0 8px">🧂 Sels minéraux</div>
+    <div id="recipe-sels"></div>
+    <button onclick="addRecipeLine('sel')" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:7px;cursor:pointer;margin-bottom:14px">+ Ajouter un sel minéral</button>
 
     <button class="ferm-save-btn" onclick="saveRecipe()">✓ Enregistrer la recette</button>
   </div>
@@ -2289,7 +2294,13 @@ const MP_SCHEMA = {
     { id:'amarillo',     name:'Amarillo',           unit:'kg',  max:15,   low:0.3, mid:0.6, step:0.1, price:0 },
     { id:'mandarina',    name:'Mandarina Bavaria',  unit:'kg',  max:15,   low:0.2, mid:0.4, step:0.1, price:0 },
   ],
-  levure: [
+  sel: [
+    { id:'gypse',       name:'Gypse (SO₄Ca)',      unit:'g',  max:500, low:20, mid:100, step:1, price:0 },
+    { id:'chlorure_ca', name:'Chlorure de Ca',      unit:'g',  max:500, low:20, mid:100, step:1, price:0 },
+    { id:'sulfate_mg',  name:'Sulfate de Mg',       unit:'g',  max:500, low:10, mid:50,  step:1, price:0 },
+    { id:'acide_lact',  name:'Acide lactique',      unit:'ml', max:500, low:10, mid:50,  step:1, price:0 },
+    { id:'bicarbonate', name:'Bicarbonate de Na',   unit:'g',  max:500, low:10, mid:50,  step:1, price:0 },
+  ],
     { id:'s04',          name:'S-04',              unit:'pqt', max:5,    low:1,   mid:2,  step:0.5, price:0 },
     { id:'bry97',        name:'BRY-97',            unit:'pqt', max:5,    low:1,   mid:2,  step:0.5, price:0 },
     { id:'nottingham',   name:'Nottingham',         unit:'pqt', max:5,    low:1,   mid:2,  step:0.5, price:0 },
@@ -2364,7 +2375,7 @@ let editingNoteId  = null;
 let modalDateKey   = null;
 let editingRecipeId = null;
 let brewRecipeId    = null;
-let recipeDraftLines = { malt:[], houblon:[], levure:[] };
+let recipeDraftLines = { malt:[], houblon:[], levure:[], sel:[] };
 
 // =========================================================
 // SAVE FUNCTIONS (écrivent dans Firebase)
@@ -5083,6 +5094,7 @@ function openRecipeModal(id) {
     malt:    r ? (r.malts   ||[]).map(l=>({...l})) : [],
     houblon: r ? (r.houblons||[]).map(l=>({...l})) : [],
     levure:  r ? (r.levures ||[]).map(l=>({...l})) : [],
+    sel:     r ? (r.sels    ||[]).map(l=>({...l})) : [],
   };
   renderRecipeDraftLines();
   document.getElementById('recipe-modal').classList.add('open');
@@ -5094,8 +5106,8 @@ function closeRecipeModal() {
 }
 
 function addRecipeLine(cat) {
-  const defaults = { malt:'Pilsen', houblon:'Magnum', levure:'S-04' };
-  const line = { name: defaults[cat], qty: 0, price: 0 };
+  const defaults = { malt:'Pilsen', houblon:'Magnum', levure:'S-04', sel:'Gypse (SO₄Ca)' };
+  const line = { name: defaults[cat]||'', qty: 0, price: 0 };
   if (cat === 'houblon') line.moment = "75'";
   recipeDraftLines[cat].push(line);
   renderRecipeDraftLines();
@@ -5111,15 +5123,15 @@ function updateRecipeLine(cat, i, field, val) {
 }
 
 function renderRecipeDraftLines() {
-  ['malt','houblon','levure'].forEach(cat => {
-    const el = document.getElementById('recipe-' + (cat==='malt'?'malts':cat==='houblon'?'houblons':'levures'));
+  ['malt','houblon','levure','sel'].forEach(cat => {
+    const elId = { malt:'recipe-malts', houblon:'recipe-houblons', levure:'recipe-levures', sel:'recipe-sels' }[cat];
+    const el = document.getElementById(elId);
     if (!el) return;
-    const items = MP_DATA[cat];
-    const unit  = cat === 'levure' ? 'pqt' : 'kg';
-    const step  = cat === 'houblon' ? '0.1' : cat === 'levure' ? '0.5' : '1';
+    const items = MP_DATA[cat] || [];
+    const unit  = cat === 'levure' ? 'pqt' : cat === 'sel' ? 'g/ml' : 'kg';
+    const step  = cat === 'houblon' ? '0.1' : cat === 'levure' ? '0.5' : cat === 'sel' ? '1' : '1';
 
     if (cat === 'houblon') {
-      // Grille avec colonne moment d'ajout
       el.innerHTML = recipeDraftLines[cat].map((l, i) => `
       <div style="display:grid;grid-template-columns:1fr 70px 90px 24px;gap:6px;margin-bottom:6px;align-items:end">
         <div>
@@ -5139,10 +5151,36 @@ function renderRecipeDraftLines() {
           <div style="font-size:9px;color:var(--muted);margin-bottom:2px">Moment</div>
           <select onchange="updateRecipeLine('houblon',${i},'moment',this.value)"
             style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:12px;padding:7px 6px;width:100%">
-            ${['75\'','60\'','45\'','30\'','20\'','15\'','10\'','5\'','0\'','DH'].map(m=>`<option value="${m}"${(l.moment||'75\'')===m?'selected':''}>${m}</option>`).join('')}
+            ${['75\'','60\'','45\'','30\'','20\'','15\'','10\'','5\'','0\'','DH'].map(m=>`<option value="${m}"${(l.moment||"75'")===m?'selected':''}>${m}</option>`).join('')}
           </select>
         </div>
         <button onclick="removeRecipeLine('houblon',${i})"
+          style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0;line-height:1;margin-bottom:2px">×</button>
+      </div>`).join('');
+    } else if (cat === 'sel') {
+      el.innerHTML = recipeDraftLines[cat].map((l, i) => `
+      <div style="display:grid;grid-template-columns:1fr 80px 60px 24px;gap:6px;margin-bottom:6px;align-items:end">
+        <div>
+          <div style="font-size:9px;color:var(--muted);margin-bottom:2px">Sel minéral</div>
+          <select onchange="updateRecipeLine('sel',${i},'name',this.value)"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:7px 8px;width:100%">
+            ${items.map(it=>`<option value="${it.name}"${it.name===l.name?'selected':''}>${it.name}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--muted);margin-bottom:2px">Quantité</div>
+          <input type="number" min="0" step="1" value="${l.qty||''}" placeholder="0"
+            onchange="updateRecipeLine('sel',${i},'qty',this.value)"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;font-weight:700;padding:7px 4px;width:100%;text-align:center"/>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--muted);margin-bottom:2px">Unité</div>
+          <select onchange="updateRecipeLine('sel',${i},'unite',this.value)"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:12px;padding:7px 4px;width:100%">
+            ${['g','ml','cl'].map(u=>`<option value="${u}"${(l.unite||'g')===u?'selected':''}>${u}</option>`).join('')}
+          </select>
+        </div>
+        <button onclick="removeRecipeLine('sel',${i})"
           style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0;line-height:1;margin-bottom:2px">×</button>
       </div>`).join('');
     } else {
@@ -5178,6 +5216,7 @@ function saveRecipe() {
     malts:    recipeDraftLines.malt.map(l=>({...l, qty:parseFloat(l.qty)||0})),
     houblons: recipeDraftLines.houblon.map(l=>({...l, qty:parseFloat(l.qty)||0, moment:l.moment||"75'"})),
     levures:  recipeDraftLines.levure.map(l=>({...l, qty:parseFloat(l.qty)||0})),
+    sels:     recipeDraftLines.sel.map(l=>({...l, qty:parseFloat(l.qty)||0, unite:l.unite||'g'})),
   };
   saveRecipes();
   closeRecipeModal();
