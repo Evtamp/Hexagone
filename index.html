@@ -1504,6 +1504,8 @@
 
     <div style="margin-top:6px;font-size:11px;color:var(--muted)">Seuil urgence = réappro immédiate · Seuil commande = à commander bientôt</div>
 
+    <div id="mp-modal-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 10px;background:rgba(220,60,60,.1);border-radius:var(--radius-sm);margin-top:8px"></div>
+
     <div style="display:flex;gap:8px;margin-top:18px">
       <button id="btn-close-mp-modal" style="flex:1;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:13px;padding:10px;cursor:pointer">Annuler</button>
       <button id="btn-save-mp-modal"  style="flex:2;background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:13px;font-weight:700;padding:10px;cursor:pointer">✓ Enregistrer</button>
@@ -3191,6 +3193,8 @@ function openMpModal(editId) {
     document.getElementById('mp-modal-aa').value    = '';
     document.getElementById('mp-modal-name').disabled = false;
   }
+  const errEl = document.getElementById('mp-modal-error');
+  if (errEl) errEl.style.display = 'none';
   modal.style.display = 'flex';
 }
 
@@ -3238,12 +3242,8 @@ function saveMpModal() {
     fbSet('mp/mid_'   + mpModalEditId, mid);
     fbSet('mp/aa_'    + mpModalEditId, aa);
   } else {
-    // Vérifier doublon : même nom ET même catégorie
-    const exists = MP_DATA[mpModalCat]?.find(i => i.name.toLowerCase() === name.toLowerCase());
-    if (exists) {
-      alert(`"${name}" existe déjà dans cette catégorie.\nModifiez-le via le bouton ✏️ sur la ligne existante.`);
-      return;
-    }
+    const errEl = document.getElementById('mp-modal-error');
+    if (errEl) errEl.style.display = 'none';
     // Créer ID unique
     const newId = name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
     const unit  = MP_UNITS[mpModalCat] || 'kg';
