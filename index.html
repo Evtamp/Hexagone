@@ -6825,13 +6825,11 @@ Object.assign(window, {
 });
 
 // ── Listeners modal MP (attachés une seule fois) ──────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('mp-cat-malt')   ?.addEventListener('click', () => selectMpCatModal('malt'));
-  document.getElementById('mp-cat-houblon')?.addEventListener('click', () => selectMpCatModal('houblon'));
-  document.getElementById('mp-cat-levure') ?.addEventListener('click', () => selectMpCatModal('levure'));
-  document.getElementById('btn-close-mp-modal')?.addEventListener('click', closeMpModal);
-  document.getElementById('btn-save-mp-modal') ?.addEventListener('click', saveMpModal);
-});
+document.getElementById('mp-cat-malt')   ?.addEventListener('click', () => selectMpCatModal('malt'));
+document.getElementById('mp-cat-houblon')?.addEventListener('click', () => selectMpCatModal('houblon'));
+document.getElementById('mp-cat-levure') ?.addEventListener('click', () => selectMpCatModal('levure'));
+document.getElementById('btn-close-mp-modal')?.addEventListener('click', closeMpModal);
+document.getElementById('btn-save-mp-modal') ?.addEventListener('click', saveMpModal);
 
 // Lancer l'app seulement si déjà connecté
 if (verifierSession()) {
