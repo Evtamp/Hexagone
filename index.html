@@ -3211,6 +3211,7 @@ function selectMpCatModal(cat) {
 }
 
 function saveMpModal() {
+  console.log('saveMpModal appelé, mpModalCat=', mpModalCat, 'mpModalEditId=', mpModalEditId);
   const name  = (document.getElementById('mp-modal-name').value  || '').trim();
   const qty   = parseFloat(document.getElementById('mp-modal-qty').value)   || 0;
   const price = parseFloat(document.getElementById('mp-modal-price').value) || 0;
@@ -3220,7 +3221,8 @@ function saveMpModal() {
   const mid   = parseFloat(document.getElementById('mp-modal-mid').value)   || 0;
   const aa    = parseFloat(document.getElementById('mp-modal-aa').value)    || 0;
 
-  if (!name) { showToast('Le nom est obligatoire', true); return; }
+  console.log('name=', name, 'qty=', qty, 'mpModalCat=', mpModalCat);
+  if (!name) { showToast('Le nom est obligatoire'); return; }
 
   if (mpModalEditId) {
     const item = Object.values(MP_DATA).flat().find(i => i.id === mpModalEditId);
@@ -3237,7 +3239,7 @@ function saveMpModal() {
   } else {
     // Vérifier doublon
     const exists = Object.values(MP_DATA).flat().find(i => i.name.toLowerCase() === name.toLowerCase());
-    if (exists) { showToast('Cette MP existe déjà', true); return; }
+    if (exists) { showToast('Cette MP existe déjà'); return; }
     // Créer ID unique
     const newId = name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
     const unit  = MP_UNITS[mpModalCat] || 'kg';
@@ -6824,12 +6826,15 @@ Object.assign(window, {
   openMpModal, closeMpModal, selectMpCatModal, saveMpModal, deleteMpItem,
 });
 
-// ── Listeners modal MP (attachés une seule fois) ──────────────────
-document.getElementById('mp-cat-malt')   ?.addEventListener('click', () => selectMpCatModal('malt'));
-document.getElementById('mp-cat-houblon')?.addEventListener('click', () => selectMpCatModal('houblon'));
-document.getElementById('mp-cat-levure') ?.addEventListener('click', () => selectMpCatModal('levure'));
-document.getElementById('btn-close-mp-modal')?.addEventListener('click', closeMpModal);
-document.getElementById('btn-save-mp-modal') ?.addEventListener('click', saveMpModal);
+// ── Listeners modal MP ──────────────────────────────────────────
+setTimeout(() => {
+  document.getElementById('mp-cat-malt')   ?.addEventListener('click', () => selectMpCatModal('malt'));
+  document.getElementById('mp-cat-houblon')?.addEventListener('click', () => selectMpCatModal('houblon'));
+  document.getElementById('mp-cat-levure') ?.addEventListener('click', () => selectMpCatModal('levure'));
+  document.getElementById('btn-close-mp-modal')?.addEventListener('click', closeMpModal);
+  document.getElementById('btn-save-mp-modal') ?.addEventListener('click', saveMpModal);
+  console.log('MP listeners attachés:', !!document.getElementById('btn-save-mp-modal'));
+}, 0);
 
 // Lancer l'app seulement si déjà connecté
 if (verifierSession()) {
