@@ -3238,9 +3238,12 @@ function saveMpModal() {
     fbSet('mp/mid_'   + mpModalEditId, mid);
     fbSet('mp/aa_'    + mpModalEditId, aa);
   } else {
-    // Vérifier doublon
-    const exists = Object.values(MP_DATA).flat().find(i => i.name.toLowerCase() === name.toLowerCase());
-    if (exists) { showToast('Cette MP existe déjà'); return; }
+    // Vérifier doublon : même nom ET même catégorie
+    const exists = MP_DATA[mpModalCat]?.find(i => i.name.toLowerCase() === name.toLowerCase());
+    if (exists) {
+      alert(`"${name}" existe déjà dans cette catégorie.\nModifiez-le via le bouton ✏️ sur la ligne existante.`);
+      return;
+    }
     // Créer ID unique
     const newId = name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
     const unit  = MP_UNITS[mpModalCat] || 'kg';
