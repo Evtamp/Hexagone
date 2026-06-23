@@ -3162,19 +3162,6 @@ function openMpModal(editId) {
   mpModalEditId = editId || null;
   const modal = document.getElementById('mp-modal');
 
-  // Attacher les listeners une seule fois (cloner pour vider les anciens)
-  ['mp-cat-malt','mp-cat-houblon','mp-cat-levure'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) {
-      const cat = id.replace('mp-cat-','');
-      const newBtn = btn.cloneNode(true);
-      btn.parentNode.replaceChild(newBtn, btn);
-      newBtn.addEventListener('click', () => selectMpCatModal(cat));
-    }
-  });
-  document.getElementById('btn-close-mp-modal')?.addEventListener('click', closeMpModal);
-  document.getElementById('btn-save-mp-modal')?.addEventListener('click',  saveMpModal);
-
   if (editId) {
     const item = Object.values(MP_DATA).flat().find(i => i.id === editId);
     if (!item) return;
@@ -6835,6 +6822,15 @@ Object.assign(window, {
   addParamLine, removeParamLine, updateParamLine, saveParams, saveBrasserie,
   showToast, toggleRecipeAccordion,
   openMpModal, closeMpModal, selectMpCatModal, saveMpModal, deleteMpItem,
+});
+
+// ── Listeners modal MP (attachés une seule fois) ──────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('mp-cat-malt')   ?.addEventListener('click', () => selectMpCatModal('malt'));
+  document.getElementById('mp-cat-houblon')?.addEventListener('click', () => selectMpCatModal('houblon'));
+  document.getElementById('mp-cat-levure') ?.addEventListener('click', () => selectMpCatModal('levure'));
+  document.getElementById('btn-close-mp-modal')?.addEventListener('click', closeMpModal);
+  document.getElementById('btn-save-mp-modal') ?.addEventListener('click', saveMpModal);
 });
 
 // Lancer l'app seulement si déjà connecté
