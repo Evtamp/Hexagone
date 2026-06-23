@@ -984,7 +984,7 @@
     <div class="login-subtitle">Accès réservé</div>
     <input id="login-user" class="login-input" type="text" placeholder="Utilisateur" autocomplete="username" />
     <input id="login-mdp" class="login-input" type="password" placeholder="Mot de passe" autocomplete="current-password" />
-    <button class="login-btn" onclick="tentativeConnexion()">Se connecter</button>
+    <button id="login-btn" class="login-btn">Se connecter</button>
     <div id="login-error" class="login-error">Identifiants incorrects</div>
   </div>
 </div>
@@ -2183,18 +2183,13 @@ function verifierSession() {
 function afficherLogin() {
   document.getElementById("login-screen").classList.remove("hidden");
   setTimeout(() => {
-    const mdpInput = document.getElementById("login-mdp");
-    if (mdpInput) {
-      mdpInput.addEventListener("keydown", e => {
-        if (e.key === "Enter") tentativeConnexion();
-      });
-    }
-    const userInput = document.getElementById("login-user");
-    if (userInput) {
-      userInput.addEventListener("keydown", e => {
-        if (e.key === "Enter") document.getElementById("login-mdp").focus();
-      });
-    }
+    document.getElementById("login-btn")?.addEventListener("click", tentativeConnexion);
+    document.getElementById("login-mdp")?.addEventListener("keydown", e => {
+      if (e.key === "Enter") tentativeConnexion();
+    });
+    document.getElementById("login-user")?.addEventListener("keydown", e => {
+      if (e.key === "Enter") document.getElementById("login-mdp").focus();
+    });
   }, 50);
 }
 
@@ -2202,6 +2197,16 @@ function tentativeConnexion() {
   const user = (document.getElementById("login-user").value || "").trim().toLowerCase();
   const mdp  = document.getElementById("login-mdp").value || "";
   const err  = document.getElementById("login-error");
+
+  // Diagnostic visible
+  console.log('Login attempt:', user, '| UTILISATEURS:', typeof UTILISATEURS, Object.keys(UTILISATEURS||{}));
+
+  if (!UTILISATEURS) {
+    err.textContent = 'Erreur init — rechargez la page';
+    err.style.display = "block";
+    return;
+  }
+
   if (UTILISATEURS[user] && UTILISATEURS[user].mdp === mdp) {
     const role = UTILISATEURS[user].role;
     localStorage.setItem("sessionBrasserie", JSON.stringify({ user, role }));
@@ -2210,10 +2215,15 @@ function tentativeConnexion() {
     document.getElementById("user-badge").style.display = "block";
     err.style.display = "none";
     // Connexion Firebase anonyme puis lancement
-    signInAnonymously(auth)
-      .then(() => initApp())
-      .catch(() => initApp()); // lance quand même si auth échoue
+    if (typeof signInAnonymously === 'function' && auth) {
+      signInAnonymously(auth)
+        .then(() => initApp())
+        .catch(() => initApp());
+    } else {
+      initApp();
+    }
   } else {
+    err.textContent = 'Identifiants incorrects';
     err.style.display = "block";
     document.getElementById("login-mdp").value = "";
     document.getElementById("login-mdp").focus();
