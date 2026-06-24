@@ -1421,6 +1421,30 @@
 
 </div>
 
+<!-- ===== MODAL ENFÛTAGE / EMBOUTEILLAGE ===== -->
+<div id="enfutage-modal" class="modal-overlay" onclick="if(event.target===this)closeEnfutageModal()">
+  <div class="modal-box" style="max-width:380px;margin:auto">
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700">🛢 Enfûtage / Embouteillage</div>
+    <div id="enfutage-ferm-info" style="margin-top:10px;font-size:13px;color:var(--amber);font-weight:600"></div>
+
+    <!-- Lignes de conditionnement -->
+    <div id="enfutage-lines" style="margin-top:14px;display:flex;flex-direction:column;gap:10px"></div>
+
+    <button onclick="addEnfutageLine()" style="margin-top:10px;width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:8px;cursor:pointer">+ Ajouter un format</button>
+
+    <!-- Libérer le fermenteur -->
+    <div style="margin-top:14px;display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px">
+      <input type="checkbox" id="enfutage-liberer" style="width:16px;height:16px;accent-color:var(--amber);cursor:pointer" />
+      <label for="enfutage-liberer" style="font-size:13px;color:var(--foam);cursor:pointer">Libérer le fermenteur après conditionnement</label>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:18px">
+      <button onclick="closeEnfutageModal()" style="flex:1;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:13px;padding:10px;cursor:pointer">Annuler</button>
+      <button onclick="saveEnfutage()" style="flex:2;background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:13px;font-weight:700;padding:10px;cursor:pointer">✓ Enregistrer</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MODAL AJOUT PRODUIT ===== -->
 <div id="produit-modal" class="modal-overlay" onclick="if(event.target===this)closeProduitModal()">
   <div class="modal-box" style="max-width:360px;margin:auto">
@@ -1435,11 +1459,13 @@
     <!-- Format -->
     <div style="margin-top:12px">
       <div class="field-label">Format</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-top:6px" id="produit-format-btns">
-        <button onclick="selectProduitFormat('fut30')"   id="pfmt-fut30"   class="mp-cat-btn active-cat">🛢 30L</button>
-        <button onclick="selectProduitFormat('fut20')"   id="pfmt-fut20"   class="mp-cat-btn">🛢 20L</button>
-        <button onclick="selectProduitFormat('btl33')"   id="pfmt-btl33"   class="mp-cat-btn">🍺 33cL</button>
-        <button onclick="selectProduitFormat('btl75')"   id="pfmt-btl75"   class="mp-cat-btn">🍾 75cL</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px" id="produit-format-btns">
+        <button onclick="selectProduitFormat('fut30inox')" id="pfmt-fut30inox" class="mp-cat-btn active-cat">🛢 30L Inox</button>
+        <button onclick="selectProduitFormat('fut30kk')"   id="pfmt-fut30kk"   class="mp-cat-btn">🛢 30L KK</button>
+        <button onclick="selectProduitFormat('fut30kktp')" id="pfmt-fut30kktp" class="mp-cat-btn">🛢 30L KKTP</button>
+        <button onclick="selectProduitFormat('fut20')"     id="pfmt-fut20"     class="mp-cat-btn">🛢 20L</button>
+        <button onclick="selectProduitFormat('btl33')"     id="pfmt-btl33"     class="mp-cat-btn">🍺 33cL</button>
+        <button onclick="selectProduitFormat('btl75')"     id="pfmt-btl75"     class="mp-cat-btn">🍾 75cL</button>
       </div>
     </div>
 
@@ -2865,9 +2891,9 @@ function switchSub(group, id) {
 // =========================================================
 // PRODUITS FINIS
 // =========================================================
-const FORMAT_LABELS = { fut30:'🛢 Fût 30L', fut20:'🛢 Fût 20L', btl33:'🍺 33cL', btl75:'🍾 75cL' };
-const FORMAT_UNITS  = { fut30:'fûts', fut20:'fûts', btl33:'bouteilles', btl75:'bouteilles' };
-let produitFormat = 'fut30';
+const FORMAT_LABELS = { fut30inox:'🛢 30L Inox', fut30kk:'🛢 30L KK', fut30kktp:'🛢 30L KKTP', fut20:'🛢 Fût 20L', btl33:'🍺 33cL', btl75:'🍾 75cL' };
+const FORMAT_UNITS  = { fut30inox:'fûts', fut30kk:'fûts', fut30kktp:'fûts', fut20:'fûts', btl33:'bouteilles', btl75:'bouteilles' };
+let produitFormat = 'fut30inox';
 let produitEditId = null;
 
 function todayLot() {
@@ -2913,13 +2939,13 @@ function openProduitModal(editId) {
     if (!p) return;
     document.getElementById('produit-modal-title').textContent = 'Modifier le produit';
     selBiere.value = p.biere || BEERS[0];
-    selectProduitFormat(p.format || 'fut30');
+    selectProduitFormat(p.format || 'fut30inox');
     document.getElementById('produit-qty').value = p.qty || '';
     document.getElementById('produit-lot').value = p.lot || '';
     renderFermBtns(p.ferm || '');
   } else {
     document.getElementById('produit-modal-title').textContent = 'Ajouter un produit';
-    selectProduitFormat('fut30');
+    selectProduitFormat('fut30inox');
     document.getElementById('produit-qty').value = '';
     document.getElementById('produit-lot').value = todayLot();
     renderFermBtns('');
@@ -2933,7 +2959,7 @@ function closeProduitModal() {
 
 function selectProduitFormat(fmt) {
   produitFormat = fmt;
-  ['fut30','fut20','btl33','btl75'].forEach(f => {
+  ['fut30inox','fut30kk','fut30kktp','fut20','btl33','btl75'].forEach(f => {
     document.getElementById('pfmt-'+f)?.classList.toggle('active-cat', f === fmt);
   });
   const units = FORMAT_UNITS[fmt] || 'unités';
@@ -3029,7 +3055,7 @@ function renderProduits() {
 
   let html = '';
   Object.entries(grouped).forEach(([biere, items]) => {
-    const totalFuts    = items.filter(p=>p.format==='fut30'||p.format==='fut20').reduce((s,p)=>s+(p.qty||0),0);
+    const totalFuts    = items.filter(p=>['fut30inox','fut30kk','fut30kktp','fut20'].includes(p.format)).reduce((s,p)=>s+(p.qty||0),0);
     const totalBtl     = items.filter(p=>p.format==='btl33'||p.format==='btl75').reduce((s,p)=>s+(p.qty||0),0);
     const totalTireuses= items.filter(p=>p.format==='tireuse').reduce((s,p)=>s+(p.qty||0),0);
 
@@ -3637,6 +3663,107 @@ function joursEcoules(debut) {
   return Math.max(0, Math.round(diff));
 }
 
+// ===== ENFÛTAGE / EMBOUTEILLAGE =====
+let enfutageSourceFermId = null;
+let enfutageLines = []; // [{ format, qty, lot }]
+
+function openEnfutageModal(fermId) {
+  enfutageSourceFermId = fermId;
+  const f = FERMENTERS.find(x => x.id === fermId);
+  const beerName = f ? (f.beer || 'Cuve ' + fermId) : 'Cuve ' + fermId;
+  document.getElementById('enfutage-ferm-info').textContent = 'Cuve ' + fermId + ' · ' + beerName;
+  document.getElementById('enfutage-liberer').checked = true;
+  enfutageLines = [{ format: 'fut30inox', qty: 0, lot: todayLot() }];
+  renderEnfutageLines();
+  document.getElementById('enfutage-modal').style.display = 'flex';
+}
+
+function closeEnfutageModal() {
+  document.getElementById('enfutage-modal').style.display = 'none';
+  enfutageSourceFermId = null;
+  enfutageLines = [];
+}
+
+function renderEnfutageLines() {
+  const container = document.getElementById('enfutage-lines');
+  container.innerHTML = '';
+  enfutageLines.forEach((line, idx) => {
+    const fmtOptions = Object.entries(FORMAT_LABELS).map(([k, v]) =>
+      `<option value="${k}" ${k === line.format ? 'selected' : ''}>${v}</option>`
+    ).join('');
+    container.insertAdjacentHTML('beforeend', `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;display:grid;grid-template-columns:1fr 80px auto;gap:8px;align-items:end">
+      <div>
+        <div class="field-label" style="margin-bottom:4px">Format</div>
+        <select onchange="updateEnfutageLine(${idx},'format',this.value)"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:7px 8px">${fmtOptions}</select>
+      </div>
+      <div>
+        <div class="field-label" style="margin-bottom:4px">Qté</div>
+        <input type="number" min="1" step="1" value="${line.qty || ''}" placeholder="0"
+          onchange="updateEnfutageLine(${idx},'qty',this.value)"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:7px 8px;box-sizing:border-box" />
+      </div>
+      <button onclick="removeEnfutageLine(${idx})" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;padding:4px;align-self:end">✕</button>
+      <div style="grid-column:1/-1">
+        <div class="field-label" style="margin-bottom:4px">N° de lot</div>
+        <input type="text" value="${line.lot || ''}" placeholder="ex: LOT-20250624"
+          onchange="updateEnfutageLine(${idx},'lot',this.value)"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:7px 8px;box-sizing:border-box" />
+      </div>
+    </div>`);
+  });
+}
+
+function addEnfutageLine() {
+  enfutageLines.push({ format: 'btl33', qty: 0, lot: todayLot() });
+  renderEnfutageLines();
+}
+
+function removeEnfutageLine(idx) {
+  enfutageLines.splice(idx, 1);
+  renderEnfutageLines();
+}
+
+function updateEnfutageLine(idx, field, val) {
+  if (!enfutageLines[idx]) return;
+  enfutageLines[idx][field] = field === 'qty' ? (parseInt(val) || 0) : val;
+}
+
+function saveEnfutage() {
+  if (!enfutageSourceFermId) return;
+  const ferm = FERMENTERS.find(x => x.id === enfutageSourceFermId);
+  const beerName = ferm ? (ferm.beer || '') : '';
+  const liberer = document.getElementById('enfutage-liberer').checked;
+
+  let saved = 0;
+  enfutageLines.forEach(line => {
+    if (!line.qty || line.qty <= 0) return;
+    const id = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,5);
+    const entry = {
+      id,
+      biere: beerName,
+      format: line.format,
+      qty: line.qty,
+      ferm: enfutageSourceFermId,
+      lot: line.lot || todayLot(),
+      ts: Date.now()
+    };
+    produitsData[id] = entry;
+    fbSet('produits/' + id, entry);
+    saved++;
+  });
+
+  if (liberer && ferm) {
+    setPhase(enfutageSourceFermId, 'idle');
+  }
+
+  closeEnfutageModal();
+  renderProduits();
+  if (saved > 0) showToast('Conditionnement enregistré' + (liberer ? ' · Cuve libérée' : ''));
+  else showToast('Aucune quantité saisie', true);
+}
+
 function renderFermenters() {
   const el = document.getElementById('list-ferm');
   el.innerHTML = '';
@@ -3777,6 +3904,7 @@ function renderFermenters() {
         <button class="phase-btn ${ph.dh.active?'active-dh':''}"
           onclick="setPhase('${f.id}','dh')">DH</button>
       </div>
+      ${anyActive ? `<button onclick="openEnfutageModal('${f.id}')" style="margin-top:10px;width:100%;background:var(--surface2);border:1px solid var(--amber);border-radius:var(--radius-sm);color:var(--amber);font-size:13px;font-weight:600;padding:9px;cursor:pointer">🛢 Enfûtage / Embouteillage</button>` : ''}
 
       ${editHtml}
     </div>`);
@@ -6962,6 +7090,7 @@ Object.assign(window, {
   toggleMenu, closeMenu,
   adjustMP, setMP, setMpPrice,
   openProduitModal, closeProduitModal, selectProduitFormat, saveProduitModal, deleteProduit, adjustProduitQty, setProduitQty, selectFermBtn,
+  openEnfutageModal, closeEnfutageModal, saveEnfutage, addEnfutageLine, removeEnfutageLine, updateEnfutageLine,
   toggleFermEdit, closeFermEdit, updateFerm, updateFermPhaseDebut, setPhase,
   changeWeek, openAddTask, openEditTask, closeModal, updateModalFields, saveTask,
   deleteTask,
