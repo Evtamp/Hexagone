@@ -1076,6 +1076,10 @@
     </div>
     <div style="overflow-y:auto;flex:1;padding:8px 0">
 
+      <button onclick="switchPage('dashboard',this);closeMenu()" id="nav-dashboard">
+        <span class="nav-icon">📊</span>Dashboard
+      </button>
+
       <div class="nav-group-label">Production</div>
       <button onclick="switchPage('stocks',this);closeMenu()">
         <span class="nav-icon">📦</span>Stocks
@@ -1130,8 +1134,14 @@
   <main>
 
 
+    <!-- ===== PAGE DASHBOARD ===== -->
+    <div class="page active" id="page-dashboard">
+      <div style="padding:12px 16px 0"><div class="section-title">Dashboard</div></div>
+      <div id="dashboard-content" style="padding:12px 16px 100px;display:flex;flex-direction:column;gap:12px"></div>
+    </div>
+
     <!-- ===== PAGE STOCKS ===== -->
-    <div class="page active" id="page-stocks">
+    <div class="page" id="page-stocks">
       <div class="sub-tabs" id="stocks-tabs">
         <button class="active" onclick="switchSub('stocks','produits')">Produits</button>
         <button onclick="switchSub('stocks','mp')">M.P.</button>
@@ -2816,6 +2826,7 @@ function initApp() {
 }
 
 function renderAll() {
+  renderDashboard();
   renderProduits();
   renderMP();
   renderFermenters();
@@ -2840,6 +2851,7 @@ function renderAll() {
 // NAV — MENU TIROIR
 // =========================================================
 const PAGE_NAMES = {
+  dashboard: 'Dashboard',
   stocks:    'Stocks',
   ferm:      'Fermenteurs',
   planning:  'Planning',
@@ -3661,6 +3673,154 @@ function joursEcoules(debut) {
   if (!debut) return 0;
   const diff = (new Date() - new Date(debut + 'T00:00:00')) / (1000*60*60*24);
   return Math.max(0, Math.round(diff));
+}
+
+
+// ===== DASHBOARD =====
+function renderDashboard() {
+  const el = document.getElementById('dashboard-content');
+  if (!el) return;
+
+  // --- Cuves ---
+  const ferms = FERMENTERS.map(normalizeFerm);
+  const actives = ferms.filter(f => f.phases.fermentation.active || f.phases.garde.active || f.phases.dh.active);
+  const libres  = ferms.filter(f => !actives.includes(f));
+
+  // --- Stock produits ---
+  const prods = Object.values(produitsData || {});
+  const futFormats = ['fut30inox','fut30kk','fut30kktp','fut20'];
+  const totalFuts = prods.filter(p => futFormats.includes(p.format)).reduce((s,p) => s+(p.qty||0), 0);
+  const totalBtl33 = prods.filter(p => p.format === 'btl33').reduce((s,p) => s+(p.qty||0), 0);
+  const totalBtl75 = prods.filter(p => p.format === 'btl75').reduce((s,p) => s+(p.qty||0), 0);
+
+  // --- Alertes MP ---
+  const alertsCrit = [], alertsOrder = [];
+  Object.values(MP_DATA).flat().forEach(item => {
+    if ((item.low||0) > 0 && item.val <= (item.low||0)) alertsCrit.push(item);
+    else if ((item.mid||0) > 0 && item.val <= (item.mid||0)) alertsOrder.push(item);
+  });
+
+  // --- Stock par bière ---
+  const byBeer = {};
+  prods.forEach(p => {
+    if (!p.biere) return;
+    if (!byBeer[p.biere]) byBeer[p.biere] = { futs:0, btl33:0, btl75:0 };
+    if (futFormats.includes(p.format)) byBeer[p.biere].futs += (p.qty||0);
+    if (p.format === 'btl33') byBeer[p.biere].btl33 += (p.qty||0);
+    if (p.format === 'btl75') byBeer[p.biere].btl75 += (p.qty||0);
+  });
+
+  // --- Render ---
+  const phaseLabel = ph => {
+    if (ph.fermentation.active) return '<span class="db-badge db-ferm">Ferm.</span>';
+    if (ph.garde.active)        return '<span class="db-badge db-garde">Garde</span>';
+    if (ph.dh.active)           return '<span class="db-badge db-dh">DH</span>';
+    return '<span class="db-badge db-idle">Libre</span>';
+  };
+  const phaseColor = ph => {
+    if (ph.fermentation.active) return '#1D9E75';
+    if (ph.garde.active)        return '#378ADD';
+    if (ph.dh.active)           return '#7F77DD';
+    return 'var(--border)';
+  };
+  const phaseProgress = (f) => {
+    const ph = f.phases;
+    if (ph.fermentation.active) return { j: joursEcoules(ph.fermentation.debut), d: f.dureeFerm };
+    if (ph.garde.active)        return { j: joursEcoules(ph.garde.debut), d: f.dureeGarde };
+    if (ph.dh.active)           return { j: joursEcoules(ph.dh.debut), d: f.dureeDH };
+    return null;
+  };
+
+  const fermRows = ferms.map(f => {
+    const prog = phaseProgress(f);
+    const pct  = prog && prog.d > 0 ? Math.min(100, Math.round((prog.j/prog.d)*100)) : 0;
+    const color = phaseColor(f.phases);
+    const progHtml = prog
+      ? `<div style="flex:1;display:flex;align-items:center;gap:6px">
+           <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden">
+             <div style="width:${pct}%;height:100%;background:${color};border-radius:3px"></div>
+           </div>
+           <span style="font-size:11px;color:var(--muted);min-width:34px;text-align:right">J${prog.j}/J${prog.d}</span>
+         </div>`
+      : `<div style="flex:1"></div>`;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border)">
+      <span style="font-size:12px;font-weight:600;color:var(--muted);min-width:52px">Cuve ${f.id}</span>
+      <span style="font-size:13px;color:var(--foam);flex:0 0 auto;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.beer || '— Disponible —'}</span>
+      ${progHtml}
+      ${phaseLabel(f.phases)}
+    </div>`;
+  }).join('');
+
+  const alertsHtml = [...alertsCrit.map(i =>
+    `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border)">
+      <div style="width:7px;height:7px;border-radius:50%;background:#E24B4A;flex-shrink:0"></div>
+      <span style="font-size:13px;color:var(--foam);flex:1">${i.name}</span>
+      <span style="font-size:12px;color:#E24B4A">${i.val} ${i.unit} · critique</span>
+    </div>`),
+  ...alertsOrder.map(i =>
+    `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border)">
+      <div style="width:7px;height:7px;border-radius:50%;background:#EF9F27;flex-shrink:0"></div>
+      <span style="font-size:13px;color:var(--foam);flex:1">${i.name}</span>
+      <span style="font-size:12px;color:#EF9F27">${i.val} ${i.unit} · à commander</span>
+    </div>`)
+  ].join('') || `<div style="font-size:13px;color:var(--muted);padding:8px 0">Aucune alerte · stocks OK</div>`;
+
+  const stockBiereHtml = Object.entries(byBeer).length
+    ? Object.entries(byBeer).map(([biere, s]) => {
+        const parts = [];
+        if (s.futs)  parts.push(s.futs + ' fût' + (s.futs>1?'s':''));
+        if (s.btl33) parts.push(s.btl33 + ' × 33cL');
+        if (s.btl75) parts.push(s.btl75 + ' × 75cL');
+        const vide = parts.length === 0;
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:0.5px solid var(--border)">
+          <span style="font-size:13px;color:var(--foam)">${biere}</span>
+          <span style="font-size:12px;color:${vide?'#E24B4A':'var(--muted)'}">${vide ? 'Stock vide' : parts.join(' · ')}</span>
+        </div>`;
+      }).join('')
+    : `<div style="font-size:13px;color:var(--muted);padding:8px 0">Aucun produit en stock</div>`;
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">🧪 Cuves actives</div>
+        <div style="font-size:22px;font-weight:700;color:var(--foam)">${actives.length} <span style="font-size:14px;color:var(--muted)">/ ${ferms.length}</span></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${libres.length} disponible${libres.length>1?'s':''}</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">🛢 Fûts en stock</div>
+        <div style="font-size:22px;font-weight:700;color:var(--foam)">${totalFuts}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${totalBtl33} × 33cL · ${totalBtl75} × 75cL</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">⚠️ MP critiques</div>
+        <div style="font-size:22px;font-weight:700;color:${alertsCrit.length>0?'#E24B4A':'var(--ok)'}">${alertsCrit.length}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${alertsOrder.length} à commander</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">🍺 Bières stockées</div>
+        <div style="font-size:22px;font-weight:700;color:var(--foam)">${Object.keys(byBeer).length}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${Object.values(byBeer).filter(s=>s.futs===0&&s.btl33===0&&s.btl75===0).length} en rupture</div>
+      </div>
+    </div>
+
+    <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:2px">État des cuves</div>
+      ${fermRows}
+    </div>
+
+    <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px">Alertes MP</div>
+        ${alertsCrit.length+alertsOrder.length>0 ? `<span style="font-size:11px;padding:2px 7px;border-radius:20px;background:rgba(226,75,74,.15);color:#E24B4A">${alertsCrit.length} urgence${alertsCrit.length>1?'s':''}</span>` : ''}
+      </div>
+      ${alertsHtml}
+    </div>
+
+    <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:2px">Stock produits finis</div>
+      ${stockBiereHtml}
+    </div>
+  `;
 }
 
 // ===== ENFÛTAGE / EMBOUTEILLAGE =====
@@ -7086,7 +7246,7 @@ function closeConfirmCreation() {
 
 
 Object.assign(window, {
-  switchPage, switchSub, switchMpCat,
+  switchPage, switchSub, switchMpCat, renderDashboard,
   toggleMenu, closeMenu,
   adjustMP, setMP, setMpPrice,
   openProduitModal, closeProduitModal, selectProduitFormat, saveProduitModal, deleteProduit, adjustProduitQty, setProduitQty, selectFermBtn,
