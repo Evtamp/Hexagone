@@ -1489,9 +1489,13 @@
 
     <!-- Nom -->
     <div style="margin-top:12px">
-      <div class="field-label">Nom de la matière première</div>
-      <input id="mp-modal-name" type="text" placeholder="ex: Maris Otter"
-        style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:9px 12px;box-sizing:border-box" />
+      <div class="field-label">Matière première</div>
+      <select id="mp-modal-select" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:9px 12px;box-sizing:border-box">
+        <option value="">— Choisir —</option>
+      </select>
+      <input id="mp-modal-name" type="text" placeholder="Nom du nouveau produit"
+        style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:9px 12px;box-sizing:border-box;display:none" />
+      <div id="mp-modal-known-hint" style="display:none;margin-top:6px;font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;line-height:1.6"></div>
     </div>
 
     <!-- Quantité + unité -->
@@ -2375,7 +2379,7 @@ const MP_SCHEMA = {
     { id:'mandarina',    name:'Mandarina Bavaria',  unit:'kg',  max:15,   low:0.2, mid:0.4, step:0.1, price:0 },
   ],
   sel: [
-    { id:'gypse',       name:'Gypse (SO₄Ca)',      unit:'g',  max:500, low:20, mid:100, step:1, price:0 },
+    { id:'gypse',       name:'Sulfate de Calcium (CaSO₄)', unit:'g',  max:500, low:20, mid:100, step:1, price:0 },
     { id:'chlorure_ca', name:'Chlorure de Ca',      unit:'g',  max:500, low:20, mid:100, step:1, price:0 },
     { id:'sulfate_mg',  name:'Sulfate de Mg',       unit:'g',  max:500, low:10, mid:50,  step:1, price:0 },
     { id:'acide_lact',  name:'Acide lactique',      unit:'ml', max:500, low:10, mid:50,  step:1, price:0 },
@@ -3251,10 +3255,17 @@ function openMpModal(editId) {
     document.getElementById('mp-modal-mid').value   = item.mid   ?? '';
     document.getElementById('mp-modal-aa').value    = item.aa    ?? '';
     document.getElementById('mp-modal-name').disabled = true;
+    document.getElementById('mp-modal-name').style.display = 'block';
+    document.getElementById('mp-modal-select').style.display = 'none';
+    document.getElementById('mp-modal-known-hint').style.display = 'none';
   } else {
     selectMpCatModal(currentMpCat || 'malt');
     document.getElementById('mp-modal-title').textContent = 'Ajouter une MP';
+    document.getElementById('mp-modal-select').value = '';
+    document.getElementById('mp-modal-select').style.display = 'block';
     document.getElementById('mp-modal-name').value  = '';
+    document.getElementById('mp-modal-name').style.display = 'none';
+    document.getElementById('mp-modal-name').disabled = false;
     document.getElementById('mp-modal-qty').value   = '';
     document.getElementById('mp-modal-price').value = '';
     document.getElementById('mp-modal-lot').value   = '';
@@ -3262,7 +3273,10 @@ function openMpModal(editId) {
     document.getElementById('mp-modal-low').value   = '';
     document.getElementById('mp-modal-mid').value   = '';
     document.getElementById('mp-modal-aa').value    = '';
-    document.getElementById('mp-modal-name').disabled = false;
+    document.getElementById('mp-modal-known-hint').style.display = 'none';
+    // Brancher l'événement onchange du select
+    const sel = document.getElementById('mp-modal-select');
+    sel.onchange = onMpSelectChange;
   }
   const errEl = document.getElementById('mp-modal-error');
   if (errEl) errEl.style.display = 'none';
@@ -3284,11 +3298,94 @@ function selectMpCatModal(cat) {
   // Afficher %AA uniquement pour les houblons
   const aaRow = document.getElementById('mp-modal-aa-row');
   if (aaRow) aaRow.style.display = cat === 'houblon' ? 'block' : 'none';
+  // Peupler le select avec les MP connues de cette catégorie
+  populateMpSelect(cat);
+}
+
+function populateMpSelect(cat) {
+  const sel = document.getElementById('mp-modal-select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Choisir —</option>';
+  // Grouper par nom de base (sans le suffixe _timestamp) pour n'avoir que les noms uniques
+  const seen = new Set();
+  const items = (MP_DATA[cat] || []);
+  // Noms distincts triés
+  const names = [];
+  items.forEach(item => {
+    if (!seen.has(item.name)) { seen.add(item.name); names.push(item.name); }
+  });
+  names.sort().forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  });
+  const optNew = document.createElement('option');
+  optNew.value = '__new__';
+  optNew.textContent = '+ Nouveau produit…';
+  sel.appendChild(optNew);
+}
+
+function onMpSelectChange() {
+  const sel = document.getElementById('mp-modal-select');
+  const nameInput = document.getElementById('mp-modal-name');
+  const hint = document.getElementById('mp-modal-known-hint');
+  const val = sel.value;
+  if (val === '__new__') {
+    nameInput.style.display = 'block';
+    nameInput.value = '';
+    hint.style.display = 'none';
+    document.getElementById('mp-modal-price').value = '';
+    document.getElementById('mp-modal-aa').value = '';
+    document.getElementById('mp-modal-max').value = '';
+    document.getElementById('mp-modal-low').value = '';
+    document.getElementById('mp-modal-mid').value = '';
+  } else if (val) {
+    nameInput.style.display = 'none';
+    // Trouver le dernier lot connu pour ce nom dans la catégorie
+    const items = (MP_DATA[mpModalCat] || []).filter(i => i.name === val);
+    // Trier par ID décroissant (le timestamp est à la fin)
+    items.sort((a, b) => b.id.localeCompare(a.id));
+    const last = items[0];
+    if (last) {
+      document.getElementById('mp-modal-price').value = last.price || '';
+      document.getElementById('mp-modal-aa').value   = last.aa    || '';
+      document.getElementById('mp-modal-max').value  = last.max   || '';
+      document.getElementById('mp-modal-low').value  = last.low   || '';
+      document.getElementById('mp-modal-mid').value  = last.mid   || '';
+      const parts = [];
+      if (last.price) parts.push('Prix connu : ' + last.price + ' € / ' + (last.unit || 'kg'));
+      if (last.aa)    parts.push('%AA connu : ' + last.aa + '%');
+      if (last.max)   parts.push('Max : ' + last.max);
+      if (last.low)   parts.push('Urgence : ' + last.low);
+      if (last.mid)   parts.push('Commande : ' + last.mid);
+      if (parts.length) {
+        hint.innerHTML = '📋 Valeurs du dernier lot · ' + parts.join(' · ');
+        hint.style.display = 'block';
+      } else {
+        hint.style.display = 'none';
+      }
+    }
+  } else {
+    nameInput.style.display = 'none';
+    hint.style.display = 'none';
+  }
 }
 
 function saveMpModal() {
   console.log('saveMpModal appelé, mpModalCat=', mpModalCat, 'mpModalEditId=', mpModalEditId);
-  const name  = (document.getElementById('mp-modal-name').value  || '').trim();
+  // Résoudre le nom depuis select ou input
+  let name;
+  if (!mpModalEditId) {
+    const selVal = document.getElementById('mp-modal-select').value;
+    if (selVal === '__new__') {
+      name = (document.getElementById('mp-modal-name').value || '').trim();
+    } else {
+      name = selVal;
+    }
+  } else {
+    name = (document.getElementById('mp-modal-name').value || '').trim();
+  }
   const qty   = parseFloat(document.getElementById('mp-modal-qty').value)   || 0;
   const price = parseFloat(document.getElementById('mp-modal-price').value) || 0;
   const lot   = (document.getElementById('mp-modal-lot').value   || '').trim();
