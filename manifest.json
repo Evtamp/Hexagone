@@ -7,7 +7,7 @@
   "display": "standalone",
   "background_color": "#1a1208",
   "theme_color": "#1a1208",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "categories": ["productivity", "food"],
   "icons": [
     {
