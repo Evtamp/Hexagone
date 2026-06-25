@@ -4067,18 +4067,19 @@ function plato(sg) {
 function buildCalculs(brassinId, s) {
   const di = parseFloat(s.di);
   const df = parseFloat(s.df);
-  if (!di || !df || isNaN(di) || isNaN(df) || df >= di) {
-    return '<div style="font-size:12px;color:var(--muted);padding:8px 0;font-style:italic">Saisissez Di et Df pour afficher les calculs</div>';
+  const hasDi = di && !isNaN(di) && di > 1;
+  const hasDf = df && !isNaN(df) && df > 1 && df < di;
+
+  if (!hasDi) {
+    return '<div style="font-size:12px;color:var(--muted);padding:8px 0;font-style:italic">Saisissez la densité initiale (Di) pour afficher les calculs</div>';
   }
+
   const b = historiqueData[brassinId];
   const V  = parseFloat(b?.volume || 500);
+  const Pi = plato(di);
 
-  const Pi = plato(di);  // °Plato initial
-  const Pf = plato(df);  // °Plato final
-
-  // Masse sèche totale : qty × (1 − humidité/100), par malt depuis MP_DATA
+  // Recette + masse sèche + atténuation levure
   let masseSeche = 0;
-  let masseSecheDet = [];
   const rec = b ? Object.values(recipesData).find(r => r.name === b.recette) : null;
   let attLevure = 0;
   if (rec) {
@@ -4086,11 +4087,8 @@ function buildCalculs(brassinId, s) {
       const qty = parseFloat(l.qty) || 0;
       const mpItem = (MP_DATA.malt||[]).find(m => m.name === l.name || m.id === l.id);
       const hum = mpItem ? (parseFloat(mpItem.humidite) || 0) / 100 : 0;
-      const sec = qty * (1 - hum);
-      masseSeche += sec;
-      masseSecheDet.push({ name: l.name, qty, hum: hum*100, sec });
+      masseSeche += qty * (1 - hum);
     });
-    // Chercher l'atténuation de la levure
     if (rec.levures && rec.levures.length) {
       const lev = rec.levures[0];
       const mpLev = (MP_DATA.levure||[]).find(m => m.name === lev.name || m.id === lev.id);
@@ -4098,55 +4096,55 @@ function buildCalculs(brassinId, s) {
     }
   }
 
-  // Df prévisionnelle : Df_prev = Di - (Di - 1) * attenuation/100
-  // En densité : Df_prev = 1 + (di - 1) * (1 - attLevure/100)
-  const dfPrevSG  = attLevure > 0 ? (1 + (di - 1) * (1 - attLevure / 100)) : null;
-  const dfPrevP   = dfPrevSG ? plato(dfPrevSG) : null;
-  const abvPrev   = dfPrevSG ? (133 * (di - dfPrevSG) / di) : null;
-
-  // Rendement brasseur
+  // Calculs prévisionnels (Di seule)
+  const dfPrevSG = attLevure > 0 ? (1 + (di - 1) * (1 - attLevure / 100)) : null;
+  const dfPrevP  = dfPrevSG ? plato(dfPrevSG) : null;
+  const abvPrev  = dfPrevSG ? (133 * (di - dfPrevSG) / di) : null;
   const rendement = masseSeche > 0
     ? ((di * (Pi/100) * V) / masseSeche * 100).toFixed(1) + ' %'
     : '<span style="color:var(--muted)">— (recette introuvable)</span>';
 
-  // Atténuation apparente
-  const AA = ((1 - Pf / Pi) * 100).toFixed(1);
-
-  // Extrait Réel
-  const ER = (0.1808 * Pi + 0.8192 * Pf).toFixed(2);
-
-  // Atténuation Réelle
-  const AR = ((1 - parseFloat(ER) / Pi) * 100).toFixed(1);
-
-  // % masse alcool
-  const pMasse = ((Pi - parseFloat(ER)) / (2.0665 - 0.010665 * Pi)).toFixed(2);
-
-  // % volumique alcool
-  const pVol = (parseFloat(pMasse) * df / 0.791).toFixed(2);
-
-  // ABV
-  const ABV = (133 * (di - df) / di).toFixed(2);
-
-  const row = (label, val, unit='', color='var(--foam)') =>
-    `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border)">
+  const row = (label, val, unit='', color='var(--foam)', faded=false) =>
+    `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border);${faded?'opacity:.55':''}">
       <span style="font-size:12px;color:var(--muted)">${label}</span>
       <span style="font-size:13px;font-weight:700;color:${color}">${val}<span style="font-size:11px;font-weight:400;color:var(--muted)"> ${unit}</span></span>
     </div>`;
 
+  const sep = (label) =>
+    `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:8px 0 4px">${label}</div>`;
+
+  // Bloc calculs réels (Df connue)
+  let realBlock = '';
+  if (hasDf) {
+    const Pf   = plato(df);
+    const AA   = ((1 - Pf / Pi) * 100).toFixed(1);
+    const ER   = (0.1808 * Pi + 0.8192 * Pf).toFixed(2);
+    const AR   = ((1 - parseFloat(ER) / Pi) * 100).toFixed(1);
+    const pM   = ((Pi - parseFloat(ER)) / (2.0665 - 0.010665 * Pi)).toFixed(2);
+    const pV   = (parseFloat(pM) * df / 0.791).toFixed(2);
+    const ABV  = (133 * (di - df) / di).toFixed(2);
+    realBlock = `
+    ${sep('Résultats réels')}
+    ${row('°Plato final (mesuré)', Pf.toFixed(1), '°P', 'var(--amber-lt)')}
+    ${row('Atténuation apparente', AA, '%')}
+    ${row('Extrait Réel (ER)', ER, '°P')}
+    ${row('Atténuation Réelle', AR, '%')}
+    ${row('% masse alcool', pM, '%')}
+    ${row('% vol. alcool', pV, '%')}
+    ${row('ABV réel', ABV, '%', 'var(--ok)')}`;
+  }
+
   return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px">
-    ${row('°Plato initial', Pi.toFixed(1), '°P', 'var(--amber-lt)')}
-    ${row('°Plato final',   Pf.toFixed(1), '°P', 'var(--amber-lt)')}
-    ${attLevure > 0 ? row('Atténuation levure', attLevure.toFixed(0), '%', 'var(--foam)') : ''}
-    ${attLevure > 0 && dfPrevSG ? row('Df prévisionnelle', dfPrevSG.toFixed(3) + ' <span style="font-size:11px;color:var(--amber-lt)">(' + dfPrevP.toFixed(1) + ' °P)</span>', '', 'var(--foam)') : ''}
-    ${attLevure > 0 && abvPrev  ? row('ABV prévisionnel', abvPrev.toFixed(2), '%', '#7ab4e8') : ''}
+    ${sep('Données initiales')}
+    ${row('°Plato initial (Di)', Pi.toFixed(1), '°P', 'var(--amber-lt)')}
     ${masseSeche > 0 ? row('Masse sèche totale', masseSeche.toFixed(2), 'kg') : ''}
     ${row('Rendement brasseur', rendement)}
-    ${row('Atténuation apparente (AA)', AA, '%')}
-    ${row('Extrait Réel (ER)', ER, '°P')}
-    ${row('Atténuation Réelle (AR)', AR, '%')}
-    ${row('% masse alcool', pMasse, '%')}
-    ${row('% vol. alcool', pVol, '%')}
-    ${row('ABV', ABV, '%', 'var(--ok)')}
+    ${attLevure > 0 ? sep('Prévisionnel') : ''}
+    ${attLevure > 0 ? row('Atténuation levure', attLevure.toFixed(0), '%') : ''}
+    ${attLevure > 0 && dfPrevSG ? row('Df prévisionnelle', dfPrevSG.toFixed(3) + ' <span style="font-size:11px;color:var(--amber-lt)">(' + dfPrevP.toFixed(1) + ' °P)</span>') : ''}
+    ${attLevure > 0 && abvPrev  ? row('ABV prévisionnel', abvPrev.toFixed(2), '%', '#7ab4e8') : ''}
+    ${!hasDf ? '<div style="font-size:11px;color:var(--muted);padding:8px 0;font-style:italic">Saisissez Df pour les résultats réels</div>' : ''}
+    ${realBlock}
   </div>`;
 }
 
@@ -4829,7 +4827,14 @@ function renderHistorique() {
             onchange="updateBrewField('${b.id}','recette',this.value)"
             style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--foam);font-size:14px;font-weight:600;width:100%;padding:2px 0;outline:none"
             placeholder="Nom du brassin…"/>
-          ${b.coutTotal ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">Coût total : <strong style="color:var(--amber-lt)">${parseFloat(b.coutTotal).toFixed(2)} €</strong> · ${(parseFloat(b.coutTotal)/500).toFixed(3)} €/L · Accises : ${parseFloat(b.accises||0).toFixed(2)} €</div>` : ''}
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+            <span style="font-size:12px;color:var(--muted)">Volume :</span>
+            <input type="number" min="1" step="1" value="${b.volume||500}"
+              onchange="updateBrewVolume('${b.id}',this.value)"
+              style="width:80px;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--foam);font-size:13px;font-weight:600;padding:2px 4px;outline:none;text-align:center" />
+            <span style="font-size:12px;color:var(--muted)">L</span>
+          </div>
+          ${b.coutTotal ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">Coût total : <strong style="color:var(--amber-lt)">${parseFloat(b.coutTotal).toFixed(2)} €</strong> · ${(parseFloat(b.coutTotal)/(b.volume||500)).toFixed(3)} €/L · Accises : ${parseFloat(b.accises||0).toFixed(2)} €</div>` : ''}
         </div>
 
         <!-- Lots MP -->
@@ -4978,6 +4983,17 @@ function toggleHistoriqueBrassin(id) {
   const open = body.style.display !== 'none';
   body.style.display = open ? 'none' : 'block';
   if (arrow) arrow.textContent = open ? '▼' : '▲';
+}
+
+function updateBrewVolume(id, val) {
+  const v = parseFloat(val) || 500;
+  if (!historiqueData[id]) return;
+  historiqueData[id].volume = v;
+  saveBrewEntry(id, historiqueData[id]);
+  // Rafraîchir le bloc calculs si le panneau suivi est ouvert
+  const s = fermSuiviData[id] || {};
+  const calcEl = document.getElementById('suivi-calculs-' + id);
+  if (calcEl) calcEl.innerHTML = buildCalculs(id, s);
 }
 
 function updateBrewField(id, field, val) {
