@@ -185,6 +185,10 @@
         display: flex !important;
       }
 
+      /* En paysage mobile : masquer le ::before desktop ET le div HTML */
+      nav#main-nav::before { display: none !important; }
+      nav#main-nav > div:first-child { display: none !important; }
+
       nav#main-nav button {
         font-size: 11px !important;
         padding: 6px 10px !important;
@@ -796,7 +800,10 @@
         display: none; /* masqué — remplacé par le logo sidebar */
       }
 
-      /* Injecter logo en haut de la sidebar via pseudo */
+      /* Masquer le div HTML du tiroir en desktop (::before suffit) */
+      nav#main-nav > div:first-child { display: none !important; }
+
+      /* Injecter logo en haut de la sidebar via pseudo (desktop uniquement) */
       nav#main-nav::before {
         content: '🍺  Hexagone';
         display: block;
@@ -1072,7 +1079,7 @@
   <!-- Tiroir menu -->
   <nav id="main-nav">
     <div style="padding:20px 16px 12px;border-bottom:1px solid var(--border)">
-      <div style="font-size:18px;font-weight:800;color:var(--foam)">🍺 Hexagone</div>
+      <div id="nav-brand" style="font-size:18px;font-weight:800;color:var(--foam)">🍺 Hexagone</div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px">Gestion de production</div>
     </div>
     <div style="overflow-y:auto;flex:1;padding:8px 0">
