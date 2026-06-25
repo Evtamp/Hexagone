@@ -5146,7 +5146,7 @@ function openAddTask(key) {
   const beerSel = document.getElementById('modal-beer');
   beerSel.innerHTML = BEERS.map(b => `<option value="${b}">${b}</option>`).join('');
   const fermSel = document.getElementById('modal-ferm');
-  fermSel.innerHTML = FERMENTERS.map(f => `<option value="${f.id}">${f.id}${f.beer?' – '+f.beer:' (libre)'}</option>`).join('');
+  fermSel.innerHTML = '<option value="">— Aucune (à définir) —</option>' + FERMENTERS.map(f => `<option value="${f.id}">${f.id}${f.beer?' – '+f.beer:' (libre)'}</option>`).join('');
   updateModalFields();
   document.getElementById('task-modal').classList.add('open');
 }
@@ -5168,7 +5168,7 @@ function openEditTask(key, taskId) {
   const beerSel = document.getElementById('modal-beer');
   beerSel.innerHTML = BEERS.map(b => `<option value="${b}">${b}</option>`).join('');
   const fermSel = document.getElementById('modal-ferm');
-  fermSel.innerHTML = FERMENTERS.map(f => `<option value="${f.id}">${f.id}${f.beer?' – '+f.beer:' (libre)'}</option>`).join('');
+  fermSel.innerHTML = '<option value="">— Aucune (à définir) —</option>' + FERMENTERS.map(f => `<option value="${f.id}">${f.id}${f.beer?' – '+f.beer:' (libre)'}</option>`).join('');
   updateModalFields();
   // Pré-remplir les champs selon la structure sauvegardée
   if (t.beer)      { document.getElementById('modal-beer').value = t.beer; }
