@@ -3962,7 +3962,89 @@ function toggleSuivi(brassinId) {
   if (!el) return;
   const open = el.style.display !== 'none';
   el.style.display = open ? 'none' : 'block';
-  if (!open) renderSuiviDensites(brassinId);
+  if (!open) {
+    renderSuiviDensites(brassinId);
+    renderSuiviDhLog(brassinId);
+    refreshEnfutageRecap(brassinId);
+  }
+}
+
+// ===== SUIVI DH — déstockage houblon =====
+function destockerDH(brassinId) {
+  const hopSel = document.getElementById('suivi-dh-hop-' + brassinId);
+  const qtyEl  = document.getElementById('suivi-dh-qty-' + brassinId);
+  const dateEl = document.getElementById('suivi-dh-date-' + brassinId);
+  if (!hopSel || !hopSel.value) { showToast('Choisir un houblon', true); return; }
+  const qty = parseFloat(qtyEl?.value);
+  if (!qty || qty <= 0) { showToast('Quantité invalide', true); return; }
+
+  const item = Object.values(MP_DATA).flat().find(i => i.id === hopSel.value);
+  if (!item) { showToast('Houblon introuvable', true); return; }
+  if (item.val < qty) { showToast(`Stock insuffisant (${item.val} ${item.unit})`, true); return; }
+
+  const valAvant = item.val;
+  item.val = Math.max(0, parseFloat((item.val - qty).toFixed(3)));
+  saveMp(item.id, item.val);
+  tracerSortieMP(item, valAvant, item.val, 'DH brassin ' + (historiqueData[brassinId]?.lot || brassinId));
+
+  // Enregistrer dans le suivi
+  const s = getSuivi(brassinId);
+  if (!s.dhLog) s.dhLog = [];
+  s.dhLog.push({ date: dateEl?.value || new Date().toISOString().slice(0,10), hop: item.name, qty, unit: item.unit });
+  saveSuivi(brassinId);
+
+  renderMP();
+  renderSuiviDhLog(brassinId);
+  if (qtyEl) qtyEl.value = '';
+  showToast(`${qty} ${item.unit} ${item.name} détocké · stock : ${item.val} ${item.unit}`);
+}
+
+function renderSuiviDhLog(brassinId) {
+  const el = document.getElementById('suivi-dh-log-' + brassinId);
+  if (!el) return;
+  const s = getSuivi(brassinId);
+  if (!s.dhLog || !s.dhLog.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div style="margin-top:6px">' + s.dhLog.map((l,i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="color:var(--muted);min-width:80px">${l.date}</span>
+      <span style="color:var(--foam);flex:1">${l.hop}</span>
+      <span style="color:var(--ok);font-weight:600">${l.qty} ${l.unit}</span>
+      <button onclick="deleteDhLog('${brassinId}',${i})" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:2px 4px">✕</button>
+    </div>`).join('') + '</div>';
+}
+
+function deleteDhLog(brassinId, idx) {
+  const s = getSuivi(brassinId);
+  if (!s.dhLog) return;
+  s.dhLog.splice(idx, 1);
+  saveSuivi(brassinId);
+  renderSuiviDhLog(brassinId);
+}
+
+// ===== SUIVI ENFÛTAGE — récap depuis produitsData =====
+function buildEnfutageRecap(brassinId) {
+  const b = historiqueData[brassinId];
+  if (!b) return '<div style="font-size:12px;color:var(--muted)">Aucun conditionnement enregistré</div>';
+  const entries = Object.values(produitsData).filter(p => p.biere === b.recette);
+  if (!entries.length) return '<div style="font-size:12px;color:var(--muted)">Aucun conditionnement enregistré pour ce brassin</div>';
+  // Grouper par format
+  const byFmt = {};
+  entries.forEach(p => {
+    if (!byFmt[p.format]) byFmt[p.format] = 0;
+    byFmt[p.format] += (p.qty || 0);
+  });
+  return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px">' +
+    Object.entries(byFmt).map(([fmt, qty]) =>
+      `<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid var(--border)">
+        <span style="color:var(--muted)">${FORMAT_LABELS[fmt]||fmt}</span>
+        <span style="color:var(--foam);font-weight:600">${qty} ${['btl33','btl75'].includes(fmt)?'bouteilles':'fûts'}</span>
+      </div>`).join('') +
+    '</div>';
+}
+
+function refreshEnfutageRecap(brassinId) {
+  const el = document.getElementById('suivi-enf-recap-' + brassinId);
+  if (el) el.innerHTML = buildEnfutageRecap(brassinId);
 }
 
 // ===== ENFÛTAGE / EMBOUTEILLAGE =====
@@ -4062,6 +4144,9 @@ function saveEnfutage() {
 
   closeEnfutageModal();
   renderProduits();
+  // Rafraîchir le récap suivi si le panel est ouvert
+  const brassin = Object.values(historiqueData).find(b => b.recette === beerName);
+  if (brassin) refreshEnfutageRecap(brassin.id);
   if (saved > 0) showToast('Conditionnement enregistré' + (liberer ? ' · Cuve libérée' : ''));
   else showToast('Aucune quantité saisie', true);
 }
@@ -4571,14 +4656,15 @@ function renderHistorique() {
       <!-- Panneau suivi brassin -->
       <div id="suivi-panel-${b.id}" style="display:none;border-top:1px solid var(--border);padding:14px">
 
-        <!-- Prises de densité -->
+        <!-- ① PRISES DE DENSITÉ -->
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">📊 Prises de densité</div>
         <div id="suivi-den-list-${b.id}" style="margin-bottom:10px"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;margin-bottom:4px">
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end">
           <div>
             <div class="field-label" style="margin-bottom:3px">Date</div>
             <input type="date" id="suivi-den-date-${b.id}"
-              style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 8px;box-sizing:border-box" />
+              style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 8px;box-sizing:border-box"
+              onclick="this.showPicker&&this.showPicker()" />
           </div>
           <div>
             <div class="field-label" style="margin-bottom:3px">Densité (°P)</div>
@@ -4591,21 +4677,51 @@ function renderHistorique() {
 
         <div style="border-top:1px solid var(--border);margin:14px 0"></div>
 
-        <!-- Dates clés -->
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">📅 Dates clés</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <!-- ② DRY HOPPING -->
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">🌿 Dry Hopping</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
           <div>
-            <div class="field-label" style="margin-bottom:3px">Jour DH prévu</div>
-            <input type="date" value="${(fermSuiviData[b.id]||{}).dateDH||''}"
+            <div class="field-label" style="margin-bottom:3px">Date DH</div>
+            <input type="date" id="suivi-dh-date-${b.id}" value="${(fermSuiviData[b.id]||{}).dateDH||''}"
               onchange="updateSuiviDate('${b.id}','dateDH',this.value)"
+              onclick="this.showPicker&&this.showPicker()"
               style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 8px;box-sizing:border-box" />
           </div>
           <div>
-            <div class="field-label" style="margin-bottom:3px">Jour enfûtage prévu</div>
-            <input type="date" value="${(fermSuiviData[b.id]||{}).dateEnfutage||''}"
-              onchange="updateSuiviDate('${b.id}','dateEnfutage',this.value)"
+            <div class="field-label" style="margin-bottom:3px">Houblon</div>
+            <select id="suivi-dh-hop-${b.id}"
+              style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 8px;box-sizing:border-box">
+              <option value="">— Choisir —</option>
+              ${(MP_DATA.houblon||[]).filter(h=>h.val>0).map(h=>`<option value="${h.id}">${h.name} (${h.val} ${h.unit}${h.lot?' · '+h.lot:''})</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end">
+          <div>
+            <div class="field-label" style="margin-bottom:3px">Quantité à détocker (${MP_UNITS.houblon||'kg'})</div>
+            <input type="number" step="0.1" min="0" id="suivi-dh-qty-${b.id}" placeholder="ex: 0.5"
               style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 8px;box-sizing:border-box" />
           </div>
+          <button onclick="destockerDH('${b.id}')"
+            style="background:var(--surface2);border:1px solid var(--ok);border-radius:var(--radius-sm);color:var(--ok);font-size:12px;font-weight:700;padding:8px 12px;cursor:pointer;white-space:nowrap">
+            − Détocker
+          </button>
+        </div>
+        <div id="suivi-dh-log-${b.id}" style="margin-top:8px"></div>
+
+        <div style="border-top:1px solid var(--border);margin:14px 0"></div>
+
+        <!-- ③ ENFÛTAGE / EMBOUTEILLAGE -->
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">🛢 Enfûtage / Embouteillage</div>
+        <div style="margin-bottom:6px">
+          <div class="field-label" style="margin-bottom:3px">Date enfûtage</div>
+          <input type="date" id="suivi-enf-date-${b.id}" value="${(fermSuiviData[b.id]||{}).dateEnfutage||''}"
+            onchange="updateSuiviDate('${b.id}','dateEnfutage',this.value)"
+            onclick="this.showPicker&&this.showPicker()"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 8px;box-sizing:border-box" />
+        </div>
+        <div id="suivi-enf-recap-${b.id}" style="margin-top:8px">
+          ${buildEnfutageRecap(b.id)}
         </div>
       </div>
     </div>`;
@@ -5837,7 +5953,7 @@ function renderRecipeDraftLines() {
           <div style="font-size:9px;color:var(--muted);margin-bottom:2px">Moment</div>
           <select onchange="updateRecipeLine('houblon',${i},'moment',this.value)"
             style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:12px;padding:7px 6px;width:100%">
-            ${['75\'','60\'','45\'','30\'','20\'','15\'','10\'','5\'','0\'','DH'].map(m=>`<option value="${m}"${(l.moment||"75'")===m?'selected':''}>${m}</option>`).join('')}
+            ${['90\'','80\'','75\'','60\'','45\'','30\'','20\'','15\'','10\'','5\'','0\'','DH','Whirlpool'].map(m=>`<option value="${m}"${(l.moment||"75'")===m?'selected':''}>${m}</option>`).join('')}
           </select>
         </div>
         <button onclick="removeRecipeLine('houblon',${i})"
@@ -6027,14 +6143,14 @@ function confirmBrew(skipDestock = false) {
   }
 
   // Snapshot pour annulation
-  const mpQtySnapshot = [...(r.malts||[]),...(r.houblons||[]),...(r.levures||[])].map(l=>({name:l.name, qty:parseFloat(l.qty)||0}));
+  const mpQtySnapshot = [...(r.malts||[]),...(r.houblons||[]).filter(l=>l.moment!=='DH'),...(r.levures||[])].map(l=>({name:l.name, qty:parseFloat(l.qty)||0}));
   const mpLotsUsed = {}; // nom -> lot utilisé (pour l'historique)
 
   // Déstocker les MP en priorité FIFO (lot le plus ancien en premier)
   if (!skipDestock) {
     const allLines = [
       ...(r.malts||[]).map(l=>({...l,unit:'kg'})),
-      ...(r.houblons||[]).map(l=>({...l,unit:'kg'})),
+      ...(r.houblons||[]).filter(l=>l.moment!=='DH').map(l=>({...l,unit:'kg'})),
       ...(r.levures||[]).map(l=>({...l,unit:'pqt'})),
     ];
 
@@ -6070,7 +6186,7 @@ function confirmBrew(skipDestock = false) {
     renderMP();
   } else {
     // Sans déstock : récupérer les lots existants pour l'historique
-    [...(r.malts||[]),...(r.houblons||[]),...(r.levures||[])].forEach(l => {
+    [...(r.malts||[]),...(r.houblons||[]).filter(l=>l.moment!=='DH'),...(r.levures||[])].forEach(l => {
       const item = Object.values(MP_DATA).flat().find(i => i.name === l.name);
       mpLotsUsed[l.name] = item?.lot || '';
     });
@@ -7441,6 +7557,7 @@ Object.assign(window, {
   openProduitModal, closeProduitModal, selectProduitFormat, saveProduitModal, deleteProduit, adjustProduitQty, setProduitQty, selectFermBtn,
   openEnfutageModal, closeEnfutageModal, saveEnfutage, addEnfutageLine, removeEnfutageLine, updateEnfutageLine,
   toggleSuivi, addDensite, deleteDensite, updateSuiviDate, renderSuiviDensites,
+  destockerDH, deleteDhLog, renderSuiviDhLog, refreshEnfutageRecap, buildEnfutageRecap,
   toggleFermEdit, closeFermEdit, updateFerm, updateFermPhaseDebut, setPhase,
   changeWeek, openAddTask, openEditTask, closeModal, updateModalFields, saveTask,
   deleteTask,
