@@ -1578,6 +1578,29 @@
       </div>
     </div>
 
+    <!-- Rendement + Humidité (malt uniquement) -->
+    <div id="mp-modal-malt-row" style="display:none;margin-top:12px;display:none">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <div class="field-label">Rendement (%)</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+            <input id="mp-modal-rendement" type="number" min="0" max="100" step="0.1" placeholder="ex: 78"
+              style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:9px 12px;box-sizing:border-box" />
+            <span style="color:var(--muted);font-size:13px">%</span>
+          </div>
+        </div>
+        <div>
+          <div class="field-label">Taux d'humidité (%)</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+            <input id="mp-modal-humidite" type="number" min="0" max="20" step="0.1" placeholder="ex: 4.5"
+              style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:9px 12px;box-sizing:border-box" />
+            <span style="color:var(--muted);font-size:13px">%</span>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Masse sèche = qty × (1 − humidité/100)</div>
+    </div>
+
     <!-- N° de lot -->
     <div style="margin-top:12px">
       <div class="field-label">N° de lot <span style="color:var(--muted);font-weight:400">(optionnel)</span></div>
@@ -2718,7 +2741,9 @@ function initApp() {
       if (data && data['low_' + item.id]   !== undefined) item.low   = data['low_' + item.id];
       if (data && data['mid_' + item.id]   !== undefined) item.mid   = data['mid_' + item.id];
       if (data && data['lot_' + item.id]   !== undefined) item.lot   = data['lot_' + item.id];
-      if (data && data['aa_'  + item.id]   !== undefined) item.aa    = data['aa_'  + item.id];
+      if (data && data['aa_'         + item.id] !== undefined) item.aa        = data['aa_'         + item.id];
+      if (data && data['rendement_' + item.id] !== undefined) item.rendement = data['rendement_' + item.id];
+      if (data && data['humidite_'  + item.id] !== undefined) item.humidite  = data['humidite_'  + item.id];
     });
     // Reconstruire les ingrédients dynamiques depuis les clés meta_*
     if (data) {
@@ -2739,7 +2764,9 @@ function initApp() {
           low:   data['low_'   + id]   ?? 0,
           mid:   data['mid_'   + id]   ?? 0,
           lot:   data['lot_'   + id]   ?? '',
-          aa:    data['aa_'    + id]   ?? 0,
+          aa:    data['aa_'        + id]   ?? 0,
+          rendement: data['rendement_' + id]   ?? 0,
+          humidite:  data['humidite_'  + id]   ?? 0,
         });
       });
     }
@@ -3318,7 +3345,9 @@ function openMpModal(editId) {
     document.getElementById('mp-modal-max').value   = item.max   ?? '';
     document.getElementById('mp-modal-low').value   = item.low   ?? '';
     document.getElementById('mp-modal-mid').value   = item.mid   ?? '';
-    document.getElementById('mp-modal-aa').value    = item.aa    ?? '';
+    document.getElementById('mp-modal-aa').value          = item.aa         ?? '';
+    document.getElementById('mp-modal-rendement').value  = item.rendement  ?? '';
+    document.getElementById('mp-modal-humidite').value   = item.humidite   ?? '';
     document.getElementById('mp-modal-name').disabled = false;
     document.getElementById('mp-modal-name').style.display = 'block';
     document.getElementById('mp-modal-select').style.display = 'none';
@@ -3337,7 +3366,9 @@ function openMpModal(editId) {
     document.getElementById('mp-modal-max').value   = '';
     document.getElementById('mp-modal-low').value   = '';
     document.getElementById('mp-modal-mid').value   = '';
-    document.getElementById('mp-modal-aa').value    = '';
+    document.getElementById('mp-modal-aa').value         = '';
+    document.getElementById('mp-modal-rendement').value = '';
+    document.getElementById('mp-modal-humidite').value  = '';
     document.getElementById('mp-modal-known-hint').style.display = 'none';
     // Brancher l'événement onchange du select
     const sel = document.getElementById('mp-modal-select');
@@ -3361,8 +3392,10 @@ function selectMpCatModal(cat) {
   document.getElementById('mp-modal-unit-display').textContent  = unit;
   document.getElementById('mp-modal-price-unit').textContent    = '€ / ' + unit;
   // Afficher %AA uniquement pour les houblons
-  const aaRow = document.getElementById('mp-modal-aa-row');
+  const aaRow   = document.getElementById('mp-modal-aa-row');
   if (aaRow) aaRow.style.display = cat === 'houblon' ? 'block' : 'none';
+  const maltRow = document.getElementById('mp-modal-malt-row');
+  if (maltRow) maltRow.style.display = cat === 'malt' ? 'grid' : 'none';
   // Peupler le select avec les MP connues de cette catégorie
   populateMpSelect(cat);
 }
@@ -3419,8 +3452,12 @@ function onMpSelectChange() {
       document.getElementById('mp-modal-low').value  = last.low   || '';
       document.getElementById('mp-modal-mid').value  = last.mid   || '';
       const parts = [];
-      if (last.price) parts.push('Prix connu : ' + last.price + ' € / ' + (last.unit || 'kg'));
-      if (last.aa)    parts.push('%AA connu : ' + last.aa + '%');
+      document.getElementById('mp-modal-rendement').value = last.rendement || '';
+      document.getElementById('mp-modal-humidite').value   = last.humidite   || '';
+      if (last.price)     parts.push('Prix connu : ' + last.price + ' € / ' + (last.unit || 'kg'));
+      if (last.aa)        parts.push('%AA connu : ' + last.aa + '%');
+      if (last.rendement) parts.push('Rdt : ' + last.rendement + '%');
+      if (last.humidite)  parts.push('Hum. : ' + last.humidite + '%');
       if (last.max)   parts.push('Max : ' + last.max);
       if (last.low)   parts.push('Urgence : ' + last.low);
       if (last.mid)   parts.push('Commande : ' + last.mid);
@@ -3453,7 +3490,9 @@ function saveMpModal() {
   }
   const qty   = parseFloat(document.getElementById('mp-modal-qty').value)   || 0;
   const price = parseFloat(document.getElementById('mp-modal-price').value) || 0;
-  const lot   = (document.getElementById('mp-modal-lot').value   || '').trim();
+  const lot       = (document.getElementById('mp-modal-lot').value        || '').trim();
+  const rendement = parseFloat(document.getElementById('mp-modal-rendement')?.value) || 0;
+  const humidite  = parseFloat(document.getElementById('mp-modal-humidite')?.value)  || 0;
   const max   = parseFloat(document.getElementById('mp-modal-max').value)   || 1000;
   const low   = parseFloat(document.getElementById('mp-modal-low').value)   || 0;
   const mid   = parseFloat(document.getElementById('mp-modal-mid').value)   || 0;
@@ -3474,6 +3513,9 @@ function saveMpModal() {
     fbSet('mp/low_'   + mpModalEditId, low);
     fbSet('mp/mid_'   + mpModalEditId, mid);
     fbSet('mp/aa_'    + mpModalEditId, aa);
+    item.rendement = rendement; item.humidite = humidite;
+    fbSet('mp/rendement_' + mpModalEditId, rendement || null);
+    fbSet('mp/humidite_'  + mpModalEditId, humidite  || null);
     // Mettre à jour le nom dans meta_ si c'est un ingrédient dynamique
     const cat = Object.keys(MP_DATA).find(c => MP_DATA[c].some(i => i.id === mpModalEditId));
     fbSet('mp/meta_' + mpModalEditId, { name, unit: item.unit, cat });
@@ -3492,7 +3534,9 @@ function saveMpModal() {
     fbSet('mp/low_'   + newId, low);
     fbSet('mp/mid_'   + newId, mid);
     fbSet('mp/aa_'    + newId, aa);
-    fbSet('mp/meta_'  + newId, { name, unit, cat: mpModalCat });
+    fbSet('mp/meta_'       + newId, { name, unit, cat: mpModalCat });
+    if (rendement) fbSet('mp/rendement_' + newId, rendement);
+    if (humidite)  fbSet('mp/humidite_'  + newId, humidite);
     // Switcher sur la catégorie ajoutée
     const tabBtn = document.querySelector(`#mp-tabs button:nth-child(${['malt','houblon','levure','sel'].indexOf(mpModalCat)+1})`);
     switchMpCat(mpModalCat, tabBtn);
@@ -3991,6 +4035,97 @@ function toggleSuivi(brassinId) {
     renderSuiviDhLog(brassinId);
     refreshEnfutageRecap(brassinId);
   }
+}
+
+
+// ===== CALCULS BRASSICOLES =====
+function plato(sg) {
+  // Formule De Clerck
+  return 135.997 * Math.pow(sg,3) - 630.272 * Math.pow(sg,2) + 1111.14 * sg - 616.868;
+}
+
+function buildCalculs(brassinId, s) {
+  const di = parseFloat(s.di);
+  const df = parseFloat(s.df);
+  if (!di || !df || isNaN(di) || isNaN(df) || df >= di) {
+    return '<div style="font-size:12px;color:var(--muted);padding:8px 0;font-style:italic">Saisissez Di et Df pour afficher les calculs</div>';
+  }
+  const b = historiqueData[brassinId];
+  const V  = parseFloat(b?.volume || 500);
+
+  const Pi = plato(di);  // °Plato initial
+  const Pf = plato(df);  // °Plato final
+
+  // Masse sèche totale : qty × (1 − humidité/100), par malt depuis MP_DATA
+  let masseSeche = 0;
+  let masseSecheDet = [];
+  const rec = b ? Object.values(recipesData).find(r => r.name === b.recette) : null;
+  if (rec) {
+    (rec.malts||[]).forEach(l => {
+      const qty = parseFloat(l.qty) || 0;
+      // Chercher le malt dans MP_DATA pour récupérer son taux d'humidité
+      const mpItem = (MP_DATA.malt||[]).find(m => m.name === l.name || m.id === l.id);
+      const hum = mpItem ? (parseFloat(mpItem.humidite) || 0) / 100 : 0;
+      const sec = qty * (1 - hum);
+      masseSeche += sec;
+      masseSecheDet.push({ name: l.name, qty, hum: hum*100, sec });
+    });
+  }
+
+  // Rendement brasseur
+  const rendement = masseSeche > 0
+    ? ((di * (Pi/100) * V) / masseSeche * 100).toFixed(1) + ' %'
+    : '<span style="color:var(--muted)">— (recette introuvable)</span>';
+
+  // Atténuation apparente
+  const AA = ((1 - Pf / Pi) * 100).toFixed(1);
+
+  // Extrait Réel
+  const ER = (0.1808 * Pi + 0.8192 * Pf).toFixed(2);
+
+  // Atténuation Réelle
+  const AR = ((1 - parseFloat(ER) / Pi) * 100).toFixed(1);
+
+  // % masse alcool
+  const pMasse = ((Pi - parseFloat(ER)) / (2.0665 - 0.010665 * Pi)).toFixed(2);
+
+  // % volumique alcool
+  const pVol = (parseFloat(pMasse) * df / 0.791).toFixed(2);
+
+  // ABV
+  const ABV = (133 * (di - df) / di).toFixed(2);
+
+  const row = (label, val, unit='', color='var(--foam)') =>
+    `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:12px;color:var(--muted)">${label}</span>
+      <span style="font-size:13px;font-weight:700;color:${color}">${val}<span style="font-size:11px;font-weight:400;color:var(--muted)"> ${unit}</span></span>
+    </div>`;
+
+  return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px">
+    ${row('°Plato initial', Pi.toFixed(1), '°P', 'var(--amber-lt)')}
+    ${row('°Plato final',   Pf.toFixed(1), '°P', 'var(--amber-lt)')}
+    ${masseSeche > 0 ? row('Masse sèche totale', masseSeche.toFixed(2), 'kg') : ''}
+    ${row('Rendement brasseur', rendement)}
+    ${row('Atténuation apparente (AA)', AA, '%')}
+    ${row('Extrait Réel (ER)', ER, '°P')}
+    ${row('Atténuation Réelle (AR)', AR, '%')}
+    ${row('% masse alcool', pMasse, '%')}
+    ${row('% vol. alcool', pVol, '%')}
+    ${row('ABV', ABV, '%', 'var(--ok)')}
+  </div>`;
+}
+
+function updateSuiviDens(brassinId, field, val) {
+  const sg = parseFloat(val);
+  const s = getSuivi(brassinId);
+  s[field] = sg || '';
+  saveSuivi(brassinId);
+  // Mettre à jour le badge °Plato
+  const platoEl = document.getElementById('suivi-' + field + '-plato-' + brassinId);
+  if (platoEl) platoEl.textContent = sg ? plato(sg).toFixed(1) + ' °P' : '—';
+  // Recalculer le bloc calculs
+  const calcEl = document.getElementById('suivi-calculs-' + brassinId);
+  if (calcEl) calcEl.innerHTML = buildCalculs(brassinId, s);
 }
 
 // ===== SUIVI DH — déstockage houblon =====
@@ -4697,8 +4832,40 @@ function renderHistorique() {
         <div id="suivi-panel-${b.id}" style="display:none;border-top:1px solid var(--border);padding:14px">
 
         <!-- ① PRISES DE DENSITÉ -->
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">📊 Prises de densité</div>
-        <div id="suivi-den-list-${b.id}" style="margin-bottom:10px"></div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">📊 Densités &amp; Calculs</div>
+
+        <!-- Di et Df -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px">
+            <div class="field-label" style="margin-bottom:4px">Densité initiale (Di)</div>
+            <input type="number" step="0.001" min="1" max="1.2" id="suivi-di-${b.id}"
+              value="${(fermSuiviData[b.id]||{}).di||''}" placeholder="ex: 1.052"
+              onchange="updateSuiviDens('${b.id}','di',this.value)"
+              style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--foam);font-size:15px;font-weight:700;padding:4px 0;outline:none;box-sizing:border-box" />
+            <div id="suivi-di-plato-${b.id}" style="font-size:11px;color:var(--amber-lt);margin-top:4px">
+              ${(fermSuiviData[b.id]||{}).di ? plato((fermSuiviData[b.id]||{}).di).toFixed(1)+' °P' : '—'}
+            </div>
+          </div>
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px">
+            <div class="field-label" style="margin-bottom:4px">Densité finale (Df)</div>
+            <input type="number" step="0.001" min="1" max="1.2" id="suivi-df-${b.id}"
+              value="${(fermSuiviData[b.id]||{}).df||''}" placeholder="ex: 1.010"
+              onchange="updateSuiviDens('${b.id}','df',this.value)"
+              style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--foam);font-size:15px;font-weight:700;padding:4px 0;outline:none;box-sizing:border-box" />
+            <div id="suivi-df-plato-${b.id}" style="font-size:11px;color:var(--amber-lt);margin-top:4px">
+              ${(fermSuiviData[b.id]||{}).df ? plato((fermSuiviData[b.id]||{}).df).toFixed(1)+' °P' : '—'}
+            </div>
+          </div>
+        </div>
+
+        <!-- Bloc calculs -->
+        <div id="suivi-calculs-${b.id}" style="margin-bottom:10px">
+          ${buildCalculs(b.id, (fermSuiviData[b.id]||{}))}
+        </div>
+
+        <!-- Prises de densité intermédiaires -->
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px">Mesures intermédiaires</div>
+        <div id="suivi-den-list-${b.id}" style="margin-bottom:8px"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end">
           <div>
             <div class="field-label" style="margin-bottom:3px">Date</div>
@@ -4707,8 +4874,8 @@ function renderHistorique() {
               onclick="this.showPicker&&this.showPicker()" />
           </div>
           <div>
-            <div class="field-label" style="margin-bottom:3px">Densité (ex: 1.052)</div>
-            <input type="number" step="0.001" min="1" max="1.2" id="suivi-den-val-${b.id}" placeholder="ex: 1.052"
+            <div class="field-label" style="margin-bottom:3px">Densité</div>
+            <input type="number" step="0.001" min="1" max="1.2" id="suivi-den-val-${b.id}" placeholder="ex: 1.030"
               style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 8px;box-sizing:border-box" />
           </div>
           <button onclick="addDensite('${b.id}')"
@@ -7696,6 +7863,7 @@ Object.assign(window, {
   openProduitModal, closeProduitModal, selectProduitFormat, saveProduitModal, deleteProduit, adjustProduitQty, setProduitQty, selectFermBtn,
   openEnfutageModal, closeEnfutageModal, saveEnfutage, addEnfutageLine, removeEnfutageLine, updateEnfutageLine,
   toggleSuivi, addDensite, deleteDensite, updateSuiviDate, renderSuiviDensites,
+  updateSuiviDens, buildCalculs, plato,
   destockerDH, deleteDhLog, renderSuiviDhLog, refreshEnfutageRecap, buildEnfutageRecap,
   toggleFermEdit, closeFermEdit, updateFerm, updateFermPhaseDebut, setPhase,
   changeWeek, changePlanMonth, jumpToWeek, renderPlanningCalendar, openAddTask, openEditTask, closeModal, updateModalFields, saveTask,
