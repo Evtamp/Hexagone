@@ -2448,6 +2448,7 @@ let MP_DATA      = JSON.parse(JSON.stringify(MP_SCHEMA)); // deep copy
 let FERMENTERS   = JSON.parse(JSON.stringify(FERM_DEFAULT));
 let planningData = {};
 let ordersData   = {};
+let fermSuiviData = {}; // { fermId: { densites:[{date,val}], dateDH:'', dateEnfutage:'' } }
 let notesData    = {};
 let recipesData  = {};
 let paramsData   = {
@@ -2740,6 +2741,12 @@ function initApp() {
     else FERMENTERS = JSON.parse(JSON.stringify(FERM_DEFAULT));
     renderFermenters();
     renderPlanning(); // met à jour les libellés de cuves dans le planning
+    onLoaded();
+  });
+
+  fbListen('fermSuivi', data => {
+    fermSuiviData = data || {};
+    renderFermenters();
     onLoaded();
   });
 
@@ -3292,7 +3299,7 @@ function openMpModal(editId) {
     document.getElementById('mp-modal-low').value   = item.low   ?? '';
     document.getElementById('mp-modal-mid').value   = item.mid   ?? '';
     document.getElementById('mp-modal-aa').value    = item.aa    ?? '';
-    document.getElementById('mp-modal-name').disabled = true;
+    document.getElementById('mp-modal-name').disabled = false;
     document.getElementById('mp-modal-name').style.display = 'block';
     document.getElementById('mp-modal-select').style.display = 'none';
     document.getElementById('mp-modal-known-hint').style.display = 'none';
@@ -3438,7 +3445,7 @@ function saveMpModal() {
   if (mpModalEditId) {
     const item = Object.values(MP_DATA).flat().find(i => i.id === mpModalEditId);
     if (!item) return;
-    item.val = qty; item.price = price; item.lot = lot;
+    item.name = name; item.val = qty; item.price = price; item.lot = lot;
     item.max = max; item.low = low; item.mid = mid; item.aa = aa;
     fbSet('mp/' + mpModalEditId, qty);
     fbSet('mp/price_' + mpModalEditId, price);
@@ -3447,6 +3454,9 @@ function saveMpModal() {
     fbSet('mp/low_'   + mpModalEditId, low);
     fbSet('mp/mid_'   + mpModalEditId, mid);
     fbSet('mp/aa_'    + mpModalEditId, aa);
+    // Mettre à jour le nom dans meta_ si c'est un ingrédient dynamique
+    const cat = Object.keys(MP_DATA).find(c => MP_DATA[c].some(i => i.id === mpModalEditId));
+    fbSet('mp/meta_' + mpModalEditId, { name, unit: item.unit, cat });
   } else {
     const errEl = document.getElementById('mp-modal-error');
     if (errEl) errEl.style.display = 'none';
@@ -3891,6 +3901,68 @@ function renderDashboard() {
       ${stockBiereHtml}
     </div>
   `;
+}
+
+// ===== SUIVI BRASSIN (densités, DH, enfûtage) =====
+function getSuivi(brassinId) {
+  if (!fermSuiviData[brassinId]) fermSuiviData[brassinId] = { densites:[], dateDH:'', dateEnfutage:'' };
+  return fermSuiviData[brassinId];
+}
+
+function saveSuivi(brassinId) {
+  fbSet('fermSuivi/' + brassinId, fermSuiviData[brassinId]);
+}
+
+function addDensite(brassinId) {
+  const dateEl = document.getElementById('suivi-den-date-' + brassinId);
+  const valEl  = document.getElementById('suivi-den-val-'  + brassinId);
+  const date = dateEl?.value;
+  const val  = parseFloat(valEl?.value);
+  if (!date || isNaN(val)) { showToast('Date et densité requises', true); return; }
+  const s = getSuivi(brassinId);
+  s.densites.push({ date, val });
+  s.densites.sort((a,b) => a.date.localeCompare(b.date));
+  saveSuivi(brassinId);
+  if (dateEl) dateEl.value = '';
+  if (valEl)  valEl.value  = '';
+  renderSuiviDensites(brassinId);
+}
+
+function deleteDensite(brassinId, idx) {
+  const s = getSuivi(brassinId);
+  s.densites.splice(idx, 1);
+  saveSuivi(brassinId);
+  renderSuiviDensites(brassinId);
+}
+
+function updateSuiviDate(brassinId, field, val) {
+  const s = getSuivi(brassinId);
+  s[field] = val;
+  saveSuivi(brassinId);
+}
+
+function renderSuiviDensites(brassinId) {
+  const el = document.getElementById('suivi-den-list-' + brassinId);
+  if (!el) return;
+  const s = getSuivi(brassinId);
+  if (!s.densites.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px 0">Aucune mesure enregistrée</div>';
+    return;
+  }
+  el.innerHTML = s.densites.map((d,i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:12px;color:var(--muted);min-width:82px">${d.date}</span>
+      <span style="font-size:13px;font-weight:600;color:var(--foam);flex:1">${d.val} °P</span>
+      <button onclick="deleteDensite('${brassinId}',${i})" style="background:none;border:none;color:var(--danger);font-size:13px;cursor:pointer;padding:2px 6px">✕</button>
+    </div>`).join('');
+}
+
+function toggleSuivi(brassinId) {
+  const el = document.getElementById('suivi-panel-' + brassinId);
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  if (!open) renderSuiviDensites(brassinId);
 }
 
 // ===== ENFÛTAGE / EMBOUTEILLAGE =====
@@ -4472,11 +4544,17 @@ function renderHistorique() {
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:6px">📦 Numéros de lots MP</div>
         ${mpLotsHtml}
       </div>
-      <div style="padding:6px 14px 10px;display:flex;justify-content:space-between">
-        <button onclick="openBrewDetailModal('${b.id}')"
-          style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:12px;padding:5px 10px;cursor:pointer">
-          ✏️ Lots MP
-        </button>
+      <div style="padding:6px 14px 10px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
+        <div style="display:flex;gap:6px">
+          <button onclick="openBrewDetailModal('${b.id}')"
+            style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:12px;padding:5px 10px;cursor:pointer">
+            ✏️ Lots MP
+          </button>
+          <button onclick="toggleSuivi('${b.id}')"
+            style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;padding:5px 10px;cursor:pointer">
+            📋 Suivi
+          </button>
+        </div>
         <div style="display:flex;gap:6px">
           ${b.statut === 'fermentation' || b.statut === 'garde' || b.statut === 'dh' ? `
           <button onclick="annulerBrassin('${b.id}')"
@@ -4487,6 +4565,47 @@ function renderHistorique() {
             style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:4px 10px;cursor:pointer">
             Supprimer
           </button>
+        </div>
+      </div>
+
+      <!-- Panneau suivi brassin -->
+      <div id="suivi-panel-${b.id}" style="display:none;border-top:1px solid var(--border);padding:14px">
+
+        <!-- Prises de densité -->
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">📊 Prises de densité</div>
+        <div id="suivi-den-list-${b.id}" style="margin-bottom:10px"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;margin-bottom:4px">
+          <div>
+            <div class="field-label" style="margin-bottom:3px">Date</div>
+            <input type="date" id="suivi-den-date-${b.id}"
+              style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 8px;box-sizing:border-box" />
+          </div>
+          <div>
+            <div class="field-label" style="margin-bottom:3px">Densité (°P)</div>
+            <input type="number" step="0.1" min="0" id="suivi-den-val-${b.id}" placeholder="ex: 12.5"
+              style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 8px;box-sizing:border-box" />
+          </div>
+          <button onclick="addDensite('${b.id}')"
+            style="background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:16px;font-weight:700;padding:6px 14px;cursor:pointer;align-self:end">+</button>
+        </div>
+
+        <div style="border-top:1px solid var(--border);margin:14px 0"></div>
+
+        <!-- Dates clés -->
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">📅 Dates clés</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <div class="field-label" style="margin-bottom:3px">Jour DH prévu</div>
+            <input type="date" value="${(fermSuiviData[b.id]||{}).dateDH||''}"
+              onchange="updateSuiviDate('${b.id}','dateDH',this.value)"
+              style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 8px;box-sizing:border-box" />
+          </div>
+          <div>
+            <div class="field-label" style="margin-bottom:3px">Jour enfûtage prévu</div>
+            <input type="date" value="${(fermSuiviData[b.id]||{}).dateEnfutage||''}"
+              onchange="updateSuiviDate('${b.id}','dateEnfutage',this.value)"
+              style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 8px;box-sizing:border-box" />
+          </div>
         </div>
       </div>
     </div>`;
@@ -7321,6 +7440,7 @@ Object.assign(window, {
   adjustMP, setMP, setMpPrice,
   openProduitModal, closeProduitModal, selectProduitFormat, saveProduitModal, deleteProduit, adjustProduitQty, setProduitQty, selectFermBtn,
   openEnfutageModal, closeEnfutageModal, saveEnfutage, addEnfutageLine, removeEnfutageLine, updateEnfutageLine,
+  toggleSuivi, addDensite, deleteDensite, updateSuiviDate, renderSuiviDensites,
   toggleFermEdit, closeFermEdit, updateFerm, updateFermPhaseDebut, setPhase,
   changeWeek, openAddTask, openEditTask, closeModal, updateModalFields, saveTask,
   deleteTask,
