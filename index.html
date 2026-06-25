@@ -4777,6 +4777,19 @@ function genLotNumber() {
 function renderHistorique() {
   const el = document.getElementById('historique-list');
   if (!el) return;
+
+  // Mémoriser les corps et panneaux suivi ouverts
+  const openBodies = new Set(
+    [...el.querySelectorAll('[id^="brew-body-"]')]
+      .filter(e => e.style.display !== 'none')
+      .map(e => e.id.replace('brew-body-', ''))
+  );
+  const openSuivis = new Set(
+    [...el.querySelectorAll('[id^="suivi-panel-"]')]
+      .filter(e => e.style.display !== 'none')
+      .map(e => e.id.replace('suivi-panel-', ''))
+  );
+
   const brassins = Object.values(historiqueData).sort((a,b) => (b.ts||0) - (a.ts||0));
   const counter = document.getElementById('lot-counter');
   if (counter) counter.textContent = `${brassins.length} brassin${brassins.length>1?'s':''}`;
@@ -4978,6 +4991,22 @@ function renderHistorique() {
       </div><!-- /brew-body -->
     </div>`;
   }).join('');
+
+  // Rouvrir les corps et panneaux qui étaient ouverts avant le re-render
+  openBodies.forEach(id => {
+    const body  = document.getElementById('brew-body-'  + id);
+    const arrow = document.getElementById('brew-arrow-' + id);
+    if (body)  body.style.display  = 'block';
+    if (arrow) arrow.textContent   = '▲';
+  });
+  openSuivis.forEach(id => {
+    const panel = document.getElementById('suivi-panel-' + id);
+    if (panel) {
+      panel.style.display = 'block';
+      renderSuiviDensites(id);
+      renderSuiviDhLog(id);
+    }
+  });
 }
 
 function toggleHistoriqueBrassin(id) {
