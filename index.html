@@ -1578,6 +1578,16 @@
       </div>
     </div>
 
+    <!-- Atténuation levure uniquement -->
+    <div id="mp-modal-levure-row" style="display:none;margin-top:12px">
+      <div class="field-label">Atténuation apparente (%)</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <input id="mp-modal-attenuation" type="number" min="0" max="100" step="0.1" placeholder="ex: 75"
+          style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:700;padding:9px 12px;box-sizing:border-box" />
+        <span style="color:var(--muted);font-size:13px;white-space:nowrap">%</span>
+      </div>
+    </div>
+
     <!-- Rendement + Humidité (malt uniquement) -->
     <div id="mp-modal-malt-row" style="display:none;margin-top:12px;display:none">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -2742,8 +2752,9 @@ function initApp() {
       if (data && data['mid_' + item.id]   !== undefined) item.mid   = data['mid_' + item.id];
       if (data && data['lot_' + item.id]   !== undefined) item.lot   = data['lot_' + item.id];
       if (data && data['aa_'         + item.id] !== undefined) item.aa        = data['aa_'         + item.id];
-      if (data && data['rendement_' + item.id] !== undefined) item.rendement = data['rendement_' + item.id];
-      if (data && data['humidite_'  + item.id] !== undefined) item.humidite  = data['humidite_'  + item.id];
+      if (data && data['rendement_'   + item.id] !== undefined) item.rendement   = data['rendement_'   + item.id];
+      if (data && data['humidite_'    + item.id] !== undefined) item.humidite    = data['humidite_'    + item.id];
+      if (data && data['attenuation_' + item.id] !== undefined) item.attenuation = data['attenuation_' + item.id];
     });
     // Reconstruire les ingrédients dynamiques depuis les clés meta_*
     if (data) {
@@ -2765,8 +2776,9 @@ function initApp() {
           mid:   data['mid_'   + id]   ?? 0,
           lot:   data['lot_'   + id]   ?? '',
           aa:    data['aa_'        + id]   ?? 0,
-          rendement: data['rendement_' + id]   ?? 0,
-          humidite:  data['humidite_'  + id]   ?? 0,
+          rendement:   data['rendement_'   + id] ?? 0,
+          humidite:    data['humidite_'    + id] ?? 0,
+          attenuation: data['attenuation_' + id] ?? 0,
         });
       });
     }
@@ -3346,8 +3358,9 @@ function openMpModal(editId) {
     document.getElementById('mp-modal-low').value   = item.low   ?? '';
     document.getElementById('mp-modal-mid').value   = item.mid   ?? '';
     document.getElementById('mp-modal-aa').value          = item.aa         ?? '';
-    document.getElementById('mp-modal-rendement').value  = item.rendement  ?? '';
-    document.getElementById('mp-modal-humidite').value   = item.humidite   ?? '';
+    document.getElementById('mp-modal-rendement').value   = item.rendement   ?? '';
+    document.getElementById('mp-modal-humidite').value    = item.humidite    ?? '';
+    document.getElementById('mp-modal-attenuation').value = item.attenuation ?? '';
     document.getElementById('mp-modal-name').disabled = false;
     document.getElementById('mp-modal-name').style.display = 'block';
     document.getElementById('mp-modal-select').style.display = 'none';
@@ -3367,8 +3380,9 @@ function openMpModal(editId) {
     document.getElementById('mp-modal-low').value   = '';
     document.getElementById('mp-modal-mid').value   = '';
     document.getElementById('mp-modal-aa').value         = '';
-    document.getElementById('mp-modal-rendement').value = '';
-    document.getElementById('mp-modal-humidite').value  = '';
+    document.getElementById('mp-modal-rendement').value   = '';
+    document.getElementById('mp-modal-humidite').value    = '';
+    document.getElementById('mp-modal-attenuation').value = '';
     document.getElementById('mp-modal-known-hint').style.display = 'none';
     // Brancher l'événement onchange du select
     const sel = document.getElementById('mp-modal-select');
@@ -3394,8 +3408,10 @@ function selectMpCatModal(cat) {
   // Afficher %AA uniquement pour les houblons
   const aaRow   = document.getElementById('mp-modal-aa-row');
   if (aaRow) aaRow.style.display = cat === 'houblon' ? 'block' : 'none';
-  const maltRow = document.getElementById('mp-modal-malt-row');
+  const maltRow   = document.getElementById('mp-modal-malt-row');
   if (maltRow) maltRow.style.display = cat === 'malt' ? 'grid' : 'none';
+  const levureRow = document.getElementById('mp-modal-levure-row');
+  if (levureRow) levureRow.style.display = cat === 'levure' ? 'block' : 'none';
   // Peupler le select avec les MP connues de cette catégorie
   populateMpSelect(cat);
 }
@@ -3456,8 +3472,9 @@ function onMpSelectChange() {
       document.getElementById('mp-modal-humidite').value   = last.humidite   || '';
       if (last.price)     parts.push('Prix connu : ' + last.price + ' € / ' + (last.unit || 'kg'));
       if (last.aa)        parts.push('%AA connu : ' + last.aa + '%');
-      if (last.rendement) parts.push('Rdt : ' + last.rendement + '%');
-      if (last.humidite)  parts.push('Hum. : ' + last.humidite + '%');
+      if (last.rendement)   parts.push('Rdt : ' + last.rendement + '%');
+      if (last.humidite)    parts.push('Hum. : ' + last.humidite + '%');
+      if (last.attenuation) parts.push('Att. : ' + last.attenuation + '%');
       if (last.max)   parts.push('Max : ' + last.max);
       if (last.low)   parts.push('Urgence : ' + last.low);
       if (last.mid)   parts.push('Commande : ' + last.mid);
@@ -3491,8 +3508,9 @@ function saveMpModal() {
   const qty   = parseFloat(document.getElementById('mp-modal-qty').value)   || 0;
   const price = parseFloat(document.getElementById('mp-modal-price').value) || 0;
   const lot       = (document.getElementById('mp-modal-lot').value        || '').trim();
-  const rendement = parseFloat(document.getElementById('mp-modal-rendement')?.value) || 0;
-  const humidite  = parseFloat(document.getElementById('mp-modal-humidite')?.value)  || 0;
+  const rendement   = parseFloat(document.getElementById('mp-modal-rendement')?.value)   || 0;
+  const humidite    = parseFloat(document.getElementById('mp-modal-humidite')?.value)    || 0;
+  const attenuation = parseFloat(document.getElementById('mp-modal-attenuation')?.value) || 0;
   const max   = parseFloat(document.getElementById('mp-modal-max').value)   || 1000;
   const low   = parseFloat(document.getElementById('mp-modal-low').value)   || 0;
   const mid   = parseFloat(document.getElementById('mp-modal-mid').value)   || 0;
@@ -3513,9 +3531,10 @@ function saveMpModal() {
     fbSet('mp/low_'   + mpModalEditId, low);
     fbSet('mp/mid_'   + mpModalEditId, mid);
     fbSet('mp/aa_'    + mpModalEditId, aa);
-    item.rendement = rendement; item.humidite = humidite;
-    fbSet('mp/rendement_' + mpModalEditId, rendement || null);
-    fbSet('mp/humidite_'  + mpModalEditId, humidite  || null);
+    item.rendement = rendement; item.humidite = humidite; item.attenuation = attenuation;
+    fbSet('mp/rendement_'   + mpModalEditId, rendement   || null);
+    fbSet('mp/humidite_'    + mpModalEditId, humidite    || null);
+    fbSet('mp/attenuation_' + mpModalEditId, attenuation || null);
     // Mettre à jour le nom dans meta_ si c'est un ingrédient dynamique
     const cat = Object.keys(MP_DATA).find(c => MP_DATA[c].some(i => i.id === mpModalEditId));
     fbSet('mp/meta_' + mpModalEditId, { name, unit: item.unit, cat });
@@ -3535,8 +3554,9 @@ function saveMpModal() {
     fbSet('mp/mid_'   + newId, mid);
     fbSet('mp/aa_'    + newId, aa);
     fbSet('mp/meta_'       + newId, { name, unit, cat: mpModalCat });
-    if (rendement) fbSet('mp/rendement_' + newId, rendement);
-    if (humidite)  fbSet('mp/humidite_'  + newId, humidite);
+    if (rendement)   fbSet('mp/rendement_'   + newId, rendement);
+    if (humidite)    fbSet('mp/humidite_'    + newId, humidite);
+    if (attenuation) fbSet('mp/attenuation_' + newId, attenuation);
     // Switcher sur la catégorie ajoutée
     const tabBtn = document.querySelector(`#mp-tabs button:nth-child(${['malt','houblon','levure','sel'].indexOf(mpModalCat)+1})`);
     switchMpCat(mpModalCat, tabBtn);
@@ -4060,17 +4080,29 @@ function buildCalculs(brassinId, s) {
   let masseSeche = 0;
   let masseSecheDet = [];
   const rec = b ? Object.values(recipesData).find(r => r.name === b.recette) : null;
+  let attLevure = 0;
   if (rec) {
     (rec.malts||[]).forEach(l => {
       const qty = parseFloat(l.qty) || 0;
-      // Chercher le malt dans MP_DATA pour récupérer son taux d'humidité
       const mpItem = (MP_DATA.malt||[]).find(m => m.name === l.name || m.id === l.id);
       const hum = mpItem ? (parseFloat(mpItem.humidite) || 0) / 100 : 0;
       const sec = qty * (1 - hum);
       masseSeche += sec;
       masseSecheDet.push({ name: l.name, qty, hum: hum*100, sec });
     });
+    // Chercher l'atténuation de la levure
+    if (rec.levures && rec.levures.length) {
+      const lev = rec.levures[0];
+      const mpLev = (MP_DATA.levure||[]).find(m => m.name === lev.name || m.id === lev.id);
+      if (mpLev && mpLev.attenuation) attLevure = parseFloat(mpLev.attenuation);
+    }
   }
+
+  // Df prévisionnelle : Df_prev = Di - (Di - 1) * attenuation/100
+  // En densité : Df_prev = 1 + (di - 1) * (1 - attLevure/100)
+  const dfPrevSG  = attLevure > 0 ? (1 + (di - 1) * (1 - attLevure / 100)) : null;
+  const dfPrevP   = dfPrevSG ? plato(dfPrevSG) : null;
+  const abvPrev   = dfPrevSG ? (133 * (di - dfPrevSG) / di) : null;
 
   // Rendement brasseur
   const rendement = masseSeche > 0
@@ -4104,6 +4136,9 @@ function buildCalculs(brassinId, s) {
   return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px">
     ${row('°Plato initial', Pi.toFixed(1), '°P', 'var(--amber-lt)')}
     ${row('°Plato final',   Pf.toFixed(1), '°P', 'var(--amber-lt)')}
+    ${attLevure > 0 ? row('Atténuation levure', attLevure.toFixed(0), '%', 'var(--foam)') : ''}
+    ${attLevure > 0 && dfPrevSG ? row('Df prévisionnelle', dfPrevSG.toFixed(3) + ' <span style="font-size:11px;color:var(--amber-lt)">(' + dfPrevP.toFixed(1) + ' °P)</span>', '', 'var(--foam)') : ''}
+    ${attLevure > 0 && abvPrev  ? row('ABV prévisionnel', abvPrev.toFixed(2), '%', '#7ab4e8') : ''}
     ${masseSeche > 0 ? row('Masse sèche totale', masseSeche.toFixed(2), 'kg') : ''}
     ${row('Rendement brasseur', rendement)}
     ${row('Atténuation apparente (AA)', AA, '%')}
