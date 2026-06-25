@@ -159,51 +159,53 @@
       padding-bottom: 16px;
     }
 
-    /* ===== PAYSAGE MOBILE (téléphone retourné) ===== */
-    @media (max-width: 900px) and (orientation: landscape) {
+    /* ===== PAYSAGE MOBILE (téléphone retourné, hauteur < 500px) ===== */
+    @media (orientation: landscape) and (max-height: 500px) {
       html, body { overflow: hidden; }
 
       #app {
-        flex-direction: row;
-        height: 100dvh;
-        max-width: 100%;
+        flex-direction: row !important;
+        height: 100dvh !important;
+        max-width: 100% !important;
+        margin: 0 !important;
       }
 
-      header { display: none; }
-      #hamburger-btn { display: none; }
+      header { display: none !important; }
+      #hamburger-btn { display: none !important; }
       #menu-overlay  { display: none !important; }
 
       nav#main-nav {
-        position: static;
+        position: static !important;
         transform: none !important;
-        width: 200px;
-        flex-shrink: 0;
-        height: 100dvh;
+        width: 180px !important;
+        flex-shrink: 0 !important;
+        height: 100dvh !important;
         border-right: 1px solid var(--border);
         overflow-y: auto;
+        display: flex !important;
       }
 
-      /* Réduire la taille de la nav en paysage mobile */
       nav#main-nav button {
-        font-size: 12px;
-        padding: 8px 12px;
+        font-size: 11px !important;
+        padding: 6px 10px !important;
       }
-      .nav-icon { font-size: 16px; }
-      .nav-group-label { font-size: 9px; }
+      .nav-icon { font-size: 14px !important; }
+      .nav-group-label { font-size: 8px !important; }
 
       main {
-        flex: 1;
-        overflow-y: auto;
-        padding-bottom: 0;
-        height: 100dvh;
+        flex: 1 !important;
+        overflow-y: auto !important;
+        padding-bottom: 0 !important;
+        height: 100dvh !important;
       }
 
       .modal-overlay { align-items: center; }
       .modal-box {
         border-radius: var(--radius);
-        max-width: 480px;
+        max-width: 90vw;
         margin: 0 auto;
-        max-height: 90dvh;
+        max-height: 95dvh;
+        overflow-y: auto;
       }
     }
 
