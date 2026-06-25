@@ -2501,6 +2501,7 @@ let MP_DATA      = JSON.parse(JSON.stringify(MP_SCHEMA)); // deep copy
 let FERMENTERS   = JSON.parse(JSON.stringify(FERM_DEFAULT));
 let planningData = {};
 let ordersData   = {};
+let _localBrewPatches = {}; // patches locaux temporaires pour éviter l'écrasement par Firebase
 let fermSuiviData = {}; // { fermId: { densites:[{date,val}], dateDH:'', dateEnfutage:'' } }
 let notesData    = {};
 let recipesData  = {};
@@ -2858,7 +2859,15 @@ function initApp() {
   });
 
   fbListen('historique', data => {
-    historiqueData = data || {};
+    // Fusionner avec les données locales plutôt qu'écraser
+    const incoming = data || {};
+    // Préserver les valeurs locales récemment modifiées (dans les 3 secondes)
+    if (_localBrewPatches) {
+      Object.entries(_localBrewPatches).forEach(([id, patch]) => {
+        if (incoming[id]) Object.assign(incoming[id], patch);
+      });
+    }
+    historiqueData = incoming;
     renderHistorique();
     onLoaded();
   });
@@ -4853,7 +4862,7 @@ function renderHistorique() {
           <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
             <span style="font-size:12px;color:var(--muted)">Volume :</span>
             <input type="number" min="1" step="1" value="${b.volume||500}"
-              onchange="updateBrewVolume('${b.id}',this.value)"
+              onchange="updateBrewVolume('${b.id}',this.value)" onblur="updateBrewVolume('${b.id}',this.value)"
               style="width:80px;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--foam);font-size:13px;font-weight:600;padding:2px 4px;outline:none;text-align:center" />
             <span style="font-size:12px;color:var(--muted)">L</span>
           </div>
@@ -5027,9 +5036,12 @@ function toggleHistoriqueBrassin(id) {
 function updateBrewVolume(id, val) {
   const v = parseFloat(val) || 500;
   if (!historiqueData[id]) return;
-  // Patcher localement en premier
+  // Enregistrer le patch local pour survivre au re-render Firebase
+  _localBrewPatches[id] = { volume: v };
+  setTimeout(() => { delete _localBrewPatches[id]; }, 5000);
+  // Patcher localement
   historiqueData[id].volume = v;
-  // Mettre à jour le bandeau immédiatement (sans attendre Firebase)
+  // Mettre à jour le bandeau immédiatement
   const bandeauEl = document.getElementById('brew-volume-' + id);
   if (bandeauEl) bandeauEl.textContent = v;
   // Sync le fermenteur associé
@@ -5039,17 +5051,14 @@ function updateBrewVolume(id, val) {
     if (ferm) {
       ferm.vol = v;
       fbSet('fermenters', FERMENTERS);
-      // Mettre à jour le DOM fermenteur directement sans attendre le listener
-      const fermVolEl = document.querySelector(`#ferm-card-${b.cuve} .ferm-stat-val`);
-      if (fermVolEl) fermVolEl.textContent = v;
       renderFermenters();
     }
   }
-  // Rafraîchir le bloc calculs si le panneau suivi est ouvert
+  // Rafraîchir les calculs
   const s = fermSuiviData[id] || {};
   const calcEl = document.getElementById('suivi-calculs-' + id);
   if (calcEl) calcEl.innerHTML = buildCalculs(id, s);
-  // Écrire dans Firebase EN DERNIER (le listener re-render mais openBodies le rouvrira)
+  // Écrire dans Firebase
   saveBrewEntry(id, historiqueData[id]);
 }
 
