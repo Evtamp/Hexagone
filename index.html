@@ -7861,12 +7861,26 @@ function updateFutsInoxFromBl(client, lines, delta) {
     if (d.includes('inox')) qty30inox += parseInt(l.qte)||0;
   });
   if (!qty30inox) return;
-  const qtyMvt = qty30inox * delta; // +1 livraison, -1 annulation
-  futsData.stockVide = Math.max(0, (futsData.stockVide||0) - (delta > 0 ? qty30inox : 0));
-  futsData.parClient[client] = Math.max(0, (futsData.parClient[client]||0) + qtyMvt);
+  // Déduire des fûts pleins en stock (produitsData format fut30inox) — FIFO
+  if (delta > 0) {
+    let reste = qty30inox;
+    Object.values(produitsData)
+      .filter(p => p.format === 'fut30inox' && (p.qty||0) > 0)
+      .sort((a,b) => (a.ts||0) - (b.ts||0)) // FIFO
+      .forEach(p => {
+        if (reste <= 0) return;
+        const pris = Math.min(reste, p.qty||0);
+        p.qty -= pris;
+        reste -= pris;
+        fbSet('produits/' + p.id, p);
+      });
+  }
+  // Mettre à jour chez client
+  futsData.parClient[client] = Math.max(0, (futsData.parClient[client]||0) + qty30inox * delta);
   if (!futsData.parClient[client]) delete futsData.parClient[client];
   futsData.mouvements.push({ type:'livraison', ts:Date.now(), client, qty: delta > 0 ? -qty30inox : qty30inox });
   saveFutsData();
+  renderProduits();
   renderFutsPage();
 }
 
