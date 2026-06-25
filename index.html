@@ -2758,11 +2758,17 @@ function initApp() {
     });
     // Reconstruire les ingrédients dynamiques depuis les clés meta_*
     if (data) {
+      const deleted = new Set(Object.keys(data._deleted || {}));
+      // Retirer du schéma les items marqués supprimés
+      for (const cat of Object.keys(MP_DATA)) {
+        MP_DATA[cat] = MP_DATA[cat].filter(i => !deleted.has(i.id));
+      }
       const schemaIds = new Set(Object.values(MP_DATA).flat().map(i => i.id));
       Object.entries(data).forEach(([key, val]) => {
         if (!key.startsWith('meta_')) return;
         const id = key.replace('meta_', '');
         if (schemaIds.has(id)) return;
+        if (deleted.has(id)) return; // ignorer les items supprimés
         const meta = val;
         if (!meta || !meta.cat || !MP_DATA[meta.cat]) return;
         MP_DATA[meta.cat].push({
@@ -3572,12 +3578,10 @@ function deleteMpItem(id) {
   if (!confirm('Supprimer cette MP ?')) return;
   for (const cat of Object.keys(MP_DATA)) {
     const idx = MP_DATA[cat].findIndex(i => i.id === id);
-    if (idx !== -1) {
-      MP_DATA[cat].splice(idx, 1);
-      break;
-    }
+    if (idx !== -1) { MP_DATA[cat].splice(idx, 1); break; }
   }
-  fbSet('mp/' + id, null);
+  // Supprimer toutes les clés Firebase liées à cet item
+  fbSet('mp/' + id,             null);
   fbSet('mp/price_'       + id, null);
   fbSet('mp/lot_'         + id, null);
   fbSet('mp/max_'         + id, null);
@@ -3588,6 +3592,8 @@ function deleteMpItem(id) {
   fbSet('mp/humidite_'    + id, null);
   fbSet('mp/attenuation_' + id, null);
   fbSet('mp/meta_'        + id, null);
+  // Marquer comme supprimé pour que le listener l'ignore même si des clés orphelines subsistent
+  fbSet('mp/_deleted/' + id, true);
   renderMP();
 }
 
@@ -5021,21 +5027,30 @@ function toggleHistoriqueBrassin(id) {
 function updateBrewVolume(id, val) {
   const v = parseFloat(val) || 500;
   if (!historiqueData[id]) return;
+  // Patcher localement en premier
   historiqueData[id].volume = v;
-  saveBrewEntry(id, historiqueData[id]);
-  // Sync le fermenteur associé si actif
+  // Mettre à jour le bandeau immédiatement (sans attendre Firebase)
+  const bandeauEl = document.getElementById('brew-volume-' + id);
+  if (bandeauEl) bandeauEl.textContent = v;
+  // Sync le fermenteur associé
   const b = historiqueData[id];
   if (b.cuve) {
     const ferm = FERMENTERS.find(f => f.id === b.cuve);
-    if (ferm) { ferm.vol = v; saveFermenters(); renderFermenters(); }
+    if (ferm) {
+      ferm.vol = v;
+      fbSet('fermenters', FERMENTERS);
+      // Mettre à jour le DOM fermenteur directement sans attendre le listener
+      const fermVolEl = document.querySelector(`#ferm-card-${b.cuve} .ferm-stat-val`);
+      if (fermVolEl) fermVolEl.textContent = v;
+      renderFermenters();
+    }
   }
-  // Mettre à jour le bandeau volume (affiché en lecture dans le header)
-  const bandeauEl = document.getElementById('brew-volume-' + id);
-  if (bandeauEl) bandeauEl.textContent = v + ' L';
   // Rafraîchir le bloc calculs si le panneau suivi est ouvert
   const s = fermSuiviData[id] || {};
   const calcEl = document.getElementById('suivi-calculs-' + id);
   if (calcEl) calcEl.innerHTML = buildCalculs(id, s);
+  // Écrire dans Firebase EN DERNIER (le listener re-render mais openBodies le rouvrira)
+  saveBrewEntry(id, historiqueData[id]);
 }
 
 function updateBrewField(id, field, val) {
