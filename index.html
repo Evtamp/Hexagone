@@ -1163,6 +1163,7 @@
             <button class="active" onclick="switchMpCat('malt',this)">🌾 Malt</button>
             <button onclick="switchMpCat('houblon',this)">🌿 Houblons</button>
             <button onclick="switchMpCat('levure',this)">🧫 Levures</button>
+            <button onclick="switchMpCat('sel',this)">🧂 Minéraux</button>
           </div>
           <button onclick="openMpModal()" style="background:var(--amber);color:var(--bg);border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer;margin-left:10px;flex-shrink:0">+ Ajouter</button>
         </div>
@@ -1529,9 +1530,10 @@
     <div style="margin-top:14px">
       <div class="field-label">Catégorie</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px" id="mp-cat-btns">
-        <button id="mp-cat-malt"    class="mp-cat-btn active-cat">🌾 Malt</button>
-        <button id="mp-cat-houblon" class="mp-cat-btn">🌿 Houblon</button>
-        <button id="mp-cat-levure"  class="mp-cat-btn">🧫 Levure</button>
+        <button id="mp-cat-malt"    class="mp-cat-btn active-cat" onclick="selectMpCatModal('malt')">🌾 Malt</button>
+        <button id="mp-cat-houblon" class="mp-cat-btn" onclick="selectMpCatModal('houblon')">🌿 Houblon</button>
+        <button id="mp-cat-levure"  class="mp-cat-btn" onclick="selectMpCatModal('levure')">🧫 Levure</button>
+        <button id="mp-cat-sel"     class="mp-cat-btn" onclick="selectMpCatModal('sel')">🧂 Minéral</button>
       </div>
     </div>
 
@@ -3297,7 +3299,7 @@ function switchMpCat(cat, btn) {
 let mpModalCat     = 'malt';
 let mpModalEditId  = null;
 
-const MP_UNITS = { malt: 'kg', houblon: 'kg', levure: 'pqt' };
+const MP_UNITS = { malt: 'kg', houblon: 'kg', levure: 'pqt', sel: 'g' };
 
 function openMpModal(editId) {
   mpModalEditId = editId || null;
@@ -3352,7 +3354,7 @@ function closeMpModal() {
 
 function selectMpCatModal(cat) {
   mpModalCat = cat;
-  ['malt','houblon','levure'].forEach(c => {
+  ['malt','houblon','levure','sel'].forEach(c => {
     document.getElementById('mp-cat-' + c)?.classList.toggle('active-cat', c === cat);
   });
   const unit = MP_UNITS[cat] || 'kg';
@@ -3492,7 +3494,7 @@ function saveMpModal() {
     fbSet('mp/aa_'    + newId, aa);
     fbSet('mp/meta_'  + newId, { name, unit, cat: mpModalCat });
     // Switcher sur la catégorie ajoutée
-    const tabBtn = document.querySelector(`#mp-tabs button:nth-child(${['malt','houblon','levure'].indexOf(mpModalCat)+1})`);
+    const tabBtn = document.querySelector(`#mp-tabs button:nth-child(${['malt','houblon','levure','sel'].indexOf(mpModalCat)+1})`);
     switchMpCat(mpModalCat, tabBtn);
   }
 
@@ -7711,6 +7713,7 @@ setTimeout(() => {
   document.getElementById('mp-cat-malt')   ?.addEventListener('click', () => selectMpCatModal('malt'));
   document.getElementById('mp-cat-houblon')?.addEventListener('click', () => selectMpCatModal('houblon'));
   document.getElementById('mp-cat-levure') ?.addEventListener('click', () => selectMpCatModal('levure'));
+  document.getElementById('mp-cat-sel')    ?.addEventListener('click', () => selectMpCatModal('sel'));
   document.getElementById('btn-close-mp-modal')?.addEventListener('click', closeMpModal);
   document.getElementById('btn-save-mp-modal') ?.addEventListener('click', saveMpModal);
   console.log('MP listeners attachés:', !!document.getElementById('btn-save-mp-modal'));
