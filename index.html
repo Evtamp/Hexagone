@@ -3578,12 +3578,16 @@ function deleteMpItem(id) {
     }
   }
   fbSet('mp/' + id, null);
-  fbSet('mp/price_' + id, null);
-  fbSet('mp/lot_'   + id, null);
-  fbSet('mp/max_'   + id, null);
-  fbSet('mp/low_'   + id, null);
-  fbSet('mp/mid_'   + id, null);
-  fbSet('mp/meta_'  + id, null);
+  fbSet('mp/price_'       + id, null);
+  fbSet('mp/lot_'         + id, null);
+  fbSet('mp/max_'         + id, null);
+  fbSet('mp/low_'         + id, null);
+  fbSet('mp/mid_'         + id, null);
+  fbSet('mp/aa_'          + id, null);
+  fbSet('mp/rendement_'   + id, null);
+  fbSet('mp/humidite_'    + id, null);
+  fbSet('mp/attenuation_' + id, null);
+  fbSet('mp/meta_'        + id, null);
   renderMP();
 }
 
@@ -4803,7 +4807,7 @@ function renderHistorique() {
         <div style="min-width:0;flex:1">
           <div style="font-size:12px;font-family:monospace;color:var(--amber-lt);font-weight:700">${b.lot}${b.brewNum ? ' · <span style="color:var(--foam)">'+b.brewNum+'</span>' : ''}</div>
           <div style="font-size:15px;font-weight:700;color:var(--foam);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.recette||'Sans nom'}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">${date} · Cuve ${b.cuve||'—'} · ${b.volume||500} L${b.abv?' · '+b.abv+'% ABV':''}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${date} · Cuve ${b.cuve||'—'} · <span id="brew-volume-${b.id}">${b.volume||500}</span> L${b.abv?' · '+b.abv+'% ABV':''}</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
           <select onclick="event.stopPropagation()" onchange="updateBrewStatut('${b.id}',this.value)"
@@ -4990,6 +4994,15 @@ function updateBrewVolume(id, val) {
   if (!historiqueData[id]) return;
   historiqueData[id].volume = v;
   saveBrewEntry(id, historiqueData[id]);
+  // Sync le fermenteur associé si actif
+  const b = historiqueData[id];
+  if (b.cuve) {
+    const ferm = FERMENTERS.find(f => f.id === b.cuve);
+    if (ferm) { ferm.vol = v; saveFermenters(); renderFermenters(); }
+  }
+  // Mettre à jour le bandeau volume (affiché en lecture dans le header)
+  const bandeauEl = document.getElementById('brew-volume-' + id);
+  if (bandeauEl) bandeauEl.textContent = v + ' L';
   // Rafraîchir le bloc calculs si le panneau suivi est ouvert
   const s = fermSuiviData[id] || {};
   const calcEl = document.getElementById('suivi-calculs-' + id);
