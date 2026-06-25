@@ -8,8 +8,8 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Hexagone" />
-  <title>Hexagone</title>
+  <meta name="apple-mobile-web-app-title" content="MicroBrasserie" />
+  <title>Microbrasserie</title>
   <link rel="manifest" href="manifest.json" />
   <script>
     // Adapter le manifest selon l'URL (GitHub Pages ou domaine custom)
@@ -184,9 +184,6 @@
         overflow-y: auto;
         display: flex !important;
       }
-
-      /* En paysage mobile : masquer le titre pour gagner de la place */
-      #nav-header { display: none !important; }
 
       nav#main-nav button {
         font-size: 11px !important;
@@ -799,7 +796,18 @@
         display: none; /* masqué — remplacé par le logo sidebar */
       }
 
-      /* Le titre est dans le div HTML #nav-header — toujours visible */
+      /* Injecter logo en haut de la sidebar via pseudo */
+      nav#main-nav::before {
+        content: '🍺  Microbrasserie';
+        display: block;
+        font-size: 15px;
+        font-weight: 800;
+        color: var(--foam);
+        padding: 0 20px 24px;
+        letter-spacing: .5px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 12px;
+      }
 
       /* Zone de contenu principale */
       main {
@@ -1023,7 +1031,7 @@
 <div id="login-screen">
   <div class="login-box">
     <div style="text-align:center;font-size:36px">🍺</div>
-    <div class="login-title">Hexagone</div>
+    <div class="login-title">Microbrasserie</div>
     <div class="login-subtitle">Accès réservé</div>
     <input id="login-user" class="login-input" type="text" placeholder="Utilisateur" autocomplete="username" />
     <input id="login-mdp" class="login-input" type="password" placeholder="Mot de passe" autocomplete="current-password" />
@@ -1037,7 +1045,7 @@
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   z-index:999;gap:16px">
   <div style="font-size:36px">🍺</div>
-  <div style="font-size:15px;font-weight:700;color:var(--foam)">Hexagone</div>
+  <div style="font-size:15px;font-weight:700;color:var(--foam)">Microbrasserie</div>
   <div style="font-size:12px;color:var(--muted)">Connexion en cours…</div>
   <div style="width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--amber);border-radius:50%;animation:spin .8s linear infinite"></div>
   <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
@@ -1047,6 +1055,7 @@
   <header>
     <div class="logo-mark">🍺</div>
     <div style="flex:1">
+      <h1>Microbrasserie</h1>
       <div class="subtitle" id="header-page-name">Stocks</div>
     </div>
     <button id="hamburger-btn" onclick="toggleMenu()" aria-label="Menu"
@@ -1063,8 +1072,8 @@
 
   <!-- Tiroir menu -->
   <nav id="main-nav">
-    <div id="nav-header" style="padding:20px 16px 12px;border-bottom:1px solid var(--border)">
-      <div id="nav-brand" style="font-size:18px;font-weight:800;color:var(--foam)">🍺 Hexagone</div>
+    <div style="padding:20px 16px 12px;border-bottom:1px solid var(--border)">
+      <div style="font-size:18px;font-weight:800;color:var(--foam)">🍺 Microbrasserie</div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px">Gestion de production</div>
     </div>
     <div style="overflow-y:auto;flex:1;padding:8px 0">
@@ -3106,7 +3115,7 @@ function calcStockEngageParBiere() {
       o.lines.forEach(l => {
         const beer = l.beer || '—';
         if (!engage[beer]) engage[beer] = { futs:0, cartons:0, tireuses:0 };
-        engage[beer].futs     += parseInt(l.futs)    || 0;
+        engage[beer].futs     += (parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0);
         engage[beer].cartons  += parseInt(l.cartons) || 0;
         engage[beer].tireuses += parseInt(l.tireuse) || 0;
       });
@@ -4710,7 +4719,7 @@ function openClientDetailModal(id) {
 
   const cmdsHtml = cmds.length ? cmds.slice(0,10).map(o => {
     const d = new Date(o.dateKey+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'});
-    const lines = (o.lines||[]).map(l=>`${l.beer}${l.futs?` ×${l.futs}🛢`:''}${l.cartons?` ×${l.cartons}📦`:''}${l.tireuse?` ×${l.tireuse}🍺`:''}`).join(', ');
+    const lines = (o.lines||[]).map(l=>{ const tf=(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0); return `${l.beer}${tf?` ×${tf}🛢`:''}${l.cartons?` ×${l.cartons}📦`:''}${l.tireuse?` ×${l.tireuse}🍺`:''}`; }).join(', ');
     return `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
       <div style="display:flex;justify-content:space-between">
         <span style="color:var(--muted)">${d}</span>
@@ -5603,7 +5612,7 @@ function renderOrdersList() {
   el.innerHTML = Object.values(weeks).map(({ wLabel, range, orders }) => {
     const rows = orders.map(({ k, date, o }) => {
       const dateStr = date.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});
-      const totalF = o.lines.reduce((a,l)=>a+(parseInt(l.futs)||0),0);
+      const totalF = o.lines.reduce((a,l)=>(a+(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0)),0);
       const totalC = o.lines.reduce((a,l)=>a+(parseInt(l.cartons)||0),0);
       const totalT = o.lines.reduce((a,l)=>a+(parseInt(l.tireuse)||0),0);
       const qtys = [
@@ -5659,7 +5668,7 @@ function renderPrevWeeks() {
         o.lines.forEach(l => {
           const beer = l.beer || '—';
           if (!byBeer[beer]) byBeer[beer] = { futs:0, cartons:0, tireuse:0 };
-          byBeer[beer].futs    += parseInt(l.futs)    || 0;
+          byBeer[beer].futs    += (parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0);
           byBeer[beer].cartons += parseInt(l.cartons) || 0;
           byBeer[beer].tireuse += parseInt(l.tireuse) || 0;
           totalFuts     += parseInt(l.futs)    || 0;
@@ -5779,7 +5788,7 @@ function renderPrevCalendar() {
 
 function migrateOrder(o) {
   if (o.lines) return o;
-  return { ...o, lines: [{ beer: o.beer||'', futs: o.futs||0, cartons: o.cartons||0, tireuse: o.tireuse||0 }] };
+  return { ...o, lines: [{ beer: o.beer||'', fut30inox: o.futs||0, fut30kk:0, fut30kktp:0, fut20:0, cartons: o.cartons||0, tireuse: o.tireuse||0, prixFut30inox: o.prixFut||0, prixFut30kk:0, prixFut30kktp:0, prixFut20:0, prixCarton: o.prixCarton||0, prixTireuse: o.prixTireuse||0 }] };
 }
 
 function populateOrderClientSelect(selectedName) {
@@ -5799,7 +5808,7 @@ function onOrderClientSelect(val) {
 function openOrderModal(key) {
   orderModalKey = key;
   editOrderId   = null;
-  draftLines    = [{ beer: BEERS[0], futs: 0, cartons: 0, tireuse: 0, prixFut: 0, prixCarton: 0, prixTireuse: 0 }];
+  draftLines    = [{ beer: BEERS[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, tireuse:0, prixFut30inox:0, prixFut30kk:0, prixFut30kktp:0, prixFut20:0, prixCarton:0, prixTireuse:0 }];
   const d = new Date(key + 'T12:00:00');
   document.getElementById('order-modal-date').textContent =
     d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
@@ -5833,18 +5842,27 @@ function renderOrderList(key) {
     const totalC = o.lines.reduce((a,l)=>a+(parseInt(l.cartons)||0),0);
     const totalT = o.lines.reduce((a,l)=>a+(parseInt(l.tireuse)||0),0);
     const totalHT = o.lines.reduce((a,l)=>
-      a + (parseInt(l.futs)||0)*(parseFloat(l.prixFut)||0)
+      a + (parseInt(l.fut30inox)||0)*(parseFloat(l.prixFut30inox)||0)
+        + (parseInt(l.fut30kk)||0)*(parseFloat(l.prixFut30kk)||0)
+        + (parseInt(l.fut30kktp)||0)*(parseFloat(l.prixFut30kktp)||0)
+        + (parseInt(l.fut20)||0)*(parseFloat(l.prixFut20)||0)
         + (parseInt(l.cartons)||0)*(parseFloat(l.prixCarton)||0)
         + (parseInt(l.tireuse)||0)*(parseFloat(l.prixTireuse)||0), 0);
     const linesHtml = o.lines.map(l => {
-      const ligneHT = (parseInt(l.futs)||0)*(parseFloat(l.prixFut)||0)
+      const ligneHT = (parseInt(l.fut30inox)||0)*(parseFloat(l.prixFut30inox)||0)
+                    + (parseInt(l.fut30kk)||0)*(parseFloat(l.prixFut30kk)||0)
+                    + (parseInt(l.fut30kktp)||0)*(parseFloat(l.prixFut30kktp)||0)
+                    + (parseInt(l.fut20)||0)*(parseFloat(l.prixFut20)||0)
                     + (parseInt(l.cartons)||0)*(parseFloat(l.prixCarton)||0)
                     + (parseInt(l.tireuse)||0)*(parseFloat(l.prixTireuse)||0);
       return `
       <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:12px;color:var(--amber-lt);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.beer||'—'}</span>
         <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
-          ${l.futs    ? `<span style="font-size:11px;color:var(--amber-lt)">🛢×${l.futs}${l.prixFut?' ('+parseFloat(l.prixFut).toFixed(2)+'€)':''}</span>` : ''}
+          ${(parseInt(l.fut30inox)||0)>0 ? `<span style="font-size:11px;color:var(--amber-lt)">🛢Inox×${l.fut30inox}</span>` : ''}
+          ${(parseInt(l.fut30kk)||0)>0   ? `<span style="font-size:11px;color:var(--amber-lt)">🛢KK×${l.fut30kk}</span>`   : ''}
+          ${(parseInt(l.fut30kktp)||0)>0 ? `<span style="font-size:11px;color:var(--amber-lt)">🛢KKTP×${l.fut30kktp}</span>` : ''}
+          ${(parseInt(l.fut20)||0)>0     ? `<span style="font-size:11px;color:var(--amber-lt)">🛢20L×${l.fut20}</span>`     : ''}
           ${l.cartons ? `<span style="font-size:11px;color:var(--ok)">📦×${l.cartons}${l.prixCarton?' ('+parseFloat(l.prixCarton).toFixed(2)+'€)':''}</span>` : ''}
           ${l.tireuse ? `<span style="font-size:11px;color:#7ab4e8">🍺×${l.tireuse}${l.prixTireuse?' ('+parseFloat(l.prixTireuse).toFixed(2)+'€)':''}</span>` : ''}
           ${ligneHT > 0 ? `<span style="font-size:11px;font-weight:700;color:var(--foam)">${ligneHT.toFixed(2)}€</span>` : ''}
@@ -5883,7 +5901,10 @@ function renderOrderList(key) {
 function renderDraftLines() {
   const el = document.getElementById('order-lines');
   el.innerHTML = draftLines.map((l, i) => {
-    const totalFuts    = (parseInt(l.futs)||0)    * (parseFloat(l.prixFut)||0);
+    const totalFuts    = (parseInt(l.fut30inox)||0)*(parseFloat(l.prixFut30inox)||0)
+                       + (parseInt(l.fut30kk)||0)*(parseFloat(l.prixFut30kk)||0)
+                       + (parseInt(l.fut30kktp)||0)*(parseFloat(l.prixFut30kktp)||0)
+                       + (parseInt(l.fut20)||0)*(parseFloat(l.prixFut20)||0);
     const totalCartons = (parseInt(l.cartons)||0) * (parseFloat(l.prixCarton)||0);
     const totalTireuse = (parseInt(l.tireuse)||0) * (parseFloat(l.prixTireuse)||0);
     const totalLigne   = totalFuts + totalCartons + totalTireuse;
@@ -5896,24 +5917,46 @@ function renderDraftLines() {
       </select>
       ${draftLines.length > 1 ? `<button onclick="removeDraftLine(${i})" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0;line-height:1">×</button>` : ''}
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+    <!-- Fûts par type -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
       <div>
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">🛢 Fûts</div>
-        <input type="number" min="0" placeholder="0" value="${l.futs||''}"
-          onchange="updateDraftLine(${i},'futs',this.value)"
-          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:16px;font-weight:700;padding:7px 4px;width:100%;text-align:center"/>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">🛢 30L Inox</div>
+        <input type="number" min="0" placeholder="0" value="${l.fut30inox||''}"
+          onchange="updateDraftLine(${i},'fut30inox',this.value)"
+          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:15px;font-weight:700;padding:6px 4px;width:100%;text-align:center"/>
       </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">🛢 30L KK</div>
+        <input type="number" min="0" placeholder="0" value="${l.fut30kk||''}"
+          onchange="updateDraftLine(${i},'fut30kk',this.value)"
+          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:15px;font-weight:700;padding:6px 4px;width:100%;text-align:center"/>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">🛢 30L KKTP</div>
+        <input type="number" min="0" placeholder="0" value="${l.fut30kktp||''}"
+          onchange="updateDraftLine(${i},'fut30kktp',this.value)"
+          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:15px;font-weight:700;padding:6px 4px;width:100%;text-align:center"/>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">🛢 20L</div>
+        <input type="number" min="0" placeholder="0" value="${l.fut20||''}"
+          onchange="updateDraftLine(${i},'fut20',this.value)"
+          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:15px;font-weight:700;padding:6px 4px;width:100%;text-align:center"/>
+      </div>
+    </div>
+    <!-- Cartons + Tireuses -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
       <div>
         <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">📦 Cartons</div>
         <input type="number" min="0" placeholder="0" value="${l.cartons||''}"
           onchange="updateDraftLine(${i},'cartons',this.value)"
-          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:16px;font-weight:700;padding:7px 4px;width:100%;text-align:center"/>
+          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:15px;font-weight:700;padding:6px 4px;width:100%;text-align:center"/>
       </div>
       <div>
         <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">🍺 Tireuses</div>
         <input type="number" min="0" placeholder="0" value="${l.tireuse||''}"
           onchange="updateDraftLine(${i},'tireuse',this.value)"
-          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:16px;font-weight:700;padding:7px 4px;width:100%;text-align:center"/>
+          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:15px;font-weight:700;padding:6px 4px;width:100%;text-align:center"/>
       </div>
     </div>
     ${(parseInt(l.tireuse)||0) > 0 ? (() => {
@@ -5940,13 +5983,33 @@ function renderDraftLines() {
         </div>
       </div>`;
     })() : ''}
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
       <div>
-        <div style="font-size:10px;color:var(--muted);margin-bottom:3px">€/fût HT</div>
-        <input type="number" min="0" step="0.01" placeholder="0" value="${l.prixFut||''}"
-          onchange="updateDraftLine(${i},'prixFut',this.value)"
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px">€/30L Inox HT</div>
+        <input type="number" min="0" step="0.01" placeholder="0" value="${l.prixFut30inox||''}"
+          onchange="updateDraftLine(${i},'prixFut30inox',this.value)"
           style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 4px;width:100%;text-align:center"/>
       </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px">€/30L KK HT</div>
+        <input type="number" min="0" step="0.01" placeholder="0" value="${l.prixFut30kk||''}"
+          onchange="updateDraftLine(${i},'prixFut30kk',this.value)"
+          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 4px;width:100%;text-align:center"/>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px">€/30L KKTP HT</div>
+        <input type="number" min="0" step="0.01" placeholder="0" value="${l.prixFut30kktp||''}"
+          onchange="updateDraftLine(${i},'prixFut30kktp',this.value)"
+          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 4px;width:100%;text-align:center"/>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px">€/20L HT</div>
+        <input type="number" min="0" step="0.01" placeholder="0" value="${l.prixFut20||''}"
+          onchange="updateDraftLine(${i},'prixFut20',this.value)"
+          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 4px;width:100%;text-align:center"/>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px" style="display:none">placeholder</div>
       <div>
         <div style="font-size:10px;color:var(--muted);margin-bottom:3px">€/carton HT</div>
         <input type="number" min="0" step="0.01" placeholder="0" value="${l.prixCarton||''}"
@@ -5977,7 +6040,7 @@ function toggleTireuseOnLine(i, tireuseId) {
 }
 
 function updateDraftLine(i, field, val) {
-  const numFields = ['futs','cartons','tireuse','prixFut','prixCarton','prixTireuse'];
+  const numFields = ['fut30inox','fut30kk','fut30kktp','fut20','cartons','tireuse','prixFut30inox','prixFut30kk','prixFut30kktp','prixFut20','prixCarton','prixTireuse'];
   draftLines[i][field] = numFields.includes(field) ? (parseFloat(val)||0) : val;
   // Si on remet tireuse à 0, vider les ids
   if (field === 'tireuse' && (parseFloat(val)||0) === 0) draftLines[i].tireuseIds = [];
@@ -5985,7 +6048,7 @@ function updateDraftLine(i, field, val) {
 }
 
 function addOrderLine() {
-  draftLines.push({ beer: BEERS[0], futs: 0, cartons: 0, tireuse: 0, prixFut: 0, prixCarton: 0, prixTireuse: 0 });
+  draftLines.push({ beer: BEERS[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, tireuse:0, prixFut30inox:0, prixFut30kk:0, prixFut30kktp:0, prixFut20:0, prixCarton:0, prixTireuse:0 });
   renderDraftLines();
 }
 
@@ -6014,8 +6077,10 @@ function editOrderForm(key, id) {
   document.getElementById('order-save-btn').textContent = '✓ Mettre à jour';
   draftLines = o.lines.map(l => ({
     beer: l.beer||BEERS[0],
-    futs: l.futs||0, cartons: l.cartons||0, tireuse: l.tireuse||0,
-    prixFut: l.prixFut||0, prixCarton: l.prixCarton||0, prixTireuse: l.prixTireuse||0
+    fut30inox: l.fut30inox||0, fut30kk: l.fut30kk||0, fut30kktp: l.fut30kktp||0, fut20: l.fut20||0,
+    cartons: l.cartons||0, tireuse: l.tireuse||0,
+    prixFut30inox: l.prixFut30inox||0, prixFut30kk: l.prixFut30kk||0, prixFut30kktp: l.prixFut30kktp||0, prixFut20: l.prixFut20||0,
+    prixCarton: l.prixCarton||0, prixTireuse: l.prixTireuse||0
   }));
   renderDraftLines();
   document.getElementById('order-client').scrollIntoView({ behavior:'smooth', block:'nearest' });
@@ -6035,7 +6100,7 @@ function saveOrder() {
   const newKey = document.getElementById('order-date').value || oldKey;
   const client = document.getElementById('order-client').value.trim();
   const note   = document.getElementById('order-note').value.trim();
-  const lines  = draftLines.filter(l => l.beer && (l.futs||l.cartons||l.tireuse));
+  const lines  = draftLines.filter(l => l.beer && ((l.fut30inox||0)+(l.fut30kk||0)+(l.fut30kktp||0)+(l.fut20||0)+l.cartons||l.tireuse));
   if (!client) { showToast('Renseignez le nom du client'); return; }
 
   if (editOrderId) {
@@ -6055,7 +6120,7 @@ function saveOrder() {
 
   saveOrders();
   editOrderId = null;
-  draftLines  = [{ beer: BEERS[0], futs: 0, cartons: 0, tireuse: 0, prixFut: 0, prixCarton: 0, prixTireuse: 0 }];
+  draftLines  = [{ beer: BEERS[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, tireuse:0, prixFut30inox:0, prixFut30kk:0, prixFut30kktp:0, prixFut20:0, prixCarton:0, prixTireuse:0 }];
   document.getElementById('order-date').value   = newKey;
   document.getElementById('order-client').value = '';
   document.getElementById('order-note').value   = '';
@@ -7840,7 +7905,10 @@ function creerBlDepuisCommande(dateKey, orderId) {
 
     const blLinesFromOrder = [];
     (o.lines||[]).forEach(l => {
-      if (parseInt(l.futs)   > 0) blLinesFromOrder.push({ designation:`${l.beer} — Fût 30L`,  qte:parseInt(l.futs),    unite:'fût',     lotRef:'' });
+      if ((parseInt(l.fut30inox)||0)>0) blLinesFromOrder.push({ designation:`${l.beer} — Fût 30L Inox`, qte:parseInt(l.fut30inox), unite:'fût', lotRef:'' });
+      if ((parseInt(l.fut30kk)||0)>0)   blLinesFromOrder.push({ designation:`${l.beer} — Fût 30L KK`,   qte:parseInt(l.fut30kk),   unite:'fût', lotRef:'' });
+      if ((parseInt(l.fut30kktp)||0)>0) blLinesFromOrder.push({ designation:`${l.beer} — Fût 30L KKTP`, qte:parseInt(l.fut30kktp), unite:'fût', lotRef:'' });
+      if ((parseInt(l.fut20)||0)>0)     blLinesFromOrder.push({ designation:`${l.beer} — Fût 20L`,      qte:parseInt(l.fut20),     unite:'fût', lotRef:'' });
       if (parseInt(l.cartons)> 0) blLinesFromOrder.push({ designation:`${l.beer} — Carton`,   qte:parseInt(l.cartons), unite:'carton',  lotRef:'' });
       if (parseInt(l.tireuse)> 0) blLinesFromOrder.push({ designation:`${l.beer} — Tireuse`,  qte:parseInt(l.tireuse), unite:'tireuse', lotRef:'' });
     });
@@ -7882,7 +7950,10 @@ function creerFactureDepuisCommande(dateKey, orderId) {
 
     const factLines = [];
     (o.lines||[]).forEach(l => {
-      if (parseInt(l.futs)   > 0) factLines.push({ desc:`${l.beer} — Fût 30L`,  qty:parseInt(l.futs),    pu:parseFloat(l.prixFut)||0 });
+      if ((parseInt(l.fut30inox)||0)>0) factLines.push({ desc:`${l.beer} — Fût 30L Inox`, qty:parseInt(l.fut30inox), pu:parseFloat(l.prixFut30inox)||0 });
+      if ((parseInt(l.fut30kk)||0)>0)   factLines.push({ desc:`${l.beer} — Fût 30L KK`,   qty:parseInt(l.fut30kk),   pu:parseFloat(l.prixFut30kk)||0   });
+      if ((parseInt(l.fut30kktp)||0)>0) factLines.push({ desc:`${l.beer} — Fût 30L KKTP`, qty:parseInt(l.fut30kktp), pu:parseFloat(l.prixFut30kktp)||0 });
+      if ((parseInt(l.fut20)||0)>0)     factLines.push({ desc:`${l.beer} — Fût 20L`,      qty:parseInt(l.fut20),     pu:parseFloat(l.prixFut20)||0     });
       if (parseInt(l.cartons)> 0) factLines.push({ desc:`${l.beer} — Carton`,   qty:parseInt(l.cartons), pu:parseFloat(l.prixCarton)||0 });
       if (parseInt(l.tireuse)> 0) factLines.push({ desc:`${l.beer} — Tireuse`,  qty:parseInt(l.tireuse), pu:parseFloat(l.prixTireuse)||0 });
     });
