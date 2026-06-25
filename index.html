@@ -1186,6 +1186,18 @@
     <!-- ===== PAGE PLANNING ===== -->
     <div class="page" id="page-planning">
       <div class="planning-week">
+
+        <!-- Calendrier mensuel -->
+        <div style="margin-bottom:10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 8px">
+            <button onclick="changePlanMonth(-1)" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);width:28px;height:28px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center">‹</button>
+            <div id="plan-month-label" style="font-size:13px;font-weight:700;color:var(--foam)"></div>
+            <button onclick="changePlanMonth(1)"  style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);width:28px;height:28px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center">›</button>
+          </div>
+          <div id="plan-cal-grid" style="padding:0 8px 10px"></div>
+        </div>
+
+        <!-- Navigation semaine -->
         <div class="week-nav">
           <button onclick="changeWeek(-1)">‹</button>
           <div class="week-label" id="week-label">Semaine du …</div>
@@ -2256,6 +2268,12 @@
       <label>Nom de l'événement</label>
       <input id="modal-event-name" type="text" placeholder="ex: Marché de Noël"
         style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;width:100%"/>
+    </div>
+
+    <div class="modal-field" style="margin-top:10px">
+      <label>Note (optionnel)</label>
+      <textarea id="modal-note" rows="2" placeholder="Infos complémentaires…"
+        style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:9px 12px;width:100%;resize:vertical;box-sizing:border-box;font-family:inherit"></textarea>
     </div>
 
     <button class="ferm-save-btn" id="task-save-btn" onclick="saveTask()" style="margin-top:16px">✓ Ajouter</button>
@@ -4924,13 +4942,95 @@ function dateKey(d) {
   const j = String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${j}`;
 }
-function changeWeek(delta) { weekOffset += delta; renderPlanning(); }
+
+let planMonthOffset = 0; // offset en mois depuis aujourd'hui
+
+function changePlanMonth(delta) {
+  planMonthOffset += delta;
+  renderPlanningCalendar();
+}
+
+function renderPlanningCalendar() {
+  const labelEl = document.getElementById('plan-month-label');
+  const gridEl  = document.getElementById('plan-cal-grid');
+  if (!labelEl || !gridEl) return;
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const ref   = new Date(today.getFullYear(), today.getMonth() + planMonthOffset, 1);
+  const year  = ref.getFullYear();
+  const month = ref.getMonth();
+
+  labelEl.textContent = ref.toLocaleDateString('fr-FR', { month:'long', year:'numeric' });
+
+  // Jours de la semaine (Lu→Di)
+  const DAY_HEADERS = ['Lu','Ma','Me','Je','Ve','Sa','Di'];
+  let html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center">';
+  html += DAY_HEADERS.map(d =>
+    `<div style="font-size:10px;font-weight:700;color:var(--muted);padding:3px 0">${d}</div>`
+  ).join('');
+
+  // Premier jour du mois (0=dim → décaler en lundi=0)
+  const firstDay = new Date(year, month, 1);
+  const startDow = (firstDay.getDay() + 6) % 7; // 0=lundi
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+
+  // Semaine active
+  const monday = getMonday(weekOffset);
+  const sunday = new Date(monday); sunday.setDate(sunday.getDate()+6);
+
+  // Cellules vides avant le 1er
+  for (let i = 0; i < startDow; i++) {
+    html += '<div></div>';
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date    = new Date(year, month, d);
+    const key     = dateKey(date);
+    const hasTasks = !!(planningData[key] && planningData[key].length);
+    const isToday  = date.getTime() === today.getTime();
+    const inWeek   = date >= monday && date <= sunday;
+    const dow      = (date.getDay() + 6) % 7;
+    const isWeekend = dow >= 5;
+
+    // Calcul du weekOffset pour ce jour
+    const diffMs   = date.getTime() - today.getTime();
+    const diffDays = Math.round(diffMs / 86400000);
+    const targetMonday = new Date(date);
+    const tdow = (date.getDay() + 6) % 7;
+    targetMonday.setDate(date.getDate() - tdow);
+    targetMonday.setHours(0,0,0,0);
+    const todayMonday = getMonday(0);
+    const wDiff = Math.round((targetMonday - todayMonday) / (7*86400000));
+
+    let bg = 'transparent', color = isWeekend ? 'var(--muted)' : 'var(--foam)', border = 'none', fw = '400';
+    if (isToday)  { bg = 'var(--amber)'; color = 'var(--bg)'; fw = '700'; }
+    else if (inWeek) { bg = 'rgba(200,128,10,.15)'; border = '1px solid rgba(200,128,10,.4)'; fw = '600'; }
+
+    html += `
+      <div onclick="jumpToWeek(${wDiff})"
+        style="position:relative;cursor:pointer;border-radius:4px;padding:4px 2px;background:${bg};border:${border};color:${color};font-size:12px;font-weight:${fw};text-align:center;line-height:1.2">
+        ${d}
+        ${hasTasks ? `<span style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:${isToday?'var(--bg)':'var(--amber)'};display:block"></span>` : ''}
+      </div>`;
+  }
+
+  html += '</div>';
+  gridEl.innerHTML = html;
+}
+
+function jumpToWeek(offset) {
+  weekOffset = offset;
+  renderPlanning();
+}
+
+function changeWeek(delta) { weekOffset += delta; planMonthOffset = 0; renderPlanning(); }
 
 function renderPlanning() {
   const monday = getMonday(weekOffset);
   const sunday = new Date(monday); sunday.setDate(sunday.getDate()+6);
   const fmt = d => d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
   document.getElementById('week-label').textContent = `${fmt(monday)} – ${fmt(sunday)}`;
+  renderPlanningCalendar();
 
   const today = new Date(); today.setHours(0,0,0,0);
   const grid = document.getElementById('week-grid');
@@ -5038,6 +5138,7 @@ function openAddTask(key) {
   document.getElementById('modal-date').textContent =
     d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
   document.getElementById('task-modal-title').textContent = 'Nouvelle tâche';
+  document.getElementById('modal-note').value = '';
   document.getElementById('task-save-btn').textContent = '✓ Ajouter';
   document.getElementById('modal-type').value = 'brassin';
   document.getElementById('modal-event-name').value = '';
@@ -5061,6 +5162,7 @@ function openEditTask(key, taskId) {
   document.getElementById('modal-date').textContent =
     d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
   document.getElementById('task-modal-title').textContent = 'Modifier la tâche';
+  document.getElementById('modal-note').value = t.note || '';
   document.getElementById('task-save-btn').textContent = '✓ Modifier';
   document.getElementById('modal-type').value = t.type || 'brassin';
   const beerSel = document.getElementById('modal-beer');
@@ -5104,7 +5206,8 @@ function saveTask() {
   if (type === 'brassin') brewNum = document.getElementById('modal-brew-num').value.trim();
   if (!tt.needsBeer && !tt.needsFerm) eventName = document.getElementById('modal-event-name').value.trim();
 
-  const task = { id: editingTaskId || Date.now().toString(36), type, beer, fermId, eventName, brewNum };
+  const note = (document.getElementById('modal-note')?.value || '').trim();
+  const task = { id: editingTaskId || Date.now().toString(36), type, beer, fermId, eventName, brewNum, note };
 
   if (!planningData[modalDateKey]) planningData[modalDateKey] = [];
   if (editingTaskId) {
@@ -5129,7 +5232,9 @@ function taskDetail(t) {
   if (t.brewNum) parts.push(t.brewNum);
   if (t.eventName) parts.push(t.eventName);
   if (!parts.length && t.detail) return t.detail;
-  return parts.join(' · ');
+  const main = parts.join(' · ');
+  if (t.note) return main ? `${main} — ${t.note}` : t.note;
+  return main;
 }
 
 
@@ -7563,7 +7668,7 @@ Object.assign(window, {
   toggleSuivi, addDensite, deleteDensite, updateSuiviDate, renderSuiviDensites,
   destockerDH, deleteDhLog, renderSuiviDhLog, refreshEnfutageRecap, buildEnfutageRecap,
   toggleFermEdit, closeFermEdit, updateFerm, updateFermPhaseDebut, setPhase,
-  changeWeek, openAddTask, openEditTask, closeModal, updateModalFields, saveTask,
+  changeWeek, changePlanMonth, jumpToWeek, renderPlanningCalendar, openAddTask, openEditTask, closeModal, updateModalFields, saveTask,
   deleteTask,
   changePrevMonth, openOrderModal, closeOrderModal,
   renderOrderList, addOrderLine, removeDraftLine, updateDraftLine,
