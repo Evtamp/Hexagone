@@ -7849,6 +7849,27 @@ function renderBlLines() {
   </div>`).join('');
 }
 
+
+// Mettre à jour le parc fûts inox depuis les lignes d'un BL
+function updateFutsInoxFromBl(client, lines, delta) {
+  if (!client) return;
+  if (!futsData.parClient)  futsData.parClient  = {};
+  if (!futsData.mouvements) futsData.mouvements = [];
+  let qty30inox = 0;
+  (lines||[]).forEach(l => {
+    const d = (l.designation||'').toLowerCase();
+    if (d.includes('inox')) qty30inox += parseInt(l.qte)||0;
+  });
+  if (!qty30inox) return;
+  const qtyMvt = qty30inox * delta; // +1 livraison, -1 annulation
+  futsData.stockVide = Math.max(0, (futsData.stockVide||0) - (delta > 0 ? qty30inox : 0));
+  futsData.parClient[client] = Math.max(0, (futsData.parClient[client]||0) + qtyMvt);
+  if (!futsData.parClient[client]) delete futsData.parClient[client];
+  futsData.mouvements.push({ type:'livraison', ts:Date.now(), client, qty: delta > 0 ? -qty30inox : qty30inox });
+  saveFutsData();
+  renderFutsPage();
+}
+
 function saveBl() {
   const client = document.getElementById('bl-client').value;
   if (!client) { showToast('Sélectionnez un client'); return; }
@@ -7856,6 +7877,7 @@ function saveBl() {
   if (!lines.length) { showToast('Ajoutez au moins un article'); return; }
   const id = editingBlId || Date.now().toString(36);
   const existing = editingBlId ? blData[editingBlId] : {};
+  const isNew = !editingBlId;
   const entry = {
     ...existing, id,
     ref:     existing.ref || genBlRef(),
@@ -7869,6 +7891,8 @@ function saveBl() {
   };
   blData[id] = entry;
   saveBl1(id, entry);
+  // Mettre à jour le parc inox uniquement à la création
+  if (isNew) updateFutsInoxFromBl(client, lines, 1);
   closeBlModal();
   renderBl();
   showToast(`${entry.ref} créé`);
@@ -8202,6 +8226,8 @@ function creerBlDepuisCommande(dateKey, orderId) {
     // Mise à jour locale + rendu immédiat
     blData[id] = entry;
     renderBl();
+    // Mettre à jour le parc fûts inox
+    updateFutsInoxFromBl(entry.client, entry.lines, 1);
     // Fermer modal + confirmation
     document.getElementById('order-modal')?.classList.remove('open');
     showConfirmCreation('bl', entry.ref, id);
@@ -8312,7 +8338,7 @@ Object.assign(window, {
   switchPage, switchSub, switchMpCat, renderDashboard, renderFutsPage,
   openFutsInitModal, closeFutsInitModal, saveFutsInit,
   openFutsRetourModal, closeFutsRetourModal, saveFutsRetour,
-  openLivraisonFutsModal, openRetourClientModal,
+  openLivraisonFutsModal, openRetourClientModal, updateFutsInoxFromBl,
   toggleMenu, closeMenu,
   adjustMP, setMP, setMpPrice,
   openProduitModal, closeProduitModal, selectProduitFormat, saveProduitModal, deleteProduit, adjustProduitQty, setProduitQty, selectFermBtn,
