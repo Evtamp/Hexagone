@@ -1487,7 +1487,7 @@
 <!-- ===== MODAL STOCK INITIAL FÛTS ===== -->
 <div id="futs-init-modal" class="modal-overlay" onclick="if(event.target===this)closeFutsInitModal()">
   <div class="modal-box" style="max-width:360px;margin:auto">
-    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin-bottom:14px">⚙ Stock initial fûts vides</div>
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin-bottom:14px">⚙ Ajustement stock fûts</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Saisir le nombre de fûts vides propres disponibles à la brasserie.</div>
     <div id="futs-init-lines" style="display:flex;flex-direction:column;gap:10px"></div>
     <div style="display:flex;gap:8px;margin-top:18px">
@@ -2778,6 +2778,7 @@ function initApp() {
   }
 
   fbListen('produits', data => {
+    if (_produitsLocalWrite) return;
     produitsData = data || {};
     renderProduits();
     onLoaded();
@@ -2853,7 +2854,9 @@ function initApp() {
   });
 
   fbListen('futsData', data => {
-    futsData = data || { stock:{}, aNettoyer:{}, mouvements:[] };
+    // Ne pas écraser si on vient de faire un write local (protection race condition)
+    if (_futsDataLocalWrite) return;
+    futsData = data || { stockVide:0, aNettoyer:0, parClient:{}, mouvements:[] };
     renderFutsPage();
     onLoaded();
   });
@@ -4311,8 +4314,14 @@ function refreshEnfutageRecap(brassinId) {
 
 // ===== PARC FÛTS INOX 30L =====
 let futsData = { stockVide:0, aNettoyer:0, parClient:{}, mouvements:[] };
+let _futsDataLocalWrite = false;
+let _produitsLocalWrite = false;
 
-function saveFutsData() { fbSet('futsData', futsData); }
+function saveFutsData() {
+  _futsDataLocalWrite = true;
+  fbSet('futsData', futsData);
+  setTimeout(() => { _futsDataLocalWrite = false; }, 3000);
+}
 
 function getFutsPleins30Inox() {
   return Object.values(produitsData||{})
@@ -4410,20 +4419,27 @@ function renderFutsPage() {
 function openFutsInitModal() {
   document.getElementById('futs-init-lines').innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-      <span style="font-size:13px;font-weight:600;color:var(--foam)">🛢 Fûts Inox 30L vides</span>
+      <span style="font-size:13px;font-weight:600;color:var(--foam)">🛢 Vides disponibles</span>
       <input type="number" min="0" step="1" id="fut-init-vide" value="${futsData.stockVide||0}"
         style="width:80px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:18px;font-weight:700;padding:8px;text-align:center;box-sizing:border-box"/>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px">
+      <span style="font-size:13px;font-weight:600;color:#EF9F27">🧴 À nettoyer</span>
+      <input type="number" min="0" step="1" id="fut-init-nettoyer" value="${futsData.aNettoyer||0}"
+        style="width:80px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:#EF9F27;font-size:18px;font-weight:700;padding:8px;text-align:center;box-sizing:border-box"/>
     </div>`;
   document.getElementById('futs-init-modal').style.display = 'flex';
 }
 function closeFutsInitModal() { document.getElementById('futs-init-modal').style.display = 'none'; }
 function saveFutsInit() {
   const v = parseInt(document.getElementById('fut-init-vide')?.value)||0;
+  const n = parseInt(document.getElementById('fut-init-nettoyer')?.value)||0;
   if (!futsData.mouvements) futsData.mouvements = [];
-  futsData.stockVide = v;
-  futsData.mouvements.push({ type:'init', ts:Date.now(), qty:v });
+  futsData.stockVide  = v;
+  futsData.aNettoyer  = n;
+  futsData.mouvements.push({ type:'init', ts:Date.now(), qty:v, qtyNettoyer:n });
   saveFutsData(); closeFutsInitModal(); renderFutsPage();
-  showToast('Stock initial enregistré');
+  showToast('Stock ajusté');
 }
 
 function openLivraisonFutsModal() {
@@ -7855,13 +7871,15 @@ function updateFutsInoxFromBl(client, lines, delta) {
   if (!client) return;
   if (!futsData.parClient)  futsData.parClient  = {};
   if (!futsData.mouvements) futsData.mouvements = [];
+
   let qty30inox = 0;
   (lines||[]).forEach(l => {
     const d = (l.designation||'').toLowerCase();
     if (d.includes('inox')) qty30inox += parseInt(l.qte)||0;
   });
   if (!qty30inox) return;
-  // Déduire des fûts pleins en stock (produitsData format fut30inox) — FIFO
+
+  // Déduire des fûts pleins en stock LOCALEMENT d'abord, puis écrire Firebase
   if (delta > 0) {
     let reste = qty30inox;
     Object.values(produitsData)
@@ -7869,19 +7887,29 @@ function updateFutsInoxFromBl(client, lines, delta) {
       .sort((a,b) => (a.ts||0) - (b.ts||0)) // FIFO
       .forEach(p => {
         if (reste <= 0) return;
-        const pris = Math.min(reste, p.qty||0);
-        p.qty -= pris;
+        const pris = Math.min(reste, parseInt(p.qty)||0);
+        // Patcher localement d'abord
+        produitsData[p.id] = { ...p, qty: p.qty - pris };
         reste -= pris;
-        fbSet('produits/' + p.id, p);
       });
+    // Écrire dans Firebase après le patch local
+    _produitsLocalWrite = true;
+    Object.values(produitsData)
+      .filter(p => p.format === 'fut30inox')
+      .forEach(p => fbSet('produits/' + p.id, p));
+    setTimeout(() => { _produitsLocalWrite = false; }, 3000);
   }
-  // Mettre à jour chez client
+
+  // Mettre à jour futsData localement
   futsData.parClient[client] = Math.max(0, (futsData.parClient[client]||0) + qty30inox * delta);
   if (!futsData.parClient[client]) delete futsData.parClient[client];
   futsData.mouvements.push({ type:'livraison', ts:Date.now(), client, qty: delta > 0 ? -qty30inox : qty30inox });
+
+  // Sauvegarder et re-rendre immédiatement
   saveFutsData();
   renderProduits();
   renderFutsPage();
+  renderDashboard();
 }
 
 function saveBl() {
