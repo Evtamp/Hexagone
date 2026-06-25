@@ -185,8 +185,7 @@
         display: flex !important;
       }
 
-      /* En paysage mobile : masquer le ::before desktop ET le div HTML */
-      nav#main-nav::before { display: none !important; }
+      /* En paysage mobile : masquer le titre pour gagner de la place */
       #nav-header { display: none !important; }
 
       nav#main-nav button {
@@ -800,21 +799,7 @@
         display: none; /* masqué — remplacé par le logo sidebar */
       }
 
-      /* Masquer le div HTML du tiroir en desktop (::before suffit) */
-      #nav-header { display: none !important; }
-
-      /* Injecter logo en haut de la sidebar via pseudo (desktop uniquement) */
-      nav#main-nav::before {
-        content: '🍺  Hexagone';
-        display: block;
-        font-size: 15px;
-        font-weight: 800;
-        color: var(--foam);
-        padding: 0 20px 24px;
-        letter-spacing: .5px;
-        border-bottom: 1px solid var(--border);
-        margin-bottom: 12px;
-      }
+      /* Le titre est dans le div HTML #nav-header — toujours visible */
 
       /* Zone de contenu principale */
       main {
