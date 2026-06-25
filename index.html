@@ -5034,32 +5034,31 @@ function toggleHistoriqueBrassin(id) {
 }
 
 function updateBrewVolume(id, val) {
+  console.log('[updateBrewVolume] id=', id, 'val=', val);
   const v = parseFloat(val) || 500;
-  if (!historiqueData[id]) return;
-  // Enregistrer le patch local pour survivre au re-render Firebase
+  console.log('[updateBrewVolume] historiqueData[id]=', historiqueData[id]);
+  if (!historiqueData[id]) { console.warn('[updateBrewVolume] id introuvable dans historiqueData'); return; }
   _localBrewPatches[id] = { volume: v };
   setTimeout(() => { delete _localBrewPatches[id]; }, 5000);
-  // Patcher localement
   historiqueData[id].volume = v;
-  // Mettre à jour le bandeau immédiatement
   const bandeauEl = document.getElementById('brew-volume-' + id);
+  console.log('[updateBrewVolume] bandeauEl=', bandeauEl, 'v=', v);
   if (bandeauEl) bandeauEl.textContent = v;
-  // Sync le fermenteur associé
   const b = historiqueData[id];
   if (b.cuve) {
     const ferm = FERMENTERS.find(f => f.id === b.cuve);
+    console.log('[updateBrewVolume] cuve=', b.cuve, 'ferm=', ferm);
     if (ferm) {
       ferm.vol = v;
       fbSet('fermenters', FERMENTERS);
       renderFermenters();
     }
   }
-  // Rafraîchir les calculs
   const s = fermSuiviData[id] || {};
   const calcEl = document.getElementById('suivi-calculs-' + id);
   if (calcEl) calcEl.innerHTML = buildCalculs(id, s);
-  // Écrire dans Firebase
   saveBrewEntry(id, historiqueData[id]);
+  console.log('[updateBrewVolume] done, historiqueData[id].volume=', historiqueData[id].volume);
 }
 
 function updateBrewField(id, field, val) {
