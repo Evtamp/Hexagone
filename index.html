@@ -7866,50 +7866,80 @@ function renderBlLines() {
 }
 
 
-// Mettre à jour le parc fûts inox depuis les lignes d'un BL
-function updateFutsInoxFromBl(client, lines, delta) {
-  if (!client) return;
-  if (!futsData.parClient)  futsData.parClient  = {};
-  if (!futsData.mouvements) futsData.mouvements = [];
+// Détocker le stock produits depuis les lignes d'un BL
+// Correspondances désignation BL → format produitsData
+function _detectFormat(designation) {
+  const d = (designation||'').toLowerCase();
+  if (d.includes('inox'))                          return 'fut30inox';
+  if (d.includes('kktp'))                          return 'fut30kktp';
+  if (d.includes('kk'))                            return 'fut30kk';
+  if (d.includes('20l') || d.includes('20 l') || d.includes('fût 20')) return 'fut20';
+  if (d.includes('30l') || d.includes('30 l') || d.includes('fût 30')) return 'fut30kk'; // fallback
+  if (d.includes('33') || d.includes('33cl'))      return 'btl33';
+  if (d.includes('75') || d.includes('75cl'))      return 'btl75';
+  if (d.includes('carton'))                        return 'btl33'; // carton = bouteilles 33cL par défaut
+  return null;
+}
 
-  let qty30inox = 0;
+function updateStockFromBl(client, lines, delta) {
+  if (!lines || !lines.length) return;
+
+  // Regrouper les qtés à détocker par format
+  const toDestock = {}; // { format: qty }
   (lines||[]).forEach(l => {
-    const d = (l.designation||'').toLowerCase();
-    if (d.includes('inox')) qty30inox += parseInt(l.qte)||0;
+    const fmt = _detectFormat(l.designation);
+    if (!fmt) return;
+    toDestock[fmt] = (toDestock[fmt]||0) + (parseInt(l.qte)||0);
   });
-  if (!qty30inox) return;
 
-  // Déduire des fûts pleins en stock LOCALEMENT d'abord, puis écrire Firebase
+  if (!Object.keys(toDestock).length) return;
+
+  const formatsModified = new Set();
+
   if (delta > 0) {
-    let reste = qty30inox;
-    Object.values(produitsData)
-      .filter(p => p.format === 'fut30inox' && (p.qty||0) > 0)
-      .sort((a,b) => (a.ts||0) - (b.ts||0)) // FIFO
-      .forEach(p => {
-        if (reste <= 0) return;
-        const pris = Math.min(reste, parseInt(p.qty)||0);
-        // Patcher localement d'abord
-        produitsData[p.id] = { ...p, qty: p.qty - pris };
-        reste -= pris;
-      });
-    // Écrire dans Firebase après le patch local
+    Object.entries(toDestock).forEach(([fmt, qtyNeeded]) => {
+      let reste = qtyNeeded;
+      Object.values(produitsData)
+        .filter(p => p.format === fmt && (p.qty||0) > 0)
+        .sort((a,b) => (a.ts||0) - (b.ts||0)) // FIFO
+        .forEach(p => {
+          if (reste <= 0) return;
+          const pris = Math.min(reste, parseInt(p.qty)||0);
+          produitsData[p.id] = { ...p, qty: p.qty - pris };
+          reste -= pris;
+          formatsModified.add(fmt);
+        });
+    });
+
+    // Écrire Firebase pour tous les formats modifiés
     _produitsLocalWrite = true;
     Object.values(produitsData)
-      .filter(p => p.format === 'fut30inox')
+      .filter(p => formatsModified.has(p.format))
       .forEach(p => fbSet('produits/' + p.id, p));
     setTimeout(() => { _produitsLocalWrite = false; }, 3000);
   }
 
-  // Mettre à jour futsData localement
-  futsData.parClient[client] = Math.max(0, (futsData.parClient[client]||0) + qty30inox * delta);
-  if (!futsData.parClient[client]) delete futsData.parClient[client];
-  futsData.mouvements.push({ type:'livraison', ts:Date.now(), client, qty: delta > 0 ? -qty30inox : qty30inox });
+  // Mettre à jour parc fûts inox 30L chez client
+  if (client) {
+    if (!futsData.parClient)  futsData.parClient  = {};
+    if (!futsData.mouvements) futsData.mouvements = [];
+    const qtyInox = toDestock['fut30inox'] || 0;
+    if (qtyInox > 0) {
+      futsData.parClient[client] = Math.max(0, (futsData.parClient[client]||0) + qtyInox * delta);
+      if (!futsData.parClient[client]) delete futsData.parClient[client];
+      futsData.mouvements.push({ type:'livraison', ts:Date.now(), client, qty: delta > 0 ? -qtyInox : qtyInox });
+      saveFutsData();
+      renderFutsPage();
+    }
+  }
 
-  // Sauvegarder et re-rendre immédiatement
-  saveFutsData();
   renderProduits();
-  renderFutsPage();
   renderDashboard();
+}
+
+// Alias pour compatibilité
+function updateFutsInoxFromBl(client, lines, delta) {
+  updateStockFromBl(client, lines, delta);
 }
 
 function saveBl() {
@@ -7934,7 +7964,7 @@ function saveBl() {
   blData[id] = entry;
   saveBl1(id, entry);
   // Mettre à jour le parc inox uniquement à la création
-  if (isNew) updateFutsInoxFromBl(client, lines, 1);
+  if (isNew) updateStockFromBl(client, lines, 1);
   closeBlModal();
   renderBl();
   showToast(`${entry.ref} créé`);
@@ -8269,7 +8299,7 @@ function creerBlDepuisCommande(dateKey, orderId) {
     blData[id] = entry;
     renderBl();
     // Mettre à jour le parc fûts inox
-    updateFutsInoxFromBl(entry.client, entry.lines, 1);
+    updateStockFromBl(entry.client, entry.lines, 1);
     // Fermer modal + confirmation
     document.getElementById('order-modal')?.classList.remove('open');
     showConfirmCreation('bl', entry.ref, id);
@@ -8380,7 +8410,7 @@ Object.assign(window, {
   switchPage, switchSub, switchMpCat, renderDashboard, renderFutsPage,
   openFutsInitModal, closeFutsInitModal, saveFutsInit,
   openFutsRetourModal, closeFutsRetourModal, saveFutsRetour,
-  openLivraisonFutsModal, openRetourClientModal, updateFutsInoxFromBl,
+  openLivraisonFutsModal, openRetourClientModal, updateFutsInoxFromBl, updateStockFromBl,
   toggleMenu, closeMenu,
   adjustMP, setMP, setMpPrice,
   openProduitModal, closeProduitModal, selectProduitFormat, saveProduitModal, deleteProduit, adjustProduitQty, setProduitQty, selectFermBtn,
