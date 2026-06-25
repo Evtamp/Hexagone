@@ -4309,247 +4309,227 @@ function refreshEnfutageRecap(brassinId) {
 }
 
 
-// ===== PARC DE FÛTS =====
-const FUT_TYPES = [
-  { id:'fut30inox', label:'30L Inox' },
-  { id:'fut30kk',   label:'30L KK'   },
-  { id:'fut30kktp', label:'30L KKTP' },
-  { id:'fut20',     label:'20L'      },
-];
-
-// Structure Firebase : futsData = {
-//   stock:    { fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0 },  // vides propres
-//   aNettoyer:{ fut30inox:0, ... },  // retournés clients, pas encore lavés
-//   mouvements: [ { ts, type:'retour_client'|'retour_nettoyage'|'init', fut30inox:0, ... } ]
-// }
-let futsData = { stock:{}, aNettoyer:{}, mouvements:[] };
-let futsRetourMode = ''; // 'client' ou 'nettoyage'
+// ===== PARC FÛTS INOX 30L =====
+let futsData = { stockVide:0, aNettoyer:0, parClient:{}, mouvements:[] };
 
 function saveFutsData() { fbSet('futsData', futsData); }
 
-// Calculer fûts chez client depuis les BL (livrés - retournés)
-function getFutsChezClient() {
-  const res = { fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0 };
-  // Additionner depuis les BL
-  Object.values(blData||{}).forEach(bl => {
-    (bl.lines||[]).forEach(l => {
-      const d = (l.designation||'').toLowerCase();
-      if (d.includes('inox'))    res.fut30inox  += parseInt(l.qte)||0;
-      else if (d.includes('kktp')) res.fut30kktp += parseInt(l.qte)||0;
-      else if (d.includes('kk'))   res.fut30kk   += parseInt(l.qte)||0;
-      else if (d.includes('20l') || d.includes('20 l')) res.fut20 += parseInt(l.qte)||0;
-    });
-  });
-  // Soustraire les retours (mouvements retour_client et retour_nettoyage)
-  (futsData.mouvements||[]).forEach(m => {
-    if (m.type === 'retour_client' || m.type === 'retour_nettoyage') {
-      FUT_TYPES.forEach(ft => { res[ft.id] -= parseInt(m[ft.id])||0; });
-    }
-  });
-  FUT_TYPES.forEach(ft => { if (res[ft.id] < 0) res[ft.id] = 0; });
-  return res;
+function getFutsPleins30Inox() {
+  return Object.values(produitsData||{})
+    .filter(p => p.format === 'fut30inox')
+    .reduce((s,p) => s+(parseInt(p.qty)||0), 0);
 }
 
-// Fûts pleins = depuis produitsData
-function getFutsPleins() {
-  const res = { fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0 };
-  Object.values(produitsData||{}).forEach(p => {
-    if (res[p.format] !== undefined) res[p.format] += parseInt(p.qty)||0;
-  });
-  return res;
+function getInoxChezClientTotal() {
+  return Object.values(futsData.parClient||{}).reduce((s,v)=>s+(parseInt(v)||0),0);
 }
 
 function renderFutsPage() {
   const el = document.getElementById('futs-content');
   if (!el) return;
+  const vide   = parseInt(futsData.stockVide)||0;
+  const aNet   = parseInt(futsData.aNettoyer)||0;
+  const pleins = getFutsPleins30Inox();
+  const chezCli = getInoxChezClientTotal();
+  const total  = vide + pleins + aNet + chezCli;
 
-  const vides    = futsData.stock    || {};
-  const aNet     = futsData.aNettoyer|| {};
-  const pleins   = getFutsPleins();
-  const chezClient = getFutsChezClient();
+  const parClient = futsData.parClient || {};
+  const clientRows = Object.entries(parClient)
+    .filter(([,qty]) => parseInt(qty)>0)
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([client, qty]) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:13px;color:var(--foam);flex:1">${client}</span>
+        <span style="font-size:15px;font-weight:700;color:var(--foam);min-width:28px;text-align:right">${qty}</span>
+        <button onclick="openRetourClientModal('${client.replace(/'/g,"\'")}')"
+          style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer">
+          ↩ Retour
+        </button>
+      </div>`).join('');
 
-  const statColor = (n) => n > 0 ? 'var(--foam)' : 'var(--muted)';
-
-  const typeRows = FUT_TYPES.map(ft => `
-    <div style="display:grid;grid-template-columns:80px 1fr 1fr 1fr 1fr;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-      <div style="font-size:12px;font-weight:700;color:var(--amber-lt)">${ft.label}</div>
-      <div style="text-align:center">
-        <div style="font-size:18px;font-weight:800;color:${statColor(vides[ft.id]||0)}">${vides[ft.id]||0}</div>
-      </div>
-      <div style="text-align:center">
-        <div style="font-size:18px;font-weight:800;color:${statColor(pleins[ft.id]||0)}">${pleins[ft.id]||0}</div>
-      </div>
-      <div style="text-align:center">
-        <div style="font-size:18px;font-weight:800;color:${statColor(chezClient[ft.id]||0)}">${chezClient[ft.id]||0}</div>
-      </div>
-      <div style="text-align:center">
-        <div style="font-size:18px;font-weight:800;color:${(aNet[ft.id]||0)>0?'#EF9F27':'var(--muted)'}">${aNet[ft.id]||0}</div>
-      </div>
-    </div>`).join('');
-
-  // Totaux
-  const tot = (obj) => FUT_TYPES.reduce((s,ft) => s+(parseInt(obj[ft.id])||0), 0);
-
-  // Historique mouvements
-  const mvts = [...(futsData.mouvements||[])].reverse().slice(0,20);
+  const mvts = [...(futsData.mouvements||[])].reverse().slice(0,15);
   const mvtHtml = mvts.length ? mvts.map(m => {
     const d = new Date(m.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-    const label = m.type==='init' ? '⚙ Stock initial' : m.type==='retour_client' ? '↩ Retour client' : '🧼 Retour nettoyage';
-    const detail = FUT_TYPES.filter(ft=>parseInt(m[ft.id])>0).map(ft=>`${ft.label}:${m[ft.id]}`).join(' · ');
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
-      <div>
-        <span style="color:var(--amber-lt);font-weight:600">${label}</span>
-        ${m.client ? `<span style="color:var(--muted)"> · ${m.client}</span>` : ''}
-        <div style="color:var(--muted);font-size:11px;margin-top:2px">${detail}</div>
-      </div>
-      <span style="color:var(--muted);font-size:11px;flex-shrink:0;margin-left:8px">${d}</span>
+    const icons  = { init:'⚙', livraison:'🚚', retour_client:'↩', retour_nettoyage:'🧼' };
+    const labels = { init:'Stock initial', livraison:'Livraison', retour_client:'Retour client', retour_nettoyage:'Retour nettoyage' };
+    const sign = m.type==='livraison' ? '' : '+';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="color:var(--amber-lt);font-weight:600;flex:1">${icons[m.type]||''} ${labels[m.type]||m.type}${m.client?' · '+m.client:''}</span>
+      <span style="font-weight:700;color:var(--foam)">${m.qty>0?sign:''}${m.qty} fût${Math.abs(m.qty)>1?'s':''}</span>
+      <span style="color:var(--muted);font-size:11px;margin-left:8px;white-space:nowrap">${d}</span>
     </div>`;
   }).join('') : '<div style="font-size:12px;color:var(--muted);padding:8px 0">Aucun mouvement</div>';
 
   el.innerHTML = `
-    <!-- Tableau récap -->
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden">
-      <div style="display:grid;grid-template-columns:80px 1fr 1fr 1fr 1fr;gap:8px;padding:8px 0;border-bottom:2px solid var(--border)">
-        <div style="font-size:10px;color:var(--muted)"></div>
-        <div style="font-size:10px;color:var(--muted);text-align:center;text-transform:uppercase;letter-spacing:.5px">Vides<br>disponibles</div>
-        <div style="font-size:10px;color:var(--muted);text-align:center;text-transform:uppercase;letter-spacing:.5px">Pleins<br>en stock</div>
-        <div style="font-size:10px;color:var(--muted);text-align:center;text-transform:uppercase;letter-spacing:.5px">Chez<br>client</div>
-        <div style="font-size:10px;color:#EF9F27;text-align:center;text-transform:uppercase;letter-spacing:.5px">À<br>nettoyer</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Vides disponibles</div>
+        <div style="font-size:28px;font-weight:800;color:${vide>0?'var(--ok)':'var(--muted)'}">${vide}</div>
       </div>
-      <div style="padding:0 12px">${typeRows}</div>
-      <div style="display:grid;grid-template-columns:80px 1fr 1fr 1fr 1fr;gap:8px;padding:10px 12px;background:var(--surface2);border-top:2px solid var(--border)">
-        <div style="font-size:11px;font-weight:700;color:var(--muted)">TOTAL</div>
-        <div style="font-size:14px;font-weight:800;color:var(--foam);text-align:center">${tot(vides)}</div>
-        <div style="font-size:14px;font-weight:800;color:var(--foam);text-align:center">${tot(pleins)}</div>
-        <div style="font-size:14px;font-weight:800;color:var(--foam);text-align:center">${tot(chezClient)}</div>
-        <div style="font-size:14px;font-weight:800;color:#EF9F27;text-align:center">${tot(aNet)}</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Pleins en stock</div>
+        <div style="font-size:28px;font-weight:800;color:${pleins>0?'var(--foam)':'var(--muted)'}">${pleins}</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Chez clients</div>
+        <div style="font-size:28px;font-weight:800;color:${chezCli>0?'var(--foam)':'var(--muted)'}">${chezCli}</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center">
+        <div style="font-size:10px;color:#EF9F27;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">À nettoyer</div>
+        <div style="font-size:28px;font-weight:800;color:${aNet>0?'#EF9F27':'var(--muted)'}">${aNet}</div>
       </div>
     </div>
-
-    <!-- Actions -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-      <button onclick="openFutsRetourModal('client')"
-        style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;font-weight:600;padding:12px;cursor:pointer">
-        ↩ Retour client<br><span style="font-size:11px;color:var(--muted);font-weight:400">→ À nettoyer</span>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;color:var(--muted)">Total parc 30L Inox</span>
+      <span style="font-size:18px;font-weight:800;color:var(--amber-lt)">${total} fûts</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+      <button onclick="openFutsInitModal()"
+        style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;font-weight:600;padding:10px 4px;cursor:pointer;text-align:center">
+        ⚙<br><span style="font-size:10px;color:var(--muted)">Stock initial</span>
+      </button>
+      <button onclick="openLivraisonFutsModal()"
+        style="background:var(--surface);border:1px solid var(--amber);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:12px;font-weight:600;padding:10px 4px;cursor:pointer;text-align:center">
+        🚚<br><span style="font-size:10px;color:var(--muted)">Livraison</span>
       </button>
       <button onclick="openFutsRetourModal('nettoyage')"
-        style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;font-weight:600;padding:12px;cursor:pointer">
-        🧼 Retour nettoyage<br><span style="font-size:11px;color:var(--muted);font-weight:400">→ Vides disponibles</span>
+        style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;font-weight:600;padding:10px 4px;cursor:pointer;text-align:center">
+        🧼<br><span style="font-size:10px;color:var(--muted)">Nettoyage</span>
       </button>
     </div>
-
-    <!-- Historique -->
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Historique des mouvements</div>
-      ${mvtHtml}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Fûts chez les clients</div>
+      ${clientRows || '<div style="font-size:12px;color:var(--muted);padding:8px 0">Aucun fût chez un client</div>'}
     </div>
-  `;
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Historique</div>
+      ${mvtHtml}
+    </div>`;
 }
 
-// Modal stock initial
 function openFutsInitModal() {
-  const el = document.getElementById('futs-init-lines');
-  el.innerHTML = FUT_TYPES.map(ft => `
+  document.getElementById('futs-init-lines').innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-      <span style="font-size:13px;font-weight:600;color:var(--foam);min-width:80px">🛢 ${ft.label}</span>
-      <input type="number" min="0" step="1" id="fut-init-${ft.id}" value="${futsData.stock?.[ft.id]||0}"
-        style="width:80px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:16px;font-weight:700;padding:8px;text-align:center;box-sizing:border-box" />
-    </div>`).join('');
+      <span style="font-size:13px;font-weight:600;color:var(--foam)">🛢 Fûts Inox 30L vides</span>
+      <input type="number" min="0" step="1" id="fut-init-vide" value="${futsData.stockVide||0}"
+        style="width:80px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:18px;font-weight:700;padding:8px;text-align:center;box-sizing:border-box"/>
+    </div>`;
   document.getElementById('futs-init-modal').style.display = 'flex';
 }
-
-function closeFutsInitModal() {
-  document.getElementById('futs-init-modal').style.display = 'none';
-}
-
+function closeFutsInitModal() { document.getElementById('futs-init-modal').style.display = 'none'; }
 function saveFutsInit() {
-  if (!futsData.stock) futsData.stock = {};
+  const v = parseInt(document.getElementById('fut-init-vide')?.value)||0;
   if (!futsData.mouvements) futsData.mouvements = [];
-  const mvt = { type:'init', ts: Date.now() };
-  FUT_TYPES.forEach(ft => {
-    const v = parseInt(document.getElementById('fut-init-'+ft.id)?.value)||0;
-    futsData.stock[ft.id] = v;
-    mvt[ft.id] = v;
-  });
-  futsData.mouvements.push(mvt);
-  saveFutsData();
-  closeFutsInitModal();
-  renderFutsPage();
+  futsData.stockVide = v;
+  futsData.mouvements.push({ type:'init', ts:Date.now(), qty:v });
+  saveFutsData(); closeFutsInitModal(); renderFutsPage();
   showToast('Stock initial enregistré');
 }
 
-// Modal retour fûts
-function openFutsRetourModal(mode) {
-  futsRetourMode = mode;
-  const title    = document.getElementById('futs-retour-title');
-  const subtitle = document.getElementById('futs-retour-subtitle');
-  const el       = document.getElementById('futs-retour-lines');
-  if (mode === 'client') {
-    title.textContent    = '↩ Retour client';
-    subtitle.textContent = 'Les fûts retournés passent en "À nettoyer".';
-  } else {
-    title.textContent    = '🧼 Retour nettoyage';
-    subtitle.textContent = 'Les fûts nettoyés passent en "Vides disponibles".';
-  }
-  const src = mode === 'client' ? getFutsChezClient() : (futsData.aNettoyer||{});
-  el.innerHTML = FUT_TYPES.map(ft => `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-      <div>
-        <span style="font-size:13px;font-weight:600;color:var(--foam)">🛢 ${ft.label}</span>
-        <span style="font-size:11px;color:var(--muted);margin-left:6px">(${src[ft.id]||0} disponibles)</span>
-      </div>
-      <input type="number" min="0" max="${src[ft.id]||0}" step="1" id="fut-retour-${ft.id}" value="0"
-        style="width:72px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:16px;font-weight:700;padding:8px;text-align:center;box-sizing:border-box" />
-    </div>`).join('');
-  // Champ client optionnel pour retour client
-  el.insertAdjacentHTML('beforeend', mode === 'client' ? `
-    <div style="margin-top:8px">
-      <div class="field-label" style="margin-bottom:4px">Client (optionnel)</div>
-      <input type="text" id="fut-retour-client" placeholder="Nom du client"
-        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:8px 12px;box-sizing:border-box" />
-    </div>` : '');
+function openLivraisonFutsModal() {
+  const clients = Object.values(clientsData||{}).map(c=>c.nom).filter(Boolean).sort();
+  document.getElementById('futs-retour-title').textContent = '🚚 Livraison fûts Inox 30L';
+  document.getElementById('futs-retour-subtitle').textContent = 'Fûts livrés → déduits des vides disponibles';
+  document.getElementById('futs-retour-lines').innerHTML = `
+    <div>
+      <div class="field-label" style="margin-bottom:4px">Client</div>
+      <select id="fut-livr-client" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:8px 12px;box-sizing:border-box">
+        <option value="">— Choisir —</option>
+        ${clients.map(c=>`<option value="${c}">${c}</option>`).join('')}
+        <option value="__new__">+ Autre client…</option>
+      </select>
+      <input type="text" id="fut-livr-client-new" placeholder="Nom du client"
+        style="display:none;width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:8px 12px;box-sizing:border-box"/>
+    </div>
+    <div>
+      <div class="field-label" style="margin-bottom:4px">Nombre de fûts livrés</div>
+      <input type="number" min="1" step="1" id="fut-livr-qty"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:22px;font-weight:700;padding:10px;text-align:center;box-sizing:border-box"/>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Disponibles vides : ${futsData.stockVide||0}</div>
+    </div>`;
+  setTimeout(() => {
+    const sel = document.getElementById('fut-livr-client');
+    if (sel) sel.onchange = () => {
+      const ni = document.getElementById('fut-livr-client-new');
+      if (ni) ni.style.display = sel.value==='__new__' ? 'block' : 'none';
+    };
+  }, 0);
+  document.getElementById('futs-retour-modal').dataset.mode = 'livraison';
   document.getElementById('futs-retour-modal').style.display = 'flex';
 }
 
-function closeFutsRetourModal() {
-  document.getElementById('futs-retour-modal').style.display = 'none';
-  futsRetourMode = '';
+function openRetourClientModal(client) {
+  const qty = parseInt(futsData.parClient?.[client])||0;
+  document.getElementById('futs-retour-title').textContent = `↩ Retour — ${client}`;
+  document.getElementById('futs-retour-subtitle').textContent = `${qty} fût${qty>1?'s':''} chez ce client → À nettoyer`;
+  document.getElementById('futs-retour-lines').innerHTML = `
+    <div>
+      <div class="field-label" style="margin-bottom:4px">Nombre de fûts retournés</div>
+      <input type="number" min="1" max="${qty}" step="1" id="fut-retour-qty" value="${qty}"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:22px;font-weight:700;padding:10px;text-align:center;box-sizing:border-box"/>
+    </div>`;
+  document.getElementById('futs-retour-modal').dataset.mode = 'retour_client';
+  document.getElementById('futs-retour-modal').dataset.client = client;
+  document.getElementById('futs-retour-modal').style.display = 'flex';
 }
 
+function openFutsRetourModal(mode) {
+  if (mode !== 'nettoyage') return;
+  const n = parseInt(futsData.aNettoyer)||0;
+  document.getElementById('futs-retour-title').textContent = '🧼 Retour nettoyage';
+  document.getElementById('futs-retour-subtitle').textContent = `${n} fût${n>1?'s':''} à nettoyer → Vides disponibles`;
+  document.getElementById('futs-retour-lines').innerHTML = `
+    <div>
+      <div class="field-label" style="margin-bottom:4px">Nombre de fûts nettoyés</div>
+      <input type="number" min="1" max="${n}" step="1" id="fut-retour-qty" value="${n}"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:22px;font-weight:700;padding:10px;text-align:center;box-sizing:border-box"/>
+    </div>`;
+  document.getElementById('futs-retour-modal').dataset.mode = 'nettoyage';
+  document.getElementById('futs-retour-modal').style.display = 'flex';
+}
+
+function closeFutsRetourModal() { document.getElementById('futs-retour-modal').style.display = 'none'; }
+
 function saveFutsRetour() {
-  if (!futsData.stock)     futsData.stock     = {};
-  if (!futsData.aNettoyer) futsData.aNettoyer = {};
   if (!futsData.mouvements) futsData.mouvements = [];
+  if (!futsData.parClient)  futsData.parClient  = {};
+  const modal = document.getElementById('futs-retour-modal');
+  const mode  = modal.dataset.mode;
 
-  const mvt = { type: futsRetourMode === 'client' ? 'retour_client' : 'retour_nettoyage', ts: Date.now() };
-  const client = document.getElementById('fut-retour-client')?.value?.trim();
-  if (client) mvt.client = client;
+  if (mode === 'livraison') {
+    const sel = document.getElementById('fut-livr-client');
+    let client = sel?.value === '__new__'
+      ? (document.getElementById('fut-livr-client-new')?.value||'').trim()
+      : sel?.value||'';
+    if (!client) { showToast('Choisir un client', true); return; }
+    const qty = parseInt(document.getElementById('fut-livr-qty')?.value)||0;
+    if (!qty) { showToast('Quantité invalide', true); return; }
+    futsData.stockVide = Math.max(0,(futsData.stockVide||0)-qty);
+    futsData.parClient[client] = (futsData.parClient[client]||0)+qty;
+    futsData.mouvements.push({ type:'livraison', ts:Date.now(), client, qty:-qty });
+    saveFutsData(); closeFutsRetourModal(); renderFutsPage();
+    showToast(`${qty} fût${qty>1?'s':''} livré${qty>1?'s':''} à ${client}`);
 
-  let total = 0;
-  FUT_TYPES.forEach(ft => {
-    const v = parseInt(document.getElementById('fut-retour-'+ft.id)?.value)||0;
-    mvt[ft.id] = v;
-    total += v;
-    if (futsRetourMode === 'client') {
-      // chez client → à nettoyer
-      futsData.aNettoyer[ft.id] = (futsData.aNettoyer[ft.id]||0) + v;
-    } else {
-      // à nettoyer → vide disponible
-      futsData.aNettoyer[ft.id] = Math.max(0, (futsData.aNettoyer[ft.id]||0) - v);
-      futsData.stock[ft.id]     = (futsData.stock[ft.id]||0) + v;
-    }
-  });
+  } else if (mode === 'retour_client') {
+    const client = modal.dataset.client;
+    const qty = parseInt(document.getElementById('fut-retour-qty')?.value)||0;
+    if (!qty) { showToast('Quantité invalide', true); return; }
+    futsData.parClient[client] = Math.max(0,(futsData.parClient[client]||0)-qty);
+    if (!futsData.parClient[client]) delete futsData.parClient[client];
+    futsData.aNettoyer = (futsData.aNettoyer||0)+qty;
+    futsData.mouvements.push({ type:'retour_client', ts:Date.now(), client, qty });
+    saveFutsData(); closeFutsRetourModal(); renderFutsPage();
+    showToast(`${qty} fût${qty>1?'s':''} de ${client} → À nettoyer`);
 
-  if (total === 0) { showToast('Aucune quantité saisie', true); return; }
-
-  futsData.mouvements.push(mvt);
-  saveFutsData();
-  closeFutsRetourModal();
-  renderFutsPage();
-  const msg = futsRetourMode === 'client'
-    ? `${total} fût${total>1?'s':''} passé${total>1?'s':''} en "À nettoyer"`
-    : `${total} fût${total>1?'s':''} remis en stock vide`;
-  showToast(msg);
+  } else if (mode === 'nettoyage') {
+    const qty = parseInt(document.getElementById('fut-retour-qty')?.value)||0;
+    if (!qty) { showToast('Quantité invalide', true); return; }
+    futsData.aNettoyer = Math.max(0,(futsData.aNettoyer||0)-qty);
+    futsData.stockVide = (futsData.stockVide||0)+qty;
+    futsData.mouvements.push({ type:'retour_nettoyage', ts:Date.now(), qty });
+    saveFutsData(); closeFutsRetourModal(); renderFutsPage();
+    showToast(`${qty} fût${qty>1?'s':''} → Vides disponibles`);
+  }
 }
 
 // ===== ENFÛTAGE / EMBOUTEILLAGE =====
@@ -8332,6 +8312,7 @@ Object.assign(window, {
   switchPage, switchSub, switchMpCat, renderDashboard, renderFutsPage,
   openFutsInitModal, closeFutsInitModal, saveFutsInit,
   openFutsRetourModal, closeFutsRetourModal, saveFutsRetour,
+  openLivraisonFutsModal, openRetourClientModal,
   toggleMenu, closeMenu,
   adjustMP, setMP, setMpPrice,
   openProduitModal, closeProduitModal, selectProduitFormat, saveProduitModal, deleteProduit, adjustProduitQty, setProduitQty, selectFermBtn,
