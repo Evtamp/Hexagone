@@ -4280,6 +4280,7 @@ function renderFermenters() {
         <div>
           <div class="ferm-id">Cuve ${f.id}</div>
           <div class="ferm-name">${f.beer || '— Disponible —'}</div>
+          ${f.brewNum ? `<div style="font-size:11px;font-family:monospace;color:var(--amber-lt);margin-top:2px">${f.brewNum}</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
           ${badgesHtml}
@@ -4790,6 +4791,7 @@ function annulerBrassin(id) {
   const ferm = FERMENTERS.find(f => f.id === b.cuve && f.beer === b.recette);
   if (ferm) {
     ferm.beer = '';
+    ferm.brewNum = '';
     if (ferm.phases) {
       ferm.phases.fermentation = { active:false, debut:null };
       ferm.phases.garde        = { active:false, debut:null };
@@ -6154,7 +6156,7 @@ function openBrewModal(id) {
   const r = recipesData[id];
   if (!r) return;
   document.getElementById('brew-recipe-name').textContent = r.name;
-  document.getElementById('brew-num').value = genBrewNum();
+  // Laisser le champ vide — l'utilisateur saisit son propre numéro
   // Sélect fermenteurs
   const sel = document.getElementById('brew-ferm');
   sel.innerHTML = FERMENTERS.map(f=>`<option value="${f.id}">${f.id}${f.beer?' – '+f.beer:' (libre)'}</option>`).join('');
@@ -6236,7 +6238,7 @@ function confirmBrew(skipDestock = false) {
 
   // Lire le numéro de brassin EN PREMIER avant tout traitement
   const brewNumInput = document.getElementById('brew-num');
-  const brewNum = (brewNumInput?.value || '').trim() || genBrewNum();
+  const brewNum = (brewNumInput?.value || '').trim();
 
   const fermId = document.getElementById('brew-ferm').value;
   const ferm = FERMENTERS.find(f => f.id === fermId);
@@ -6245,6 +6247,7 @@ function confirmBrew(skipDestock = false) {
   if (ferm) {
     if (!ferm.phases) ferm.phases = { fermentation:{active:false,debut:null}, garde:{active:false,debut:null}, dh:{active:false,debut:null} };
     ferm.beer = r.name;
+    ferm.brewNum = brewNum;
     ferm.phases.fermentation = { active:true, debut:new Date().toISOString().split('T')[0] };
     ferm.phases.garde = { active:false, debut:null };
     ferm.phases.dh    = { active:false, debut:null };
