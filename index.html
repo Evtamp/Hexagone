@@ -1459,6 +1459,19 @@
 
 </div>
 
+<!-- ===== MODAL DH ===== -->
+<div id="dh-modal" class="modal-overlay" onclick="if(event.target===this)closeDhModal()">
+  <div class="modal-box" style="max-width:380px;margin:auto">
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700">🌿 Dry Hopping</div>
+    <div id="dh-modal-info" style="margin-top:8px;font-size:13px;color:var(--amber-lt);font-weight:600"></div>
+    <div id="dh-modal-lines" style="margin-top:14px;display:flex;flex-direction:column;gap:10px"></div>
+    <div style="display:flex;gap:8px;margin-top:18px">
+      <button onclick="closeDhModal()" style="flex:1;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:13px;padding:10px;cursor:pointer">Annuler</button>
+      <button onclick="saveDhModal()" style="flex:2;background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:13px;font-weight:700;padding:10px;cursor:pointer">🌿 Détocker & enregistrer</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MODAL ENFÛTAGE / EMBOUTEILLAGE ===== -->
 <div id="enfutage-modal" class="modal-overlay" onclick="if(event.target===this)closeEnfutageModal()">
   <div class="modal-box" style="max-width:380px;margin:auto">
@@ -4548,6 +4561,149 @@ function saveFutsRetour() {
   }
 }
 
+
+// ===== MODAL DRY HOPPING =====
+let _dhFermId = null;
+let _dhDate   = null;
+
+function openDhModal(fermId, today) {
+  _dhFermId = fermId;
+  _dhDate   = today;
+  const f    = FERMENTERS.find(x => x.id === fermId);
+  const rec  = f ? Object.values(recipesData).find(r => r.name === f.beer) : null;
+  const dhHops = rec ? (rec.houblons||[]).filter(h => h.moment === 'DH') : [];
+
+  document.getElementById('dh-modal-info').textContent =
+    `Cuve ${fermId} · ${f?.beer || '—'} · ${today}`;
+
+  const linesEl = document.getElementById('dh-modal-lines');
+
+  if (dhHops.length) {
+    linesEl.innerHTML = dhHops.map((h, i) => {
+      // Chercher le stock disponible
+      const grouped = {};
+      (MP_DATA.houblon||[]).filter(m => m.name === h.name && m.val > 0).forEach(m => {
+        grouped[m.name] = (grouped[m.name]||0) + m.val;
+      });
+      const dispo = grouped[h.name] || 0;
+      return `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:13px;font-weight:700;color:var(--foam)">${h.name}</span>
+          <span style="font-size:11px;color:var(--muted)">Stock : ${dispo.toFixed(2)} kg</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <div class="field-label" style="margin-bottom:3px">Qté recette (kg)</div>
+            <input type="number" step="0.01" min="0" value="${parseFloat(h.qty||0).toFixed(2)}"
+              id="dh-hop-qty-${i}"
+              style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:700;padding:7px 8px;box-sizing:border-box;text-align:center" />
+          </div>
+          <div>
+            <div class="field-label" style="margin-bottom:3px">Lot à utiliser</div>
+            <select id="dh-hop-lot-${i}"
+              style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;padding:7px 6px;box-sizing:border-box">
+              ${(MP_DATA.houblon||[]).filter(m => m.name === h.name && m.val > 0)
+                .map(m => `<option value="${m.id}">${m.lot||'Sans lot'} (${m.val.toFixed(2)} kg)</option>`)
+                .join('') || '<option value="">Aucun stock</option>'}
+            </select>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    // Stocker la liste pour saveDhModal
+    linesEl.dataset.hops = JSON.stringify(dhHops.map(h => h.name));
+  } else {
+    // Pas de houblon DH dans la recette — afficher sélection manuelle
+    linesEl.innerHTML = `
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Aucun houblon DH dans la recette. Sélection manuelle :</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end">
+        <div>
+          <div class="field-label" style="margin-bottom:3px">Houblon</div>
+          <select id="dh-hop-lot-0"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;padding:7px 6px;box-sizing:border-box">
+            <option value="">— Choisir —</option>
+            ${(MP_DATA.houblon||[]).filter(m=>m.val>0)
+              .map(m=>`<option value="${m.id}">${m.name}${m.lot?' · '+m.lot:''} (${m.val.toFixed(2)} kg)</option>`)
+              .join('')}
+          </select>
+        </div>
+        <div>
+          <div class="field-label" style="margin-bottom:3px">Quantité (kg)</div>
+          <input type="number" step="0.01" min="0" id="dh-hop-qty-0" value=""
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:700;padding:7px 8px;box-sizing:border-box;text-align:center" />
+        </div>
+      </div>`;
+    linesEl.dataset.hops = JSON.stringify([]);
+  }
+
+  document.getElementById('dh-modal').style.display = 'flex';
+}
+
+function closeDhModal() {
+  document.getElementById('dh-modal').style.display = 'none';
+  _dhFermId = null;
+  _dhDate   = null;
+}
+
+function saveDhModal() {
+  const f = FERMENTERS.find(x => x.id === _dhFermId);
+  if (!f) return;
+
+  const linesEl   = document.getElementById('dh-modal-lines');
+  const hopsNames = JSON.parse(linesEl.dataset.hops || '[]');
+  const today     = _dhDate || new Date().toISOString().split('T')[0];
+
+  // Trouver le brassin associé pour mettre à jour le suivi
+  const brassin = Object.values(historiqueData).find(b =>
+    b.recette === f.beer && (b.statut === 'fermentation' || b.statut === 'garde' || b.statut === 'dh')
+  );
+
+  const dhLogs = [];
+  const count  = hopsNames.length || 1;
+
+  for (let i = 0; i < count; i++) {
+    const lotEl = document.getElementById(`dh-hop-lot-${i}`);
+    const qtyEl = document.getElementById(`dh-hop-qty-${i}`);
+    if (!lotEl || !lotEl.value) continue;
+    const qty = parseFloat(qtyEl?.value) || 0;
+    if (!qty) continue;
+
+    // Trouver l'item MP
+    const item = Object.values(MP_DATA).flat().find(m => m.id === lotEl.value);
+    if (!item) continue;
+    if (item.val < qty) { showToast(`Stock insuffisant pour ${item.name}`, true); return; }
+
+    // Détocker
+    const valAvant = item.val;
+    item.val = Math.max(0, parseFloat((item.val - qty).toFixed(3)));
+    saveMp(item.id, item.val);
+
+    dhLogs.push({ date: today, hop: item.name, lot: item.lot||'', qty, unit: item.unit||'kg' });
+  }
+
+  // Activer la phase DH sur la cuve
+  normalizeFerm(f);
+  f.phases.dh           = { active:true, debut:today };
+  f.phases.fermentation = { active:false, debut:null };
+  saveFermenters();
+
+  // Mettre à jour le suivi du brassin
+  if (brassin && dhLogs.length) {
+    const s = getSuivi(brassin.id);
+    if (!s.dhLog) s.dhLog = [];
+    dhLogs.forEach(l => s.dhLog.push(l));
+    // Mettre à jour la date DH
+    s.dateDH = today;
+    saveSuivi(brassin.id);
+  }
+
+  renderMP();
+  renderFermenters();
+  closeDhModal();
+  showToast(`DH enregistré${dhLogs.length ? ' · ' + dhLogs.map(l=>`${l.qty}${l.unit} ${l.hop}`).join(', ') : ''}`);
+}
+
 // ===== ENFÛTAGE / EMBOUTEILLAGE =====
 let enfutageSourceFermId = null;
 let enfutageLines = []; // [{ format, qty, lot }]
@@ -4843,6 +4999,11 @@ function setPhase(id, phase) {
       f.phases[phase].active = false;
       f.phases[phase].debut  = null;
     } else {
+      // Si DH : ouvrir modal de destockage houblon avant d'activer
+      if (phase === 'dh') {
+        openDhModal(id, today);
+        return; // le modal prendra le relais
+      }
       // Toggle ON — démarrer le décompte maintenant
       f.phases[phase].active = true;
       f.phases[phase].debut  = today;
@@ -8414,6 +8575,7 @@ Object.assign(window, {
   toggleMenu, closeMenu,
   adjustMP, setMP, setMpPrice,
   openProduitModal, closeProduitModal, selectProduitFormat, saveProduitModal, deleteProduit, adjustProduitQty, setProduitQty, selectFermBtn,
+  openDhModal, closeDhModal, saveDhModal,
   openEnfutageModal, closeEnfutageModal, saveEnfutage, addEnfutageLine, removeEnfutageLine, updateEnfutageLine,
   toggleSuivi, addDensite, deleteDensite, updateSuiviDate, renderSuiviDensites,
   updateSuiviDens, buildCalculs, plato,
