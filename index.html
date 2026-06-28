@@ -3705,8 +3705,10 @@ function renderMP() {
     // Si un seul lot : affichage simple comme avant
     if (lots.length === 1) {
       const item = lots[0];
-      const step = item.step || (item.unit === 'kg' ? 5 : 1);
-      const inputStep = step < 1 ? step.toFixed(1) : step;
+      const isHop = (MP_DATA.houblon||[]).some(i => i.id === item.id);
+      const step = item.step || (isHop ? 0.1 : item.unit === 'kg' ? 5 : 1);
+      const inputStep = isHop ? '0.01' : step < 1 ? step.toFixed(1) : step;
+      const displayVal = isHop ? item.val.toFixed(2) : (Number.isInteger(item.val) ? item.val : item.val.toFixed(1));
       return `
       <div class="mp-row" data-name="${name}">
         <div class="mp-row-left">
@@ -3721,7 +3723,7 @@ function renderMP() {
         <div class="mp-row-qty">
           <button class="qty-btn" onclick="adjustMP('${item.id}',-${step})" style="width:26px;height:26px;font-size:14px">−</button>
           <input class="mp-input" type="number" min="0" max="${item.max}" step="${inputStep}"
-            value="${Number.isInteger(item.val)?item.val:item.val.toFixed(1)}" data-mpid="${item.id}"
+            value="${displayVal}" data-mpid="${item.id}"
             onchange="setMP('${item.id}',this.value)" />
           <button class="qty-btn" onclick="adjustMP('${item.id}',${step})" style="width:26px;height:26px;font-size:14px">+</button>
           <span class="mp-unit-label" style="min-width:22px">${unit}</span>
@@ -3734,8 +3736,9 @@ function renderMP() {
     // Plusieurs lots : ligne récap + sous-lignes par lot (dépliables)
     const groupId = 'mpg-' + (name||'').replace(/[^a-z0-9]/gi,'_');
     const subRows = lots.map(item => {
-      const step = item.step || (item.unit === 'kg' ? 5 : 1);
-      const inputStep = step < 1 ? step.toFixed(1) : step;
+      const isHop = (MP_DATA.houblon||[]).some(i => i.id === item.id);
+      const step = item.step || (isHop ? 0.1 : item.unit === 'kg' ? 5 : 1);
+      const inputStep = isHop ? '0.01' : step < 1 ? step.toFixed(1) : step;
       return `
         <div class="mp-row" style="padding-left:16px;border-top:1px solid var(--border);opacity:.9" data-name="${name}">
           <div class="mp-row-left">
@@ -3807,7 +3810,7 @@ function renderMpSorties() {
     .slice(0, 100); // 100 dernières
 
   if (!sorties.length) {
-    el.innerHTML = '<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px">Aucune sortie enregistrée</div>';
+    el.innerHTML = '<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px">Aucun mouvement enregistré</div>';
     return;
   }
 
@@ -3815,19 +3818,26 @@ function renderMpSorties() {
     const date = new Date(s.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const isOut = s.delta < 0;
     const deltaStr = (isOut ? '' : '+') + s.delta.toFixed(s.mpUnit==='kg'?1:0) + ' ' + (s.mpUnit||'');
+    const isBrassin = s.raison && (s.raison.toLowerCase().includes('brassin') || s.raison.toLowerCase().includes('dh brassin'));
+    const raisonColor = isBrassin ? '#7ab4e8' : 'var(--muted)';
+    const raisonIcon  = isBrassin ? '🍺' : isOut ? '↓' : '↑';
+    const decimals = (s.mpUnit === 'kg') ? 3 : 0;
+    const deltaStrFmt = (isOut ? '' : '+') + s.delta.toFixed(decimals) + ' ' + (s.mpUnit||'');
     return `
     <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span style="font-size:13px;font-weight:600;color:var(--foam)">${s.mpName||'—'}</span>
-          <span style="font-size:12px;font-weight:700;color:${isOut?'var(--danger)':'var(--ok)'}">${deltaStr}</span>
-          <span style="font-size:11px;color:var(--muted)">${s.raison||''}</span>
+          <span style="font-size:12px;font-weight:700;color:${isOut?'var(--danger)':'var(--ok)'}">${deltaStrFmt}</span>
+          <span style="font-size:11px;color:${raisonColor};background:${isBrassin?'rgba(120,180,230,.1)':'none'};${isBrassin?'border:1px solid rgba(120,180,230,.2);border-radius:3px;padding:1px 5px':''}">
+            ${raisonIcon} ${s.raison||''}
+          </span>
         </div>
-        <div style="font-size:10px;color:var(--muted);margin-top:2px">${date} · ${s.valAvant} → ${s.valApres} ${s.mpUnit||''}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${date} · ${parseFloat(s.valAvant).toFixed(decimals)} → ${parseFloat(s.valApres).toFixed(decimals)} ${s.mpUnit||''}</div>
       </div>
       <button onclick="annulerSortieMP('${s.id}')"
         style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:3px 8px;cursor:pointer;flex-shrink:0"
-        title="Annuler cette sortie">↩</button>
+        title="Annuler cette entrée/sortie">↩</button>
     </div>`;
   }).join('');
 }
@@ -3862,10 +3872,11 @@ function tracerSortieMP(item, valAvant, valApres, raison) {
 function adjustMP(id, delta) {
   const item = Object.values(MP_DATA).flat().find(i => i.id === id);
   if (!item) return;
-  const step = item.step || 1;
+  const isHoublon = (MP_DATA.houblon||[]).some(i => i.id === id);
+  const step = item.step || (isHoublon ? 0.1 : 1);
   const valAvant = item.val;
   const raw = Math.round((item.val + delta) / step) * step;
-  item.val = Math.max(0, Math.min(item.max, parseFloat(raw.toFixed(2))));
+  item.val = Math.max(0, Math.min(item.max || 9999, parseFloat(raw.toFixed(3))));
   saveMp(id, item.val);
   tracerSortieMP(item, valAvant, item.val, delta < 0 ? 'Sortie manuelle' : 'Entrée manuelle');
   renderMP();
@@ -3874,12 +3885,13 @@ function adjustMP(id, delta) {
 function setMP(id, rawVal) {
   const item = Object.values(MP_DATA).flat().find(i => i.id === id);
   if (!item) return;
-  const step = item.step || 1;
+  const isHoublon = (MP_DATA.houblon||[]).some(i => i.id === id);
+  const step = item.step || (isHoublon ? 0.1 : 1);
   const v = parseFloat(rawVal);
   if (isNaN(v) || v < 0) return;
   const snapped = Math.round(v / step) * step;
   const valAvant = item.val;
-  item.val = Math.max(0, Math.min(item.max, parseFloat(snapped.toFixed(2))));
+  item.val = Math.max(0, Math.min(item.max || 9999, parseFloat(snapped.toFixed(3))));
   saveMp(id, item.val);
   tracerSortieMP(item, valAvant, item.val, 'Saisie manuelle');
   // Mise à jour partielle du DOM sans perdre le focus
@@ -5725,56 +5737,76 @@ function renderPlanningCalendar() {
 
   labelEl.textContent = ref.toLocaleDateString('fr-FR', { month:'long', year:'numeric' });
 
-  // Jours de la semaine (Lu→Di)
   const DAY_HEADERS = ['Lu','Ma','Me','Je','Ve','Sa','Di'];
   let html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center">';
   html += DAY_HEADERS.map(d =>
     `<div style="font-size:10px;font-weight:700;color:var(--muted);padding:3px 0">${d}</div>`
   ).join('');
 
-  // Premier jour du mois (0=dim → décaler en lundi=0)
-  const firstDay = new Date(year, month, 1);
-  const startDow = (firstDay.getDay() + 6) % 7; // 0=lundi
-  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const firstDay     = new Date(year, month, 1);
+  const startDow     = (firstDay.getDay() + 6) % 7; // 0=lundi
+  const daysInMonth  = new Date(year, month+1, 0).getDate();
+  const daysInPrevM  = new Date(year, month, 0).getDate();
 
-  // Semaine active
   const monday = getMonday(weekOffset);
   const sunday = new Date(monday); sunday.setDate(sunday.getDate()+6);
+  const todayMonday = getMonday(0);
 
-  // Cellules vides avant le 1er
-  for (let i = 0; i < startDow; i++) {
-    html += '<div></div>';
-  }
+  // Helper : calcul wDiff pour n'importe quelle date
+  const getWDiff = (date) => {
+    const tgt = new Date(date);
+    const dow = (tgt.getDay() + 6) % 7;
+    tgt.setDate(tgt.getDate() - dow);
+    tgt.setHours(0,0,0,0);
+    return Math.round((tgt - todayMonday) / (7*86400000));
+  };
 
-  for (let d = 1; d <= daysInMonth; d++) {
-    const date    = new Date(year, month, d);
-    const key     = dateKey(date);
+  // Helper : rendre une cellule de jour
+  const dayCell = (date, faded) => {
+    const key      = dateKey(date);
     const hasTasks = !!(planningData[key] && planningData[key].length);
     const isToday  = date.getTime() === today.getTime();
     const inWeek   = date >= monday && date <= sunday;
     const dow      = (date.getDay() + 6) % 7;
     const isWeekend = dow >= 5;
+    const wDiff    = getWDiff(date);
+    const d        = date.getDate();
 
-    // Calcul du weekOffset pour ce jour
-    const diffMs   = date.getTime() - today.getTime();
-    const diffDays = Math.round(diffMs / 86400000);
-    const targetMonday = new Date(date);
-    const tdow = (date.getDay() + 6) % 7;
-    targetMonday.setDate(date.getDate() - tdow);
-    targetMonday.setHours(0,0,0,0);
-    const todayMonday = getMonday(0);
-    const wDiff = Math.round((targetMonday - todayMonday) / (7*86400000));
+    let bg = 'transparent', color, border = 'none', fw = '400';
+    if (faded) {
+      color = 'rgba(150,150,150,0.35)';
+    } else if (isToday) {
+      bg = 'var(--amber)'; color = 'var(--bg)'; fw = '700';
+    } else if (inWeek) {
+      bg = 'rgba(200,128,10,.15)'; border = '1px solid rgba(200,128,10,.4)'; fw = '600';
+      color = isWeekend ? 'var(--muted)' : 'var(--foam)';
+    } else {
+      color = isWeekend ? 'var(--muted)' : (faded ? 'rgba(150,150,150,0.35)' : 'var(--foam)');
+    }
 
-    let bg = 'transparent', color = isWeekend ? 'var(--muted)' : 'var(--foam)', border = 'none', fw = '400';
-    if (isToday)  { bg = 'var(--amber)'; color = 'var(--bg)'; fw = '700'; }
-    else if (inWeek) { bg = 'rgba(200,128,10,.15)'; border = '1px solid rgba(200,128,10,.4)'; fw = '600'; }
+    return `<div onclick="jumpToWeek(${wDiff})"
+      style="position:relative;cursor:pointer;border-radius:4px;padding:4px 2px;background:${bg};border:${border};color:${color};font-size:12px;font-weight:${fw};text-align:center;line-height:1.2">
+      ${d}
+      ${hasTasks && !faded ? `<span style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:${isToday?'var(--bg)':'var(--amber)'};display:block"></span>` : ''}
+    </div>`;
+  };
 
-    html += `
-      <div onclick="jumpToWeek(${wDiff})"
-        style="position:relative;cursor:pointer;border-radius:4px;padding:4px 2px;background:${bg};border:${border};color:${color};font-size:12px;font-weight:${fw};text-align:center;line-height:1.2">
-        ${d}
-        ${hasTasks ? `<span style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:${isToday?'var(--bg)':'var(--amber)'};display:block"></span>` : ''}
-      </div>`;
+  // Jours du mois précédent (grisés)
+  for (let i = startDow - 1; i >= 0; i--) {
+    const date = new Date(year, month - 1, daysInPrevM - i);
+    html += dayCell(date, true);
+  }
+
+  // Jours du mois courant
+  for (let d = 1; d <= daysInMonth; d++) {
+    html += dayCell(new Date(year, month, d), false);
+  }
+
+  // Jours du mois suivant (grisés) — compléter jusqu'à 42 cellules (6 semaines)
+  const totalCells = startDow + daysInMonth;
+  const trailingDays = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+  for (let d = 1; d <= trailingDays; d++) {
+    html += dayCell(new Date(year, month + 1, d), true);
   }
 
   html += '</div>';
