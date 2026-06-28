@@ -6478,7 +6478,7 @@ function renderOrderList(key) {
     return;
   }
   el.innerHTML = orders.map(o => {
-    const totalF = o.lines.reduce((a,l)=>a+(parseInt(l.futs)||0),0);
+    const totalF = o.lines.reduce((a,l)=>(a+(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0)),0);
     const totalC = o.lines.reduce((a,l)=>a+(parseInt(l.cartons)||0),0);
     const totalT = o.lines.reduce((a,l)=>a+(parseInt(l.tireuse)||0),0);
     const totalHT = o.lines.reduce((a,l)=>
@@ -6511,7 +6511,7 @@ function renderOrderList(key) {
     }).join('');
     return `
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:10px;cursor:pointer"
-         onclick="editOrderForm('${key}','${o.id}')">
+         onclick="editOrderForm('${key}','${o.id}')" title="Cliquer pour modifier">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <div style="font-size:13px;font-weight:700;color:var(--foam)">${o.client||'Client'}</div>
         <div style="display:flex;align-items:center;gap:6px">
@@ -6705,7 +6705,7 @@ function editOrderForm(key, id) {
   document.getElementById('order-date').value   = key;
   document.getElementById('order-client').value = o.client || '';
   document.getElementById('order-note').value   = o.note   || '';
-  document.getElementById('order-form-title').textContent = 'Modifier le bon';
+  document.getElementById('order-form-title').textContent = '✏️ Modifier le bon — ' + (o.client||'');
   document.getElementById('order-save-btn').textContent = '✓ Mettre à jour';
   populateOrderClientSelect(o.client || '');
   // Si le client est dans la liste, masquer le champ libre ; sinon l'afficher
@@ -6723,7 +6723,11 @@ function editOrderForm(key, id) {
     prixCarton: l.prixCarton||0, prixTireuse: l.prixTireuse||0
   }));
   renderDraftLines();
-  document.getElementById('order-client').scrollIntoView({ behavior:'smooth', block:'nearest' });
+  // Scroller vers le formulaire pour que les quantités soient visibles
+  setTimeout(() => {
+    const el = document.getElementById('order-lines');
+    if (el) el.scrollIntoView({ behavior:'smooth', block:'start' });
+  }, 100);
 }
 
 function deleteOrder(key, id) {
