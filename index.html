@@ -2314,6 +2314,16 @@
           style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:8px 12px;width:100%;margin-top:6px"/>
       </div>
 
+      <!-- Aperçu stock -->
+      <div style="margin-bottom:10px">
+        <button onclick="toggleOrderStockPanel()"
+          style="width:100%;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;font-weight:600;padding:7px 12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+          <span>📦 Aperçu des stocks</span>
+          <span id="order-stock-arrow">▼</span>
+        </button>
+        <div id="order-stock-panel" style="display:none;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px"></div>
+      </div>
+
       <!-- Lignes de bière -->
       <div id="order-lines" style="margin-bottom:10px"></div>
 
@@ -4357,6 +4367,53 @@ function refreshEnfutageRecap(brassinId) {
   if (el) el.innerHTML = buildEnfutageRecap(brassinId);
 }
 
+
+
+// ===== APERÇU STOCK DANS MODAL COMMANDE =====
+function toggleOrderStockPanel() {
+  const panel = document.getElementById('order-stock-panel');
+  const arrow = document.getElementById('order-stock-arrow');
+  if (!panel) return;
+  const open = panel.style.display !== 'none';
+  if (!open) renderOrderStockPanel();
+  panel.style.display = open ? 'none' : 'block';
+  if (arrow) arrow.textContent = open ? '▼' : '▲';
+}
+
+function renderOrderStockPanel() {
+  const panel = document.getElementById('order-stock-panel');
+  if (!panel) return;
+
+  // Grouper les produits par bière
+  const byBeer = {};
+  Object.values(produitsData||{}).forEach(p => {
+    if (!p.biere || !p.qty) return;
+    if (!byBeer[p.biere]) byBeer[p.biere] = { fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, btl33:0, btl75:0 };
+    if (byBeer[p.biere][p.format] !== undefined) byBeer[p.biere][p.format] += parseInt(p.qty)||0;
+  });
+
+  const FMT = {
+    fut30inox: '30L Inox', fut30kk: '30L KK', fut30kktp: '30L KKTP',
+    fut20: '20L', btl33: '33cL', btl75: '75cL'
+  };
+
+  if (!Object.keys(byBeer).length) {
+    panel.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px 0">Aucun produit en stock</div>';
+    return;
+  }
+
+  panel.innerHTML = Object.entries(byBeer).map(([biere, stocks]) => {
+    const parts = Object.entries(FMT)
+      .filter(([fmt]) => (stocks[fmt]||0) > 0)
+      .map(([fmt, label]) => `<span style="font-size:11px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:1px 6px;color:var(--foam)">${stocks[fmt]} × ${label}</span>`);
+    if (!parts.length) return '';
+    return `
+      <div style="padding:5px 0;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:700;color:var(--amber-lt);min-width:100px;flex-shrink:0">${biere}</span>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">${parts.join('')}</div>
+      </div>`;
+  }).filter(Boolean).join('') || '<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px 0">Aucun produit en stock</div>';
+}
 
 // ===== PARC FÛTS INOX 30L =====
 let futsData = { stockVide:0, aNettoyer:0, parClient:{}, mouvements:[] };
@@ -8643,6 +8700,7 @@ function closeConfirmCreation() {
 
 Object.assign(window, {
   switchPage, switchSub, switchMpCat, renderDashboard, renderFutsPage,
+  toggleOrderStockPanel, renderOrderStockPanel,
   openFutsInitModal, closeFutsInitModal, saveFutsInit,
   openFutsRetourModal, closeFutsRetourModal, saveFutsRetour,
   openLivraisonFutsModal, openRetourClientModal, updateFutsInoxFromBl, updateStockFromBl,
