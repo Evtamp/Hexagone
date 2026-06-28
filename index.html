@@ -1213,13 +1213,24 @@
           <div id="plan-cal-grid" style="padding:0 8px 10px"></div>
         </div>
 
-        <!-- Navigation semaine -->
-        <div class="week-nav">
-          <button onclick="changeWeek(-1)">‹</button>
-          <div class="week-label" id="week-label">Semaine du …</div>
-          <button onclick="changeWeek(1)">›</button>
+        <!-- Navigation 2 semaines -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0 6px">
+          <button onclick="changeWeek(-1)" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);width:32px;height:32px;cursor:pointer;font-size:16px">‹</button>
+          <div style="text-align:center">
+            <span id="week-label" style="font-size:12px;font-weight:600;color:var(--foam)">Semaine du …</span>
+          </div>
+          <button onclick="changeWeek(1)" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);width:32px;height:32px;cursor:pointer;font-size:16px">›</button>
         </div>
-        <div id="week-grid"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <div id="week-label-1" style="font-size:11px;font-weight:700;color:var(--amber-lt);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;text-align:center"></div>
+            <div id="week-grid-1"></div>
+          </div>
+          <div>
+            <div id="week-label-2" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;text-align:center"></div>
+            <div id="week-grid-2"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -5841,76 +5852,89 @@ function renderPlanning() {
   renderPlanningCalendar();
 
   const today = new Date(); today.setHours(0,0,0,0);
-  const grid = document.getElementById('week-grid');
-  grid.innerHTML = '';
+  const renderWeek = (startMonday, gridId, labelId, isPrimary) => {
+    const grid = document.getElementById(gridId);
+    if (!grid) return;
+    grid.innerHTML = '';
 
-  for (let i = 0; i < 7; i++) {
-    const dayDate = new Date(monday); dayDate.setDate(dayDate.getDate()+i);
-    const isToday = dayDate.getTime() === today.getTime();
-    const key = dateKey(dayDate);
-    const tasks = planningData[key] || [];
+    const endSunday = new Date(startMonday); endSunday.setDate(endSunday.getDate()+6);
+    if (labelId) {
+      const lbl = document.getElementById(labelId);
+      if (lbl) lbl.textContent = fmt(startMonday) + ' – ' + fmt(endSunday);
+    }
 
-    const tasksHtml = tasks.length
-      ? tasks.map(t => {
-          const tt = TASK_TYPES[t.type] || { label:t.type, icon:'•', color:'var(--muted)' };
-          return `<div class="day-task" draggable="true"
-            data-task-id="${t.id}" data-from-key="${key}"
-            style="display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:grab">
-            <span style="font-size:16px;color:var(--border);flex-shrink:0;cursor:grab;padding:0 2px">⠿</span>
-            <div onclick="openEditTask('${key}','${t.id}')" style="display:flex;align-items:center;gap:6px;min-width:0;flex:1;cursor:pointer">
-              <span class="day-task-cat" style="background:${tt.color}22;color:${tt.color};flex-shrink:0">${tt.icon} ${tt.label}</span>
-              <span style="font-size:12px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${taskDetail(t)}</span>
-            </div>
-            <button onclick="deleteTask('${key}','${t.id}')" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0;line-height:1;flex-shrink:0">×</button>
-          </div>`;
-        }).join('')
-      : `<div class="day-empty">Aucune tâche</div>`;
+    for (let i = 0; i < 7; i++) {
+      const dayDate = new Date(startMonday); dayDate.setDate(dayDate.getDate()+i);
+      const isToday = dayDate.getTime() === today.getTime();
+      const key = dateKey(dayDate);
+      const tasks = planningData[key] || [];
 
-    grid.insertAdjacentHTML('beforeend', `
-    <div class="day-row">
-      <div style="flex-shrink:0;width:38px;text-align:center">
-        <div class="day-name ${isToday?'today':''}">${DAYS[i]}</div>
-        <div style="font-size:15px;font-weight:700;color:${isToday?'var(--amber-lt)':'var(--foam)'}">${dayDate.getDate()}</div>
-        <button onclick="openAddTask('${key}')" style="margin-top:5px;background:none;border:1px solid var(--border);border-radius:50%;width:22px;height:22px;color:var(--muted);font-size:15px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;margin-left:auto;margin-right:auto">+</button>
-      </div>
-      <div class="day-tasks drop-zone" data-key="${key}" style="flex:1">${tasksHtml}</div>
-    </div>`);
-  }
+      const tasksHtml = tasks.length
+        ? tasks.map(t => {
+            const tt = TASK_TYPES[t.type] || { label:t.type, icon:'•', color:'var(--muted)' };
+            return `<div class="day-task" draggable="true"
+              data-task-id="${t.id}" data-from-key="${key}"
+              style="display:flex;align-items:center;justify-content:space-between;gap:4px;cursor:grab">
+              <span style="font-size:14px;color:var(--border);flex-shrink:0;cursor:grab">⠿</span>
+              <div onclick="openEditTask('${key}','${t.id}')" style="display:flex;align-items:center;gap:4px;min-width:0;flex:1;cursor:pointer">
+                <span class="day-task-cat" style="background:${tt.color}22;color:${tt.color};flex-shrink:0;font-size:10px;padding:1px 4px">${tt.icon} ${tt.label}</span>
+                <span style="font-size:11px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${taskDetail(t)}</span>
+              </div>
+              <button onclick="deleteTask('${key}','${t.id}')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1;flex-shrink:0">×</button>
+            </div>`;
+          }).join('')
+        : `<div class="day-empty" style="font-size:11px">—</div>`;
 
-  // Attacher les events drag & drop après insertion dans le DOM
-  grid.querySelectorAll('[draggable="true"]').forEach(el => {
-    el.addEventListener('dragstart', e => {
-      e.dataTransfer.setData('taskId',  el.dataset.taskId);
-      e.dataTransfer.setData('fromKey', el.dataset.fromKey);
-      e.dataTransfer.effectAllowed = 'move';
-      setTimeout(() => el.style.opacity = '.4', 0);
-    });
-    el.addEventListener('dragend', e => {
-      el.style.opacity = '';
-      grid.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
-    });
-  });
+      grid.insertAdjacentHTML('beforeend', `
+      <div class="day-row" style="padding:6px 8px;${isToday?'background:rgba(200,128,10,.06);border-left:2px solid var(--amber)':''}">
+        <div style="flex-shrink:0;width:32px;text-align:center">
+          <div class="day-name ${isToday?'today':''}" style="font-size:10px">${DAYS[i]}</div>
+          <div style="font-size:13px;font-weight:700;color:${isToday?'var(--amber-lt)':'var(--foam)'}">${dayDate.getDate()}</div>
+          <button onclick="openAddTask('${key}')" style="margin-top:3px;background:none;border:1px solid var(--border);border-radius:50%;width:18px;height:18px;color:var(--muted);font-size:12px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;margin-left:auto;margin-right:auto">+</button>
+        </div>
+        <div class="day-tasks drop-zone" data-key="${key}" style="flex:1;min-width:0">${tasksHtml}</div>
+      </div>`);
+    }
 
-  grid.querySelectorAll('.drop-zone').forEach(zone => {
-    zone.addEventListener('dragover', e => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      grid.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
-      zone.classList.add('drag-over');
+    // Drag & drop
+    grid.querySelectorAll('[draggable="true"]').forEach(el => {
+      el.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('taskId',  el.dataset.taskId);
+        e.dataTransfer.setData('fromKey', el.dataset.fromKey);
+        e.dataTransfer.effectAllowed = 'move';
+        setTimeout(() => el.style.opacity = '.4', 0);
+      });
+      el.addEventListener('dragend', e => {
+        el.style.opacity = '';
+        document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
+      });
     });
-    zone.addEventListener('dragleave', e => {
-      if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
+    grid.querySelectorAll('.drop-zone').forEach(zone => {
+      zone.addEventListener('dragover', e => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
+        zone.classList.add('drag-over');
+      });
+      zone.addEventListener('dragleave', e => {
+        if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
+      });
+      zone.addEventListener('drop', e => {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        const taskId  = e.dataTransfer.getData('taskId');
+        const fromKey = e.dataTransfer.getData('fromKey');
+        const toKey   = zone.dataset.key;
+        if (!taskId || fromKey === toKey) return;
+        moveTask(fromKey, toKey, taskId);
+      });
     });
-    zone.addEventListener('drop', e => {
-      e.preventDefault();
-      zone.classList.remove('drag-over');
-      const taskId  = e.dataTransfer.getData('taskId');
-      const fromKey = e.dataTransfer.getData('fromKey');
-      const toKey   = zone.dataset.key;
-      if (!taskId || fromKey === toKey) return;
-      moveTask(fromKey, toKey, taskId);
-    });
-  });
+  };
+
+  // Semaine 1 (courante) + Semaine 2 (suivante)
+  const monday2 = new Date(monday); monday2.setDate(monday2.getDate() + 7);
+  renderWeek(monday,  'week-grid-1', 'week-label-1', true);
+  renderWeek(monday2, 'week-grid-2', 'week-label-2', false);
 }
 
 function moveTask(fromKey, toKey, taskId) {
