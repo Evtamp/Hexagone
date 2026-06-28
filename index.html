@@ -2744,14 +2744,24 @@ function deleteTireuse(id) {
 // Retourne les tireuses disponibles pour une date donnée (pas réservées ce jour)
 function getTireusesDispos(dateKey) {
   const toutes = Object.values(tireusesData).sort((a,b) => (a.num||'').localeCompare(b.num||''));
-  // Tireuses réservées ce jour dans d'autres commandes
-  const reservees = new Set();
+  // Tireuses réservées ce jour dans d'autres commandes (exclure la commande en cours d'édition)
+  const reservations = {}; // tireuseId → client
   const raw = ordersData[dateKey] || [];
   const dayOrders = Array.isArray(raw) ? raw : Object.values(raw);
   dayOrders.forEach(o => {
-    (o.tireuseIds||[]).forEach(tid => reservees.add(tid));
+    if (o.id === editOrderId) return; // exclure la commande en cours
+    const client = o.client || o.lines?.[0]?.beer || '?';
+    (o.tireuseIds||[]).forEach(tid => { reservations[tid] = client; });
+    // Aussi scanner les lignes
+    (o.lines||[]).forEach(l => {
+      (l.tireuseIds||[]).forEach(tid => { reservations[tid] = client; });
+    });
   });
-  return toutes.map(t => ({ ...t, dispo: !reservees.has(t.id) }));
+  return toutes.map(t => ({
+    ...t,
+    dispo: !reservations[t.id],
+    reservePar: reservations[t.id] || null
+  }));
 }
 
 function getRibHtml() {
@@ -6613,11 +6623,13 @@ function renderDraftLines() {
             const sel = selectedIds.includes(t.id);
             const color = !t.dispo && !sel ? 'var(--danger)' : sel ? 'var(--amber)' : 'var(--border)';
             const bg    = sel ? 'rgba(200,128,10,.2)' : 'var(--surface)';
+    const isBlocked = !t.dispo && !sel;
             return `<button type="button"
               onclick="toggleTireuseOnLine(${i},'${t.id}')"
-              style="padding:5px 10px;border-radius:var(--radius-sm);border:1px solid ${color};background:${bg};color:${sel?'var(--amber-lt)':t.dispo?'var(--foam)':'var(--danger)'};font-size:12px;font-weight:700;cursor:pointer"
-              title="${t.dispo?'Disponible':'Déjà réservée'}">
-              #${t.num}${t.modele?' '+t.modele:''}${!t.dispo&&!sel?' ⚠':''}
+              ${isBlocked ? 'disabled' : ''}
+              style="padding:5px 10px;border-radius:var(--radius-sm);border:1px solid ${color};background:${bg};color:${sel?'var(--amber-lt)':t.dispo?'var(--foam)':'rgba(200,80,80,.5)'};font-size:12px;font-weight:700;cursor:${isBlocked?'not-allowed':'pointer'};opacity:${isBlocked?'0.55':'1'}"
+              title="${sel?'Sélectionnée':t.dispo?'Disponible':'Réservée pour '+t.reservePar}">
+              #${t.num}${t.modele?' '+t.modele:''}${sel?' ✓':''}${isBlocked?' 🔒 '+t.reservePar:''}
             </button>`;
           }).join('')}
         </div>
@@ -6669,12 +6681,19 @@ function renderDraftLines() {
 }
 
 function toggleTireuseOnLine(i, tireuseId) {
+  // Vérifier si la tireuse est réservée par un autre client
+  const dispos = getTireusesDispos(orderModalKey);
+  const t = dispos.find(x => x.id === tireuseId);
   const ids = draftLines[i].tireuseIds || [];
+  const alreadySel = ids.includes(tireuseId);
+  if (t && !t.dispo && !alreadySel) {
+    showToast(`🚫 Tireuse #${t.num} réservée pour ${t.reservePar}`, true);
+    return;
+  }
   const idx = ids.indexOf(tireuseId);
   if (idx >= 0) ids.splice(idx, 1);
   else ids.push(tireuseId);
   draftLines[i].tireuseIds = ids;
-  // Sync le nombre avec la sélection
   draftLines[i].tireuse = ids.length || draftLines[i].tireuse || 0;
   renderDraftLines();
 }
