@@ -476,6 +476,8 @@
     /* ===== PLANNING ===== */
     .planning-week {
       padding: 16px;
+      max-width: 100%;
+      box-sizing: border-box;
     }
     .week-nav {
       display: flex;
@@ -1221,12 +1223,12 @@
           </div>
           <button onclick="changeWeek(1)" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);width:32px;height:32px;cursor:pointer;font-size:16px">›</button>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:100%;width:100%;box-sizing:border-box">
+          <div style="min-width:0">
             <div id="week-label-1" style="font-size:11px;font-weight:700;color:var(--amber-lt);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;text-align:center"></div>
             <div id="week-grid-1"></div>
           </div>
-          <div>
+          <div style="min-width:0">
             <div id="week-label-2" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;text-align:center"></div>
             <div id="week-grid-2"></div>
           </div>
@@ -5878,7 +5880,7 @@ function renderPlanning() {
               <span style="font-size:14px;color:var(--border);flex-shrink:0;cursor:grab">⠿</span>
               <div onclick="openEditTask('${key}','${t.id}')" style="display:flex;align-items:center;gap:4px;min-width:0;flex:1;cursor:pointer">
                 <span class="day-task-cat" style="background:${tt.color}22;color:${tt.color};flex-shrink:0;font-size:10px;padding:1px 4px">${tt.icon} ${tt.label}</span>
-                <span style="font-size:11px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${taskDetail(t)}</span>
+                <span style="font-size:11px;color:var(--text-dim);word-break:break-word;overflow-wrap:break-word">${taskDetail(t)}</span>
               </div>
               <button onclick="deleteTask('${key}','${t.id}')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1;flex-shrink:0">×</button>
             </div>`;
