@@ -4419,33 +4419,61 @@ function renderOrderStockPanel() {
   const panel = document.getElementById('order-stock-panel');
   if (!panel) return;
 
-  // Grouper les produits par bière
-  const byBeer = {};
-  Object.values(produitsData||{}).forEach(p => {
-    if (!p.biere || !p.qty) return;
-    if (!byBeer[p.biere]) byBeer[p.biere] = { fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, btl33:0, btl75:0 };
-    if (byBeer[p.biere][p.format] !== undefined) byBeer[p.biere][p.format] += parseInt(p.qty)||0;
-  });
-
   const FMT = {
     fut30inox: '30L Inox', fut30kk: '30L KK', fut30kktp: '30L KKTP',
     fut20: '20L', btl33: '33cL', btl75: '75cL'
   };
+
+  // Stock total par bière/format
+  const byBeer = {};
+  Object.values(produitsData||{}).forEach(p => {
+    if (!p.biere) return;
+    if (!byBeer[p.biere]) byBeer[p.biere] = { fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, btl33:0, btl75:0 };
+    if (byBeer[p.biere][p.format] !== undefined) byBeer[p.biere][p.format] += parseInt(p.qty)||0;
+  });
+
+  // Engagements commandes futures par bière/format
+  const engage = calcStockEngageParBiere();
 
   if (!Object.keys(byBeer).length) {
     panel.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px 0">Aucun produit en stock</div>';
     return;
   }
 
-  panel.innerHTML = Object.entries(byBeer).map(([biere, stocks]) => {
-    const parts = Object.entries(FMT)
-      .filter(([fmt]) => (stocks[fmt]||0) > 0)
-      .map(([fmt, label]) => `<span style="font-size:11px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:1px 6px;color:var(--foam)">${stocks[fmt]} × ${label}</span>`);
-    if (!parts.length) return '';
+  panel.innerHTML = Object.entries(byBeer).sort(([a],[b])=>a.localeCompare(b)).map(([biere, stocks]) => {
+    const eng = engage[biere] || {};
+    const lines = Object.entries(FMT).map(([fmt, label]) => {
+      const total = stocks[fmt]||0;
+      const res   = eng[fmt]||0;
+      const libre = Math.max(0, total - res);
+      if (total === 0 && res === 0) return '';
+      const libreColor = libre === 0 ? 'var(--danger)' : libre < total ? '#EF9F27' : 'var(--ok)';
+      return `
+        <div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+          <span style="font-size:11px;color:var(--muted);min-width:60px">${label}</span>
+          <span style="font-size:13px;font-weight:700;color:var(--foam);min-width:20px;text-align:right">${total}</span>
+          ${res > 0 ? `
+            <span style="font-size:10px;color:rgba(160,160,160,.6)">− ${res} 🔒</span>
+            <span style="font-size:12px;font-weight:700;color:${libreColor};margin-left:2px">= ${libre} libre${libre>1?'s':''}</span>
+          ` : `<span style="font-size:11px;color:var(--ok);margin-left:4px">✓ libre</span>`}
+        </div>`;
+    }).filter(Boolean).join('');
+
+    if (!lines) return '';
+
+    const reservations = (eng.reservations||[]);
+    const resHtml = reservations.length
+      ? `<div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">${
+          reservations.map(r =>
+            `<div style="font-size:10px;color:rgba(160,160,160,.6);padding:1px 0">🔒 ${r.client} · ${r.date} · ${r.fmts.join(', ')}</div>`
+          ).join('')
+        }</div>` : '';
+
     return `
-      <div style="padding:5px 0;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-        <span style="font-size:12px;font-weight:700;color:var(--amber-lt);min-width:100px;flex-shrink:0">${biere}</span>
-        <div style="display:flex;gap:4px;flex-wrap:wrap">${parts.join('')}</div>
+      <div style="padding:6px 0;border-bottom:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:700;color:var(--amber-lt);margin-bottom:4px">${biere}</div>
+        ${lines}
+        ${resHtml}
       </div>`;
   }).filter(Boolean).join('') || '<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px 0">Aucun produit en stock</div>';
 }
