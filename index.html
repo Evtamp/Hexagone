@@ -3200,19 +3200,34 @@ function setProduitQty(id, val) {
 // ─── Calcul des stocks engagés par bière/format à partir des commandes futures ───
 function calcStockEngageParBiere() {
   const today = new Date(); today.setHours(0,0,0,0);
-  // engage[biere] = { futs: N, cartons: N, tireuses: N }
+  // engage[biere] = { futs, cartons, tireuses, fut30inox, fut30kk, fut30kktp, fut20, btl33, btl75, clients:[] }
   const engage = {};
   Object.entries(ordersData).forEach(([dateKey, dayOrders]) => {
     const d = new Date(dateKey + 'T12:00:00');
-    if (d < today) return; // ignorer les commandes passées
+    if (d < today) return;
     const orders = Array.isArray(dayOrders) ? dayOrders : Object.values(dayOrders||{});
     orders.map(migrateOrder).forEach(o => {
+      const client = o.client || o.lines?.[0]?.beer || '?';
+      const dateStr = new Date(dateKey+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
       o.lines.forEach(l => {
         const beer = l.beer || '—';
-        if (!engage[beer]) engage[beer] = { futs:0, cartons:0, tireuses:0 };
-        engage[beer].futs     += (parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0);
-        engage[beer].cartons  += parseInt(l.cartons) || 0;
-        engage[beer].tireuses += parseInt(l.tireuse) || 0;
+        if (!engage[beer]) engage[beer] = { futs:0, cartons:0, tireuses:0, fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, btl33:0, btl75:0, reservations:[] };
+        const f30i = parseInt(l.fut30inox)||0, f30k = parseInt(l.fut30kk)||0;
+        const f30t = parseInt(l.fut30kktp)||0, f20  = parseInt(l.fut20)||0;
+        const car  = parseInt(l.cartons)||0,   tir  = parseInt(l.tireuse)||0;
+        engage[beer].fut30inox  += f30i; engage[beer].fut30kk   += f30k;
+        engage[beer].fut30kktp  += f30t; engage[beer].fut20      += f20;
+        engage[beer].futs       += f30i+f30k+f30t+f20;
+        engage[beer].cartons    += car;
+        engage[beer].tireuses   += tir;
+        const fmts = [];
+        if (f30i) fmts.push(`${f30i}×30L Inox`);
+        if (f30k) fmts.push(`${f30k}×30L KK`);
+        if (f30t) fmts.push(`${f30t}×30L KKTP`);
+        if (f20)  fmts.push(`${f20}×20L`);
+        if (car)  fmts.push(`${car}×carton`);
+        if (tir)  fmts.push(`${tir}×tireuse`);
+        if (fmts.length) engage[beer].reservations.push({ client, date:dateStr, fmts });
       });
     });
   });
@@ -3250,7 +3265,11 @@ function renderProduits() {
     const totalTireuses= items.filter(p=>p.format==='tireuse').reduce((s,p)=>s+(p.qty||0),0);
 
     // Engagements commandes futures pour cette bière
-    const eng = engage[biere] || { futs:0, cartons:0, tireuses:0 };
+    const eng = engage[biere] || { futs:0, cartons:0, tireuses:0, fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, btl33:0, btl75:0, reservations:[] };
+    // Map format → qty engagée (pour affichage par ligne)
+    eng.fut30inox = eng.fut30inox||0; eng.fut30kk = eng.fut30kk||0;
+    eng.fut30kktp = eng.fut30kktp||0; eng.fut20    = eng.fut20||0;
+    eng.btl33 = eng.cartons||0; eng.btl75 = 0;
     const futsApresCmd    = totalFuts    - eng.futs;
     const cartonsApresCmd = totalBtl     - eng.cartons;
     // Réservations tireuses = tireuses commandées (même champ)
@@ -3264,16 +3283,25 @@ function renderProduits() {
     const statusColor = dispoBrute === 0 ? 'var(--danger)' : dispoNette < 0 ? 'var(--danger)' : dispoNette === 0 ? '#c08a20' : 'var(--ok)';
 
     const rows = items.map(p => {
-      const dot = p.qty === 0 ? 'var(--danger)' : p.qty < 3 ? '#c08a20' : 'var(--ok)';
+      // Engagement pour ce format précis
+      const engFmt = eng[p.format] || 0;
+      const reserved = Math.min(p.qty||0, engFmt);
+      const libre    = Math.max(0, (p.qty||0) - engFmt);
+      const dot = p.qty === 0 ? 'var(--danger)' : libre === 0 ? '#c08a20' : 'var(--ok)';
+      const reservedBadge = reserved > 0
+        ? `<span style="font-size:10px;color:var(--muted);background:rgba(120,120,120,.12);border:1px solid rgba(120,120,120,.25);border-radius:3px;padding:1px 5px">🔒 ${reserved} réservé${reserved>1?'s':''}</span>`
+        : '';
       return `
-      <div class="mp-row">
+      <div class="mp-row" style="${reserved > 0 ? 'background:rgba(120,120,120,.04)' : ''}">
         <div class="mp-row-left">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dot};flex-shrink:0"></span>
             <span style="font-size:12px;color:var(--text-dim)">${FORMAT_LABELS[p.format]||p.format}</span>
             <span style="font-size:10px;color:var(--amber-lt);background:rgba(200,128,10,.15);border:1px solid rgba(200,128,10,.25);border-radius:3px;padding:1px 5px;font-family:monospace">${p.lot}</span>
             ${p.ferm?`<span style="font-size:10px;color:var(--muted)">← ${p.ferm}</span>`:''}
+            ${reservedBadge}
           </div>
+          ${reserved > 0 ? `<div style="font-size:10px;color:var(--muted);margin-top:3px">Libre : <strong style="color:${libre===0?'#c08a20':'var(--foam)'}">${libre}</strong> · Réservé : <span style="color:rgba(180,180,180,.7)">${reserved}</span></div>` : ''}
         </div>
         <div class="mp-row-qty">
           <button class="qty-btn" onclick="adjustProduitQty('${p.id}',-1)" style="width:26px;height:26px;font-size:14px">−</button>
@@ -3292,16 +3320,23 @@ function renderProduits() {
     const alerteTxt = futsApresCmd < 0 || cartonsApresCmd < 0 || futsApresRes < 0
       ? `<span style="color:var(--danger);font-weight:700;margin-left:8px">⚠ stock insuffisant</span>` : '';
 
+    const reservationsHtml = (eng.reservations||[]).map(r =>
+      `<div style="font-size:10px;color:rgba(180,180,180,.7);padding:1px 0">🔒 ${r.client} · ${r.date} · ${r.fmts.join(', ')}</div>`
+    ).join('');
+
     const stockLine = hasEngagement ? `
-    <div style="padding:4px 2px 2px;font-size:11px;color:var(--text-dim);display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-      ${totalFuts  ? `<span>📦 ${totalFuts} fût${totalFuts>1?'s':''}</span>` : ''}
-      ${totalBtl   ? `<span>📦 ${totalBtl} btl</span>` : ''}
-      ${eng.futs   ? `<span style="color:var(--amber-lt)">→ −${eng.futs} cmde</span>` : ''}
-      ${eng.cartons? `<span style="color:var(--amber-lt)">→ −${eng.cartons} carton${eng.cartons>1?'s':''}</span>` : ''}
-      ${eng.tireuses? `<span style="color:#7ab4e8">→ −${eng.tireuses} tireuse${eng.tireuses>1?'s':''}</span>` : ''}
-      ${totalFuts && (eng.futs||eng.tireuses) ? `<span style="color:${futsApresRes<0?'var(--danger)':futsApresRes===0?'#c08a20':'var(--ok)'}">= ${futsApresRes} dispo</span>` : ''}
-      ${totalBtl && eng.cartons ? `<span style="color:${cartonsApresCmd<0?'var(--danger)':cartonsApresCmd===0?'#c08a20':'var(--ok)'}">= ${cartonsApresCmd} btl dispo</span>` : ''}
-      ${alerteTxt}
+    <div style="padding:4px 2px 2px;font-size:11px;color:var(--text-dim)">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:${reservationsHtml?'4px':'0'}">
+        ${totalFuts  ? `<span>📦 ${totalFuts} fût${totalFuts>1?'s':''}</span>` : ''}
+        ${totalBtl   ? `<span>📦 ${totalBtl} btl</span>` : ''}
+        ${eng.futs   ? `<span style="color:var(--amber-lt)">−${eng.futs} réservé${eng.futs>1?'s':''}</span>` : ''}
+        ${eng.cartons? `<span style="color:var(--amber-lt)">−${eng.cartons} carton${eng.cartons>1?'s':''}</span>` : ''}
+        ${eng.tireuses? `<span style="color:#7ab4e8">−${eng.tireuses} tireuse${eng.tireuses>1?'s':''}</span>` : ''}
+        ${totalFuts && eng.futs ? `<span style="color:${futsApresRes<0?'var(--danger)':futsApresRes===0?'#c08a20':'var(--ok)'}">= ${futsApresRes} libre${futsApresRes>1?'s':''}</span>` : ''}
+        ${totalBtl && eng.cartons ? `<span style="color:${cartonsApresCmd<0?'var(--danger)':cartonsApresCmd===0?'#c08a20':'var(--ok)'}">= ${cartonsApresCmd} btl libre${cartonsApresCmd>1?'s':''}</span>` : ''}
+        ${alerteTxt}
+      </div>
+      ${reservationsHtml}
     </div>` : '';
 
     html += `
