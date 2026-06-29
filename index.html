@@ -4212,6 +4212,31 @@ function renderSuiviDensites(brassinId) {
     </div>`).join('');
 }
 
+function renderSuiviPhaseLog(brassinId) {
+  const el = document.getElementById('suivi-phase-log-' + brassinId);
+  if (!el) return;
+  const s = getSuivi(brassinId);
+  if (!s.phaseLog || !s.phaseLog.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px 0">Aucun changement enregistré</div>';
+    return;
+  }
+  const phaseColors = { fermentation:'var(--ok)', garde:'#7ab4e8', dh:'#c47ae8', idle:'var(--muted)' };
+  el.innerHTML = s.phaseLog.map((e, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:11px;color:var(--muted);min-width:82px">${e.date}</span>
+      <span style="font-size:12px;font-weight:600;color:${phaseColors[e.phase]||'var(--foam)'};flex:1">${e.label}</span>
+      <button onclick="deleteSuiviPhaseLog('${brassinId}',${i})" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:2px 4px">✕</button>
+    </div>`).join('');
+}
+
+function deleteSuiviPhaseLog(brassinId, idx) {
+  const s = getSuivi(brassinId);
+  if (!s.phaseLog) return;
+  s.phaseLog.splice(idx, 1);
+  saveSuivi(brassinId);
+  renderSuiviPhaseLog(brassinId);
+}
+
 function toggleSuivi(brassinId) {
   const el = document.getElementById('suivi-panel-' + brassinId);
   if (!el) return;
@@ -4220,6 +4245,7 @@ function toggleSuivi(brassinId) {
   if (!open) {
     renderSuiviDensites(brassinId);
     renderSuiviDhLog(brassinId);
+    renderSuiviPhaseLog(brassinId);
     refreshEnfutageRecap(brassinId);
   }
 }
@@ -5187,8 +5213,29 @@ function setPhase(id, phase) {
       }
     }
   }
+  // Synchroniser le statut dans l'historique des brassins
+  const phaseToStatut = { fermentation:'fermentation', garde:'garde', dh:'dh', idle:'conditionne' };
+  const newStatut = phaseToStatut[phase] || phase;
+  const brassin = Object.values(historiqueData).find(b =>
+    b.recette === f.beer && ['fermentation','garde','dh'].includes(b.statut)
+  );
+  if (brassin) {
+    // Mettre à jour le statut
+    const ancienStatut = brassin.statut;
+    if (phase !== 'idle') brassin.statut = newStatut;
+    saveBrewEntry(brassin.id, brassin);
+
+    // Enregistrer le changement dans le suivi
+    const s = getSuivi(brassin.id);
+    if (!s.phaseLog) s.phaseLog = [];
+    const phaseLabels = { fermentation:'Fermentation', garde:'Garde', dh:'Dry Hopping', idle:'Conditionné / Libéré' };
+    s.phaseLog.push({ date: today, phase, label: phaseLabels[phase] || phase });
+    saveSuivi(brassin.id);
+  }
+
   saveFermenters();
   renderFermenters();
+  renderHistorique();
 }
 
 
@@ -5580,7 +5627,13 @@ function renderHistorique() {
 
         <div style="border-top:1px solid var(--border);margin:14px 0"></div>
 
-        <!-- ② DRY HOPPING -->
+        <!-- ② CHANGEMENTS D'ÉTAT -->
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">📅 Historique des phases</div>
+        <div id="suivi-phase-log-${b.id}" style="margin-bottom:10px"></div>
+
+        <div style="border-top:1px solid var(--border);margin:14px 0"></div>
+
+        <!-- ③ DRY HOPPING -->
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">🌿 Dry Hopping</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
           <div>
@@ -8951,6 +9004,7 @@ Object.assign(window, {
   openDhModal, closeDhModal, saveDhModal,
   openEnfutageModal, closeEnfutageModal, saveEnfutage, addEnfutageLine, removeEnfutageLine, updateEnfutageLine,
   toggleSuivi, addDensite, deleteDensite, updateSuiviDate, renderSuiviDensites,
+  renderSuiviPhaseLog, deleteSuiviPhaseLog,
   updateSuiviDens, buildCalculs, plato,
   destockerDH, deleteDhLog, renderSuiviDhLog, refreshEnfutageRecap, buildEnfutageRecap,
   toggleFermEdit, closeFermEdit, updateFerm, updateFermPhaseDebut, setPhase,
