@@ -4134,29 +4134,6 @@ function renderDashboard() {
     : `<div style="font-size:13px;color:var(--muted);padding:8px 0">Aucun produit en stock</div>`;
 
   el.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">🧪 Cuves actives</div>
-        <div style="font-size:22px;font-weight:700;color:var(--foam)">${actives.length} <span style="font-size:14px;color:var(--muted)">/ ${ferms.length}</span></div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${libres.length} disponible${libres.length>1?'s':''}</div>
-      </div>
-      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">🛢 Fûts en stock</div>
-        <div style="font-size:22px;font-weight:700;color:var(--foam)">${totalFuts}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${totalBtl33} × 33cL · ${totalBtl75} × 75cL</div>
-      </div>
-      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">⚠️ MP critiques</div>
-        <div style="font-size:22px;font-weight:700;color:${alertsCrit.length>0?'#E24B4A':'var(--ok)'}">${alertsCrit.length}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${alertsOrder.length} à commander</div>
-      </div>
-      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">🍺 Bières stockées</div>
-        <div style="font-size:22px;font-weight:700;color:var(--foam)">${Object.keys(byBeer).length}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${Object.values(byBeer).filter(s=>s.futs===0&&s.btl33===0&&s.btl75===0).length} en rupture</div>
-      </div>
-    </div>
-
     <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:2px">État des cuves</div>
       ${fermRows}
@@ -8596,7 +8573,7 @@ function envoyerFactureMail(id) {
       ${brasserieData.bic?`<div style="font-size:12px;color:#555;font-family:monospace"><b>BIC :</b> ${brasserieData.bic}</div>`:''}
     </div>` : '';
 
-  const ech = f.dateEcheance ? new Date(f.dateEcheance+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}) : '—';
+  const echEmail = f.dateEcheance ? new Date(f.dateEcheance+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}) : '—';
   const factNom = brasserieData.nom || 'Microbrasserie';
   const isDevis = f.type === 'devis';
   const htmlMessageFact = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333">
@@ -8613,7 +8590,7 @@ function envoyerFactureMail(id) {
         <div style="background:#f8f5f0;border-radius:6px;padding:12px 14px;text-align:right">
           <div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:3px">Date</div>
           <div style="font-size:13px;font-weight:600">${date}</div>
-          ${!isDevis?`<div style="font-size:11px;color:#888;margin-top:4px">Échéance : ${ech}</div>`:''}
+          ${!isDevis?`<div style="font-size:11px;color:#888;margin-top:4px">Échéance : ${echEmail}</div>`:''}
         </div>
       </div>
       <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
