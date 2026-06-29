@@ -4529,8 +4529,8 @@ function renderFutsPage() {
   const mvts = [...(futsData.mouvements||[])].reverse().slice(0,15);
   const mvtHtml = mvts.length ? mvts.map(m => {
     const d = new Date(m.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-    const icons  = { init:'⚙', livraison:'🚚', retour_client:'↩', retour_nettoyage:'🧼' };
-    const labels = { init:'Stock initial', livraison:'Livraison', retour_client:'Retour client', retour_nettoyage:'Retour nettoyage' };
+    const icons  = { init:'⚙', livraison:'🚚', retour_client:'↩', retour_nettoyage:'🧼', enfutage:'🛢' };
+    const labels = { init:'Stock initial', livraison:'Livraison', retour_client:'Retour client', retour_nettoyage:'Retour nettoyage', enfutage:'Enfûtage' };
     const sign = m.type==='livraison' ? '' : '+';
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
       <span style="color:var(--amber-lt);font-weight:600;flex:1">${icons[m.type]||''} ${labels[m.type]||m.type}${m.client?' · '+m.client:''}</span>
@@ -4935,6 +4935,7 @@ function saveEnfutage() {
   const liberer = document.getElementById('enfutage-liberer').checked;
 
   let saved = 0;
+  let inoxUsed = 0;
   enfutageLines.forEach(line => {
     if (!line.qty || line.qty <= 0) return;
     const id = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,5);
@@ -4949,8 +4950,19 @@ function saveEnfutage() {
     };
     produitsData[id] = entry;
     fbSet('produits/' + id, entry);
+    // Comptabiliser les fûts inox 30L utilisés
+    if (line.format === 'fut30inox') inoxUsed += line.qty;
     saved++;
   });
+
+  // Déduire les fûts inox vides utilisés du parc
+  if (inoxUsed > 0) {
+    if (!futsData.mouvements) futsData.mouvements = [];
+    futsData.stockVide = Math.max(0, (futsData.stockVide||0) - inoxUsed);
+    futsData.mouvements.push({ type:'enfutage', ts:Date.now(), qty:-inoxUsed, biere:beerName });
+    saveFutsData();
+    renderFutsPage();
+  }
 
   if (liberer && ferm) {
     setPhase(enfutageSourceFermId, 'idle');
