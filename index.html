@@ -20,6 +20,8 @@
     })();
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script>emailjs.init('BDtpVagH7aqsh6Hkm');</script>
   <style>
     /* ===== TOKENS ===== */
@@ -1822,7 +1824,8 @@
       <div id="bl-view-title" style="font-size:14px;font-weight:700;color:var(--foam)"></div>
       <div style="display:flex;gap:8px">
         <button onclick="envoyerBlMail(viewingBlViewId)" style="background:none;border:1px solid rgba(100,160,220,.4);border-radius:var(--radius-sm);color:#7ab4e8;font-size:12px;font-weight:700;padding:6px 10px;cursor:pointer">📧</button>
-        <button onclick="printBl()" style="background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">🖨️</button>
+        <button onclick="printBl()" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">🖨️</button>
+        <button onclick="exportBlPdf()" style="background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">📄 PDF</button>
         <button onclick="closeBlViewModal()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">×</button>
       </div>
     </div>
@@ -1999,7 +2002,8 @@
       <div id="facture-view-title" style="font-size:14px;font-weight:700;color:var(--foam)"></div>
       <div style="display:flex;gap:8px">
         <button id="btn-facture-mail" onclick="" style="background:none;border:1px solid rgba(100,160,220,.4);border-radius:var(--radius-sm);color:#7ab4e8;font-size:12px;font-weight:700;padding:6px 10px;cursor:pointer">📧</button>
-        <button onclick="printFacture()" style="background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">🖨️ PDF</button>
+        <button onclick="printFacture()" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">🖨️</button>
+        <button onclick="exportFacturePdf()" style="background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">📄 PDF</button>
         <button onclick="closeFactureViewModal()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">×</button>
       </div>
     </div>
@@ -3349,12 +3353,25 @@ function renderProduits() {
       ${reservationsHtml}
     </div>` : '';
 
+    // Totaux par format pour le header
+    const byFmt = {};
+    items.forEach(p => {
+      if ((p.qty||0) > 0) byFmt[p.format] = (byFmt[p.format]||0) + (p.qty||0);
+    });
+    const totalBadges = Object.entries(byFmt)
+      .map(([fmt, qty]) => `<span style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 6px">${qty}×${FORMAT_LABELS[fmt]||fmt}</span>`)
+      .join('');
+
     html += `
     <div style="margin-bottom:14px">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px 4px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px 4px;flex-wrap:wrap;gap:4px">
         <div style="display:flex;align-items:center;gap:6px">
           <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0"></span>
           <div style="font-size:13px;font-weight:700;color:var(--foam)">${biere}</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
+          ${totalBadges}
+          <span style="font-size:12px;font-weight:700;color:var(--amber-lt);padding-left:4px">${dispoBrute} total</span>
         </div>
       </div>
       <div class="mp-list">${rows}</div>
@@ -8481,25 +8498,68 @@ function envoyerBlMail(id) {
   const sigDate = b.sigDate ? new Date(b.sigDate).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
   const rib = brasserieData.iban ? `\nCoordonnées bancaires :\n  IBAN : ${brasserieData.iban}${brasserieData.bic ? '\n  BIC : '+brasserieData.bic : ''}` : '';
 
-  const message =
-    `Bonjour ${b.client},\n\n` +
-    `Veuillez trouver ci-dessous votre bon de livraison ${b.ref} du ${date}.\n\n` +
-    `Articles livrés :\n` +
-    (b.lines||[]).map(l => `  • ${l.designation} : ${l.qte} ${l.unite}`).join('\n') +
-    (b.notes ? `\n\nRemarques : ${b.notes}` : '') +
-    (b.sigNom ? `\n\nSigné par : ${b.sigNom}${sigDate ? ' le ' + sigDate : ''}` : '') +
-    rib +
-    `\n\nCordialement,\n${brasserieData.nom||'Microbrasserie'}` +
-    (brasserieData.tel ? `\n${brasserieData.tel}` : '') +
-    (brasserieData.email ? `\n${brasserieData.email}` : '');
+  const linesHtmlEmail = (b.lines||[]).map(l=>`
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #f0e8d8;font-size:13px;color:#333">${l.designation||'—'}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f0e8d8;font-size:13px;font-weight:700;color:#333;text-align:center">${l.qte||0}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f0e8d8;font-size:12px;color:#888;text-align:center">${l.unite||''}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f0e8d8;font-size:11px;color:#aaa;font-family:monospace">${l.lotRef||''}</td>
+    </tr>`).join('');
+
+  const ribHtmlEmail = brasserieData.iban ? `
+    <div style="margin-top:20px;padding:12px 16px;background:#f8f5f0;border-radius:6px;border:1px solid #e8dfd0">
+      <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">🏦 Coordonnées bancaires</div>
+      ${brasserieData.banque?`<div style="font-size:12px;color:#555"><b>Banque :</b> ${brasserieData.banque}</div>`:''}
+      <div style="font-size:12px;color:#555;font-family:monospace"><b>IBAN :</b> ${brasserieData.iban}</div>
+      ${brasserieData.bic?`<div style="font-size:12px;color:#555;font-family:monospace"><b>BIC :</b> ${brasserieData.bic}</div>`:''}
+    </div>` : '';
+
+  const sigHtmlEmail = b.signature ? `
+    <div style="margin-top:20px;text-align:center">
+      <div style="font-size:11px;color:#888;margin-bottom:6px">Signature${b.sigNom?' — '+b.sigNom:''}</div>
+      <img src="${b.signature}" style="max-width:180px;max-height:80px;border:1px solid #eee;border-radius:4px"/>
+      ${sigDate?`<div style="font-size:10px;color:#aaa;margin-top:4px">Signé le ${sigDate}</div>`:''}
+    </div>` : '';
+
+  const brassNom = brasserieData.nom || 'Microbrasserie';
+  const htmlMessage = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333">
+    <div style="background:#1a1208;padding:18px 24px;border-radius:8px 8px 0 0;display:flex;justify-content:space-between;align-items:center">
+      <div style="color:#c8800a;font-size:17px;font-weight:800">🍺 ${brassNom}</div>
+      <div style="text-align:right"><div style="color:#fff;font-size:13px;font-weight:700">BON DE LIVRAISON</div><div style="color:#c8800a;font-size:13px;font-family:monospace">${b.ref}</div></div>
+    </div>
+    <div style="background:#fff;border:1px solid #e8dfd0;border-top:none;border-radius:0 0 8px 8px;padding:20px 24px">
+      <div style="background:#f8f5f0;border-radius:6px;padding:12px 14px;margin-bottom:18px">
+        <div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:3px">Livré à</div>
+        <div style="font-weight:700;font-size:15px">${b.client}</div>
+        ${b.adresse?`<div style="font-size:12px;color:#666;margin-top:2px">${b.adresse}</div>`:''}
+        <div style="font-size:12px;color:#888;margin-top:4px">Date : ${date}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+        <thead><tr style="border-bottom:2px solid #c8800a">
+          <th style="text-align:left;padding:6px 12px;font-size:11px;color:#888;text-transform:uppercase">Article</th>
+          <th style="text-align:center;padding:6px 12px;font-size:11px;color:#888;text-transform:uppercase">Qté</th>
+          <th style="text-align:center;padding:6px 12px;font-size:11px;color:#888;text-transform:uppercase">Unité</th>
+          <th style="text-align:left;padding:6px 12px;font-size:11px;color:#888;text-transform:uppercase">N° Lot</th>
+        </tr></thead>
+        <tbody>${linesHtmlEmail}</tbody>
+      </table>
+      ${b.notes?`<div style="background:#f8f5f0;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#666;font-style:italic">📝 ${b.notes}</div>`:''}
+      ${sigHtmlEmail}
+      ${ribHtmlEmail}
+      <div style="margin-top:20px;padding-top:14px;border-top:1px solid #f0e8d8;font-size:11px;color:#aaa;text-align:center">
+        ${brassNom}${brasserieData.tel?' · '+brasserieData.tel:''}${brasserieData.email?' · '+brasserieData.email:''}<br>
+        <span style="color:#c8800a">${b.ref} — ${b.statut==='signe'?'✓ Signé':'En attente'}</span>
+      </div>
+    </div>
+  </div>`;
 
   showToast('Envoi en cours…');
   emailjs.send('service_ko27c19', 'template_nhbqtxc', {
     to_email: email,
     to_name:  b.client,
     subject:  `Bon de livraison ${b.ref} — ${b.client}`,
-    message,
-    from_name: brasserieData.nom || 'Microbrasserie',
+    message:  htmlMessage,
+    from_name: brassNom,
   }).then(() => {
     showToast(`✅ BL ${b.ref} envoyé à ${email}`);
   }).catch(err => {
@@ -8520,30 +8580,76 @@ function envoyerFactureMail(id) {
   const ech  = f.dateEcheance ? new Date(f.dateEcheance+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}) : '—';
   const rib  = brasserieData.iban ? `\nCoordonnées bancaires :\n  IBAN : ${brasserieData.iban}${brasserieData.bic ? '\n  BIC : '+brasserieData.bic : ''}` : '';
 
-  const message =
-    `Bonjour ${f.client},\n\n` +
-    `Veuillez trouver ci-dessous votre ${f.type === 'devis' ? 'devis' : 'facture'} ${f.numero} du ${date}.\n\n` +
-    `Détail :\n` +
-    (f.lines||[]).map(l => `  • ${l.desc} × ${l.qty} — ${(l.qty*l.pu).toFixed(2)} € HT`).join('\n') +
-    `\n\nTotal HT : ${(f.ht||0).toFixed(2)} €` +
-    `\nTVA (${f.tvaRate||20}%) : ${(f.tva||0).toFixed(2)} €` +
-    `\nTotal TTC : ${(f.ttc||0).toFixed(2)} €` +
-    (f.type === 'facture' ? `\nÉchéance : ${ech}` : '') +
-    (f.notes ? `\n\nRemarques : ${f.notes}` : '') +
-    rib +
-    `\n\nCordialement,\n${brasserieData.nom||'Microbrasserie'}` +
-    (brasserieData.tel ? `\n${brasserieData.tel}` : '') +
-    (brasserieData.email ? `\n${brasserieData.email}` : '');
+  const linesHtmlFact = (f.lines||[]).map(l=>`
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #f0e8d8;font-size:13px;color:#333">${l.desc}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f0e8d8;font-size:13px;text-align:center;color:#333">${l.qty}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f0e8d8;font-size:13px;text-align:right;color:#333">${parseFloat(l.pu).toFixed(2)} €</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f0e8d8;font-size:13px;font-weight:700;text-align:right;color:#333">${(l.qty*l.pu).toFixed(2)} €</td>
+    </tr>`).join('');
+
+  const ribHtmlFact = brasserieData.iban ? `
+    <div style="margin-top:20px;padding:12px 16px;background:#f8f5f0;border-radius:6px;border:1px solid #e8dfd0">
+      <div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:6px">🏦 Coordonnées bancaires</div>
+      ${brasserieData.banque?`<div style="font-size:12px;color:#555"><b>Banque :</b> ${brasserieData.banque}</div>`:''}
+      <div style="font-size:12px;color:#555;font-family:monospace"><b>IBAN :</b> ${brasserieData.iban}</div>
+      ${brasserieData.bic?`<div style="font-size:12px;color:#555;font-family:monospace"><b>BIC :</b> ${brasserieData.bic}</div>`:''}
+    </div>` : '';
+
+  const ech = f.dateEcheance ? new Date(f.dateEcheance+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}) : '—';
+  const factNom = brasserieData.nom || 'Microbrasserie';
+  const isDevis = f.type === 'devis';
+  const htmlMessageFact = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333">
+    <div style="background:#1a1208;padding:18px 24px;border-radius:8px 8px 0 0;display:flex;justify-content:space-between;align-items:center">
+      <div style="color:#c8800a;font-size:17px;font-weight:800">🍺 ${factNom}</div>
+      <div style="text-align:right"><div style="color:#fff;font-size:13px;font-weight:700">${isDevis?'DEVIS':'FACTURE'}</div><div style="color:#c8800a;font-size:13px;font-family:monospace">${f.numero}</div></div>
+    </div>
+    <div style="background:#fff;border:1px solid #e8dfd0;border-top:none;border-radius:0 0 8px 8px;padding:20px 24px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:18px">
+        <div style="background:#f8f5f0;border-radius:6px;padding:12px 14px;flex:1;margin-right:12px">
+          <div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:3px">Client</div>
+          <div style="font-weight:700;font-size:14px">${f.client}</div>
+        </div>
+        <div style="background:#f8f5f0;border-radius:6px;padding:12px 14px;text-align:right">
+          <div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:3px">Date</div>
+          <div style="font-size:13px;font-weight:600">${date}</div>
+          ${!isDevis?`<div style="font-size:11px;color:#888;margin-top:4px">Échéance : ${ech}</div>`:''}
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+        <thead><tr style="border-bottom:2px solid #c8800a">
+          <th style="text-align:left;padding:6px 12px;font-size:11px;color:#888;text-transform:uppercase">Désignation</th>
+          <th style="text-align:center;padding:6px 12px;font-size:11px;color:#888;text-transform:uppercase">Qté</th>
+          <th style="text-align:right;padding:6px 12px;font-size:11px;color:#888;text-transform:uppercase">PU HT</th>
+          <th style="text-align:right;padding:6px 12px;font-size:11px;color:#888;text-transform:uppercase">Total HT</th>
+        </tr></thead>
+        <tbody>${linesHtmlFact}</tbody>
+      </table>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+        <div style="background:#f8f5f0;border-radius:6px;padding:12px 16px;min-width:180px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:#888;margin-bottom:4px"><span>Total HT</span><span>${(f.ht||0).toFixed(2)} €</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:#888;margin-bottom:4px"><span>TVA ${f.tvaRate||20}%</span><span>${(f.tva||0).toFixed(2)} €</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:800;color:#c8800a;border-top:1px solid #e8dfd0;padding-top:6px;margin-top:4px"><span>Total TTC</span><span>${(f.ttc||0).toFixed(2)} €</span></div>
+        </div>
+      </div>
+      ${f.notes?`<div style="background:#f8f5f0;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#666;font-style:italic">📝 ${f.notes}</div>`:''}
+      ${ribHtmlFact}
+      <div style="margin-top:20px;padding-top:14px;border-top:1px solid #f0e8d8;font-size:11px;color:#aaa;text-align:center">
+        ${factNom}${brasserieData.tel?' · '+brasserieData.tel:''}${brasserieData.email?' · '+brasserieData.email:''}<br>
+        <span style="color:#c8800a">${f.numero}</span>
+      </div>
+    </div>
+  </div>`;
 
   showToast('Envoi en cours…');
   emailjs.send('service_ko27c19', 'template_nhbqtxc', {
     to_email: email,
     to_name:  f.client,
-    subject:  `${f.type === 'devis' ? 'Devis' : 'Facture'} ${f.numero} — ${f.client}`,
-    message,
-    from_name: brasserieData.nom || 'Microbrasserie',
+    subject:  `${isDevis?'Devis':'Facture'} ${f.numero} — ${f.client}`,
+    message:  htmlMessageFact,
+    from_name: factNom,
   }).then(() => {
-    showToast(`✅ ${f.type === 'devis' ? 'Devis' : 'Facture'} ${f.numero} envoyé(e) à ${email}`);
+    showToast(`✅ ${isDevis?'Devis':'Facture'} ${f.numero} envoyé(e) à ${email}`);
   }).catch(err => {
     console.error('EmailJS error:', err);
     showToast(`❌ Échec envoi : ${err?.text || err}`);
@@ -8626,6 +8732,66 @@ function openBlView(id) {
 
 function closeBlViewModal() {
   document.getElementById('bl-view-modal').classList.remove('open');
+}
+
+
+// ===== EXPORT PDF =====
+async function exportHtmlToPdf(zoneId, filename) {
+  const zone = document.getElementById(zoneId);
+  if (!zone) { showToast('Zone introuvable', true); return; }
+  showToast('Génération du PDF…');
+  try {
+    const canvas = await html2canvas(zone, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+    });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+    const pageW  = pdf.internal.pageSize.getWidth();
+    const pageH  = pdf.internal.pageSize.getHeight();
+    const imgW   = pageW;
+    const imgH   = (canvas.height * imgW) / canvas.width;
+    let posY = 0;
+    // Gérer les pages multiples
+    if (imgH <= pageH) {
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgW, imgH);
+    } else {
+      let remaining = imgH;
+      let page = 0;
+      while (remaining > 0) {
+        if (page > 0) pdf.addPage();
+        const srcY   = page * (pageH / imgH) * canvas.height;
+        const srcH   = Math.min((pageH / imgH) * canvas.height, canvas.height - srcY);
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width  = canvas.width;
+        sliceCanvas.height = srcH;
+        sliceCanvas.getContext('2d').drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+        pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgW, (srcH * imgW) / canvas.width);
+        remaining -= pageH;
+        page++;
+      }
+    }
+    pdf.save(filename);
+    showToast('✅ PDF téléchargé');
+  } catch(e) {
+    console.error('PDF error:', e);
+    showToast('❌ Erreur génération PDF', true);
+  }
+}
+
+function exportBlPdf() {
+  const b = blData[viewingBlViewId];
+  const filename = b ? `BL_${b.ref}_${b.client}.pdf`.replace(/[^a-zA-Z0-9_.-]/g,'_') : 'bon-livraison.pdf';
+  exportHtmlToPdf('bl-print-zone', filename);
+}
+
+function exportFacturePdf() {
+  const id = viewingFactureId;
+  const f = facturesData[id];
+  const filename = f ? `${f.type==='devis'?'Devis':'Facture'}_${f.numero}_${f.client}.pdf`.replace(/[^a-zA-Z0-9_.-]/g,'_') : 'facture.pdf';
+  exportHtmlToPdf('facture-print-zone', filename);
 }
 
 function printBl() {
@@ -8824,7 +8990,7 @@ Object.assign(window, {
   openBlModal, closeBlModal, saveBl, addBlLine, removeBlLine, updateBlLine,
   prefillBlClient, setBlFilter, deleteBl, envoyerBlMail,
   openSignatureModal, closeSignatureModal, clearSignature, validerSignature,
-  openBlView, closeBlViewModal, printBl,
+  openBlView, closeBlViewModal, printBl, exportBlPdf, exportFacturePdf, exportHtmlToPdf,
   openBrewDetailModal, closeBrewDetailModal, saveBrewDetail,
   toggleHistoriqueBrassin, updateBrewVolume, updateBrewStatut, deleteHistorique, annulerBrassin,
   updateBrewField, toggleMpSorties, annulerSortieMP,
