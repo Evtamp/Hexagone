@@ -4212,6 +4212,30 @@ function renderSuiviDensites(brassinId) {
     </div>`).join('');
 }
 
+function renderSuiviEnfutageLog(brassinId) {
+  const el = document.getElementById('suivi-enf-log-' + brassinId);
+  if (!el) return;
+  const s = getSuivi(brassinId);
+  if (!s.enfutageLog || !s.enfutageLog.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px 0">Aucun conditionnement enregistré</div>';
+    return;
+  }
+  el.innerHTML = s.enfutageLog.map((e, i) => `
+    <div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:11px;color:var(--muted);min-width:82px;flex-shrink:0">${e.date}</span>
+      <span style="font-size:12px;color:var(--foam);flex:1">${e.lignes}${e.liberer?' · Cuve libérée':''}</span>
+      <button onclick="deleteSuiviEnfutageLog('${brassinId}',${i})" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:2px 4px;flex-shrink:0">✕</button>
+    </div>`).join('');
+}
+
+function deleteSuiviEnfutageLog(brassinId, idx) {
+  const s = getSuivi(brassinId);
+  if (!s.enfutageLog) return;
+  s.enfutageLog.splice(idx, 1);
+  saveSuivi(brassinId);
+  renderSuiviEnfutageLog(brassinId);
+}
+
 function renderSuiviPhaseLog(brassinId) {
   const el = document.getElementById('suivi-phase-log-' + brassinId);
   if (!el) return;
@@ -4246,6 +4270,7 @@ function toggleSuivi(brassinId) {
     renderSuiviDensites(brassinId);
     renderSuiviDhLog(brassinId);
     renderSuiviPhaseLog(brassinId);
+    renderSuiviEnfutageLog(brassinId);
     refreshEnfutageRecap(brassinId);
   }
 }
@@ -4996,9 +5021,26 @@ function saveEnfutage() {
 
   closeEnfutageModal();
   renderProduits();
-  // Rafraîchir le récap suivi si le panel est ouvert
+
+  // Enregistrer dans le suivi du brassin
   const brassin = Object.values(historiqueData).find(b => b.recette === beerName);
-  if (brassin) refreshEnfutageRecap(brassin.id);
+  if (brassin && saved > 0) {
+    const s = getSuivi(brassin.id);
+    if (!s.enfutageLog) s.enfutageLog = [];
+    const today = new Date().toISOString().split('T')[0];
+    // Résumé des lignes conditionnées
+    const lignes = enfutageLines
+      .filter(l => l.qty > 0)
+      .map(l => `${l.qty} × ${FORMAT_LABELS[l.format]||l.format}${l.lot?' ('+l.lot+')':''}`)
+      .join(', ');
+    s.enfutageLog.push({ date: today, lignes, liberer });
+    saveSuivi(brassin.id);
+    refreshEnfutageRecap(brassin.id);
+    // Rafraîchir le log si le panneau suivi est ouvert
+    const suiviPanel = document.getElementById('suivi-panel-' + brassin.id);
+    if (suiviPanel && suiviPanel.style.display !== 'none') renderSuiviEnfutageLog(brassin.id);
+  }
+
   if (saved > 0) showToast('Conditionnement enregistré' + (liberer ? ' · Cuve libérée' : ''));
   else showToast('Aucune quantité saisie', true);
 }
@@ -5669,14 +5711,8 @@ function renderHistorique() {
 
         <!-- ③ ENFÛTAGE / EMBOUTEILLAGE -->
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">🛢 Enfûtage / Embouteillage</div>
-        <div style="margin-bottom:6px">
-          <div class="field-label" style="margin-bottom:3px">Date enfûtage</div>
-          <input type="date" id="suivi-enf-date-${b.id}" value="${(fermSuiviData[b.id]||{}).dateEnfutage||''}"
-            onchange="updateSuiviDate('${b.id}','dateEnfutage',this.value)"
-            onclick="this.showPicker&&this.showPicker()"
-            style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 8px;box-sizing:border-box" />
-        </div>
-        <div id="suivi-enf-recap-${b.id}" style="margin-top:8px">
+        <div id="suivi-enf-log-${b.id}" style="margin-bottom:10px"></div>
+        <div id="suivi-enf-recap-${b.id}" style="margin-top:4px">
           ${buildEnfutageRecap(b.id)}
         </div>
       </div>
@@ -9005,6 +9041,7 @@ Object.assign(window, {
   openEnfutageModal, closeEnfutageModal, saveEnfutage, addEnfutageLine, removeEnfutageLine, updateEnfutageLine,
   toggleSuivi, addDensite, deleteDensite, updateSuiviDate, renderSuiviDensites,
   renderSuiviPhaseLog, deleteSuiviPhaseLog,
+  renderSuiviEnfutageLog, deleteSuiviEnfutageLog,
   updateSuiviDens, buildCalculs, plato,
   destockerDH, deleteDhLog, renderSuiviDhLog, refreshEnfutageRecap, buildEnfutageRecap,
   toggleFermEdit, closeFermEdit, updateFerm, updateFermPhaseDebut, setPhase,
