@@ -6528,6 +6528,7 @@ function renderPrevWeeks() {
 
     for (let d = 0; d < 7; d++) {
       const cur = new Date(monDate); cur.setDate(monDate.getDate() + d);
+      if (cur < today) continue; // ignorer les jours déjà passés (cohérence avec renderOrdersList)
       const k = dateKey(cur);
       (ordersData[k] || []).map(migrateOrder).forEach(o => {
         orderCount++;
@@ -6631,7 +6632,7 @@ function renderPrevCalendar() {
     const isToday = cur.getTime() === today.getTime();
     const isPast  = cur < today;
 
-    const totalF = orders.map(migrateOrder).reduce((a,o)=>a+o.lines.reduce((b,l)=>b+(parseInt(l.futs)||0),0),0);
+    const totalF = orders.map(migrateOrder).reduce((a,o)=>a+o.lines.reduce((b,l)=>b+(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0),0),0);
     const totalC = orders.map(migrateOrder).reduce((a,o)=>a+o.lines.reduce((b,l)=>b+(parseInt(l.cartons)||0),0),0);
     const totalT = orders.map(migrateOrder).reduce((a,o)=>a+o.lines.reduce((b,l)=>b+(parseInt(l.tireuse)||0),0),0);
     const hasOrders = orders.length > 0;
