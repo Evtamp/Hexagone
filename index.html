@@ -7668,8 +7668,10 @@ function confirmBrew(skipDestock = false) {
         if (remaining <= 0) return;
         const prelevé = Math.min(item.val, remaining);
         if (prelevé <= 0) return;
+        const valAvant = item.val;
         item.val = Math.max(0, parseFloat((item.val - prelevé).toFixed(3)));
         saveMp(item.id, item.val);
+        tracerSortieMP(item, valAvant, item.val, `🍺 Lancement brassin ${brewNum || r.name}`);
         remaining = parseFloat((remaining - prelevé).toFixed(3));
         if (item.lot) lotsUtilises.push(item.lot);
       });
