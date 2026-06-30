@@ -3093,6 +3093,12 @@ function closeMenu() {
   document.getElementById('menu-overlay').style.display = 'none';
 }
 
+function goToCommandesForBeer(beer) {
+  switchPage('prev');
+  closeMenu();
+  showToast(`📦 Réservations de ${beer} dans les commandes ci-dessous`);
+}
+
 function switchPage(page, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('#main-nav button').forEach(b => b.classList.remove('active'));
@@ -3385,6 +3391,8 @@ function renderProduits() {
       .map(([fmt, qty]) => `<span style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 6px">${qty}×${FORMAT_LABELS[fmt]||fmt}</span>`)
       .join('');
 
+    const totalReserve = (eng.futs||0) + (eng.cartons||0);
+
     html += `
     <div style="margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px 4px;flex-wrap:wrap;gap:4px">
@@ -3392,9 +3400,12 @@ function renderProduits() {
           <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0"></span>
           <div style="font-size:13px;font-weight:700;color:var(--foam)">${biere}</div>
         </div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
-          ${totalBadges}
-          <span style="font-size:12px;font-weight:700;color:var(--amber-lt);padding-left:4px">${dispoBrute} total</span>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+          <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
+            ${totalBadges}
+            <span style="font-size:12px;font-weight:700;color:var(--amber-lt);padding-left:4px">${dispoBrute} total</span>
+          </div>
+          ${totalReserve > 0 ? `<div onclick="goToCommandesForBeer('${biere.replace(/'/g,"\'")}')" style="font-size:11px;color:rgba(180,180,180,.8);cursor:pointer;text-decoration:underline;text-underline-offset:2px">🔒 ${totalReserve} réservé${totalReserve>1?'s':''}</div>` : ''}
         </div>
       </div>
       <div class="mp-list">${rows}</div>
@@ -9244,7 +9255,7 @@ function closeConfirmCreation() {
 
 Object.assign(window, {
   switchPage, switchSub, switchMpCat, renderDashboard, renderFutsPage,
-  openBeerClientsModal, closeBeerClientsModal,
+  openBeerClientsModal, closeBeerClientsModal, goToCommandesForBeer,
   toggleOrderStockPanel, renderOrderStockPanel,
   openFutsInitModal, closeFutsInitModal, saveFutsInit,
   openFutsRetourModal, closeFutsRetourModal, saveFutsRetour,
