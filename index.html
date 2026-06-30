@@ -3243,18 +3243,25 @@ function setProduitQty(id, val) {
 // ─── Calcul des stocks engagés par bière/format à partir des commandes futures ───
 function calcStockEngageParBiere() {
   const today = new Date(); today.setHours(0,0,0,0);
-  // engage[biere] = { futs, cartons, tireuses, fut30inox, fut30kk, fut30kktp, fut20, btl33, btl75, clients:[] }
+  const dow = today.getDay();
+  const thisMonday = new Date(today);
+  thisMonday.setDate(today.getDate() + (dow === 0 ? -6 : 1 - dow));
+
+  // engage[biere] = { futs, cartons, tireuses, fut30inox, fut30kk, fut30kktp, fut20, btl33, btl75, reservations:[], byWeek:{0:{futs,cartons},1:{...}} }
   const engage = {};
   Object.entries(ordersData).forEach(([dateKey, dayOrders]) => {
     const d = new Date(dateKey + 'T12:00:00');
     if (d < today) return;
     const orders = Array.isArray(dayOrders) ? dayOrders : Object.values(dayOrders||{});
+    // Calculer l'index de semaine (0=cette semaine, 1=semaine prochaine, etc.)
+    const diffDays = Math.round((d - thisMonday) / 86400000);
+    const weekIdx = Math.floor(diffDays / 7);
     orders.map(migrateOrder).forEach(o => {
       const client = o.client || o.lines?.[0]?.beer || '?';
       const dateStr = new Date(dateKey+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
       o.lines.forEach(l => {
         const beer = l.beer || '—';
-        if (!engage[beer]) engage[beer] = { futs:0, cartons:0, tireuses:0, fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, btl33:0, btl75:0, reservations:[] };
+        if (!engage[beer]) engage[beer] = { futs:0, cartons:0, tireuses:0, fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, btl33:0, btl75:0, reservations:[], byWeek:{} };
         const f30i = parseInt(l.fut30inox)||0, f30k = parseInt(l.fut30kk)||0;
         const f30t = parseInt(l.fut30kktp)||0, f20  = parseInt(l.fut20)||0;
         const car  = parseInt(l.cartons)||0,   tir  = parseInt(l.tireuse)||0;
@@ -3263,6 +3270,12 @@ function calcStockEngageParBiere() {
         engage[beer].futs       += f30i+f30k+f30t+f20;
         engage[beer].cartons    += car;
         engage[beer].tireuses   += tir;
+        // Ventilation par semaine (fûts + cartons uniquement, pas les tireuses)
+        const qtyWeek = f30i+f30k+f30t+f20+car;
+        if (qtyWeek > 0) {
+          if (!engage[beer].byWeek[weekIdx]) engage[beer].byWeek[weekIdx] = 0;
+          engage[beer].byWeek[weekIdx] += qtyWeek;
+        }
         const fmts = [];
         if (f30i) fmts.push(`${f30i}×30L Inox`);
         if (f30k) fmts.push(`${f30k}×30L KK`);
@@ -3393,6 +3406,17 @@ function renderProduits() {
 
     const totalReserve = (eng.futs||0) + (eng.cartons||0);
 
+    // Ventilation par semaine
+    const byWeek = eng.byWeek || {};
+    const weekLabels = { 0:'Cette sem.', 1:'Sem. prochaine' };
+    const weekBadges = Object.entries(byWeek)
+      .filter(([,qty]) => qty > 0)
+      .sort(([a],[b]) => parseInt(a)-parseInt(b))
+      .map(([wIdx, qty]) => {
+        const label = weekLabels[wIdx] || `Sem. +${wIdx}`;
+        return `<span style="font-size:10px;color:rgba(180,180,180,.8)">${label} : <b style="color:rgba(220,180,100,.85)">${qty}</b></span>`;
+      }).join(' · ');
+
     html += `
     <div style="margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px 4px;flex-wrap:wrap;gap:4px">
@@ -3405,7 +3429,11 @@ function renderProduits() {
             ${totalBadges}
             <span style="font-size:12px;font-weight:700;color:var(--amber-lt);padding-left:4px">${dispoBrute} total</span>
           </div>
-          ${totalReserve > 0 ? `<div onclick="goToCommandesForBeer('${biere.replace(/'/g,"\'")}')" style="font-size:11px;color:rgba(180,180,180,.8);cursor:pointer;text-decoration:underline;text-underline-offset:2px">🔒 ${totalReserve} réservé${totalReserve>1?'s':''}</div>` : ''}
+          ${totalReserve > 0 ? `
+          <div onclick="goToCommandesForBeer('${biere.replace(/'/g,"\'")}')" style="cursor:pointer;text-align:right">
+            <div style="font-size:11px;color:rgba(180,180,180,.8);text-decoration:underline;text-underline-offset:2px">🔒 ${totalReserve} réservé${totalReserve>1?'s':''}</div>
+            ${weekBadges ? `<div style="margin-top:2px">${weekBadges}</div>` : ''}
+          </div>` : ''}
         </div>
       </div>
       <div class="mp-list">${rows}</div>
