@@ -6355,6 +6355,22 @@ function renderOrdersList() {
   }
 
   el.innerHTML = Object.values(weeks).map(({ wLabel, range, orders }) => {
+    // Total par bière pour la semaine (quantité de bière, pas par type de fût)
+    const totalByBeer = {};
+    orders.forEach(({ o }) => {
+      o.lines.forEach(l => {
+        if (!l.beer) return;
+        const qty = (parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0)
+                  + (parseInt(l.cartons)||0) + (parseInt(l.tireuse)||0);
+        if (!qty) return;
+        totalByBeer[l.beer] = (totalByBeer[l.beer]||0) + qty;
+      });
+    });
+    const beerTotalsHtml = Object.entries(totalByBeer)
+      .sort(([,a],[,b]) => b-a)
+      .map(([beer, qty]) => `<span style="font-size:11px;color:var(--foam);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 7px">${beer} <b style="color:var(--amber-lt)">${qty}</b></span>`)
+      .join('');
+
     const rows = orders.map(({ k, date, o }) => {
       const dateStr = date.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});
       const totalF = o.lines.reduce((a,l)=>(a+(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0)),0);
@@ -6380,9 +6396,12 @@ function renderOrdersList() {
 
     return `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden">
-      <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:12px;font-weight:700;color:var(--amber-lt)">${wLabel}</span>
-        <span style="font-size:11px;color:var(--muted)">${range} · ${orders.length} commande${orders.length>1?'s':''}</span>
+      <div style="padding:8px 14px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${beerTotalsHtml?'6px':'0'}">
+          <span style="font-size:12px;font-weight:700;color:var(--amber-lt)">${wLabel}</span>
+          <span style="font-size:11px;color:var(--muted)">${range} · ${orders.length} commande${orders.length>1?'s':''}</span>
+        </div>
+        ${beerTotalsHtml ? `<div style="display:flex;flex-wrap:wrap;gap:5px">${beerTotalsHtml}</div>` : ''}
       </div>
       <div style="padding:0 14px">${rows}</div>
     </div>`;
