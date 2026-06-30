@@ -822,8 +822,13 @@
       }
 
       /* Contenu plus large, 2 colonnes pour les cartes */
-      .beer-card, .ferm-card, .prev-card {
+      .beer-card, .prev-card {
         max-width: 700px;
+      }
+      .ferm-card {
+        max-width: none;
+        width: 100%;
+        box-sizing: border-box;
       }
 
       /* Grille 2 colonnes pour les listes de bières et MP */
@@ -1492,6 +1497,13 @@
   <div class="modal-box" style="max-width:380px;margin:auto">
     <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700">🛢 Enfûtage / Embouteillage</div>
     <div id="enfutage-ferm-info" style="margin-top:10px;font-size:13px;color:var(--amber);font-weight:600"></div>
+
+    <!-- Choix de la bière -->
+    <div style="margin-top:12px">
+      <div class="field-label" style="margin-bottom:4px">Bière à mettre en stock</div>
+      <select id="enfutage-beer-select"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;box-sizing:border-box"></select>
+    </div>
 
     <!-- Lignes de conditionnement -->
     <div id="enfutage-lines" style="margin-top:14px;display:flex;flex-direction:column;gap:10px"></div>
@@ -2914,7 +2926,7 @@ function initApp() {
   fbListen('futsData', data => {
     // Ne pas écraser si on vient de faire un write local (protection race condition)
     if (_futsDataLocalWrite) return;
-    futsData = data || { stockVide:0, aNettoyer:0, parClient:{}, mouvements:[] };
+    futsData = data || { stockVide:0, stockVideKK:0, stockVideKKTP:0, aNettoyer:0, parClient:{}, mouvements:[] };
     renderFutsPage();
     onLoaded();
   });
@@ -4534,7 +4546,7 @@ function renderOrderStockPanel() {
 }
 
 // ===== PARC FÛTS INOX 30L =====
-let futsData = { stockVide:0, aNettoyer:0, parClient:{}, mouvements:[] };
+let futsData = { stockVide:0, stockVideKK:0, stockVideKKTP:0, aNettoyer:0, parClient:{}, mouvements:[] };
 let _futsDataLocalWrite = false;
 let _produitsLocalWrite = false;
 
@@ -4550,6 +4562,12 @@ function getFutsPleins30Inox() {
     .reduce((s,p) => s+(parseInt(p.qty)||0), 0);
 }
 
+function getFutsPleinsByFormat(format) {
+  return Object.values(produitsData||{})
+    .filter(p => p.format === format)
+    .reduce((s,p) => s+(parseInt(p.qty)||0), 0);
+}
+
 function getInoxChezClientTotal() {
   return Object.values(futsData.parClient||{}).reduce((s,v)=>s+(parseInt(v)||0),0);
 }
@@ -4558,8 +4576,12 @@ function renderFutsPage() {
   const el = document.getElementById('futs-content');
   if (!el) return;
   const vide   = parseInt(futsData.stockVide)||0;
+  const videKK   = parseInt(futsData.stockVideKK)||0;
+  const videKKTP = parseInt(futsData.stockVideKKTP)||0;
   const aNet   = parseInt(futsData.aNettoyer)||0;
   const pleins = getFutsPleins30Inox();
+  const pleinsKK   = getFutsPleinsByFormat('fut30kk');
+  const pleinsKKTP = getFutsPleinsByFormat('fut30kktp');
   const chezCli = getInoxChezClientTotal();
   const total  = vide + pleins + aNet + chezCli;
 
@@ -4580,8 +4602,8 @@ function renderFutsPage() {
   const mvts = [...(futsData.mouvements||[])].reverse().slice(0,15);
   const mvtHtml = mvts.length ? mvts.map(m => {
     const d = new Date(m.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-    const icons  = { init:'⚙', livraison:'🚚', retour_client:'↩', retour_nettoyage:'🧼', enfutage:'🛢' };
-    const labels = { init:'Stock initial', livraison:'Livraison', retour_client:'Retour client', retour_nettoyage:'Retour nettoyage', enfutage:'Enfûtage' };
+    const icons  = { init:'⚙', livraison:'🚚', retour_client:'↩', retour_nettoyage:'🧼', enfutage:'🛢', ajustement:'✏️' };
+    const labels = { init:'Stock initial', livraison:'Livraison', retour_client:'Retour client', retour_nettoyage:'Retour nettoyage', enfutage:'Enfûtage', ajustement:'Ajustement' };
     const sign = m.type==='livraison' ? '' : '+';
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
       <span style="color:var(--amber-lt);font-weight:600;flex:1">${icons[m.type]||''} ${labels[m.type]||m.type}${m.client?' · '+m.client:''}</span>
@@ -4613,6 +4635,39 @@ function renderFutsPage() {
       <span style="font-size:12px;color:var(--muted)">Total parc 30L Inox</span>
       <span style="font-size:18px;font-weight:800;color:var(--amber-lt)">${total} fûts</span>
     </div>
+
+    <!-- Autres types de fûts (KK / KKTP) -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Autres types de fûts</div>
+
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:13px;font-weight:600;color:var(--foam);min-width:70px">30L KK</span>
+        <div style="flex:1;display:flex;align-items:center;gap:6px">
+          <span style="font-size:11px;color:var(--muted)">Vides :</span>
+          <input type="number" min="0" step="1" value="${videKK}"
+            onchange="updateFutStockType('stockVideKK', this.value)"
+            style="width:60px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--ok);font-size:14px;font-weight:700;padding:5px 6px;text-align:center;box-sizing:border-box" />
+        </div>
+        <div style="flex:1;text-align:right">
+          <span style="font-size:11px;color:var(--muted)">Pleins :</span>
+          <span style="font-size:14px;font-weight:700;color:var(--foam);margin-left:4px">${pleinsKK}</span>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+        <span style="font-size:13px;font-weight:600;color:var(--foam);min-width:70px">30L KKTP</span>
+        <div style="flex:1;display:flex;align-items:center;gap:6px">
+          <span style="font-size:11px;color:var(--muted)">Vides :</span>
+          <input type="number" min="0" step="1" value="${videKKTP}"
+            onchange="updateFutStockType('stockVideKKTP', this.value)"
+            style="width:60px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--ok);font-size:14px;font-weight:700;padding:5px 6px;text-align:center;box-sizing:border-box" />
+        </div>
+        <div style="flex:1;text-align:right">
+          <span style="font-size:11px;color:var(--muted)">Pleins :</span>
+          <span style="font-size:14px;font-weight:700;color:var(--foam);margin-left:4px">${pleinsKKTP}</span>
+        </div>
+      </div>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
       <button onclick="openFutsInitModal()"
         style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;font-weight:600;padding:10px 4px;cursor:pointer;text-align:center">
@@ -4635,6 +4690,19 @@ function renderFutsPage() {
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Historique</div>
       ${mvtHtml}
     </div>`;
+}
+
+function updateFutStockType(field, val) {
+  const v = Math.max(0, parseInt(val)||0);
+  if (!futsData.mouvements) futsData.mouvements = [];
+  const labels = { stockVideKK:'30L KK', stockVideKKTP:'30L KKTP' };
+  const delta = v - (parseInt(futsData[field])||0);
+  futsData[field] = v;
+  if (delta !== 0) {
+    futsData.mouvements.push({ type:'ajustement', ts:Date.now(), qty:delta, client: labels[field]||field });
+  }
+  saveFutsData();
+  renderFutsPage();
 }
 
 function openFutsInitModal() {
@@ -4936,8 +5004,14 @@ let enfutageLines = []; // [{ format, qty, lot }]
 function openEnfutageModal(fermId) {
   enfutageSourceFermId = fermId;
   const f = FERMENTERS.find(x => x.id === fermId);
-  const beerName = f ? (f.beer || 'Cuve ' + fermId) : 'Cuve ' + fermId;
-  document.getElementById('enfutage-ferm-info').textContent = 'Cuve ' + fermId + ' · ' + beerName;
+  const beerFerm = f ? f.beer : '';
+  document.getElementById('enfutage-ferm-info').textContent = 'Cuve ' + fermId;
+
+  // Peupler le select des bières (toutes les bières connues + celle de la cuve en premier)
+  const sel = document.getElementById('enfutage-beer-select');
+  const allBeers = [...new Set([beerFerm, ...BEERS].filter(Boolean))];
+  sel.innerHTML = allBeers.map(b => `<option value="${b}" ${b===beerFerm?'selected':''}>${b}</option>`).join('');
+
   document.getElementById('enfutage-liberer').checked = true;
   enfutageLines = [{ format: 'fut30inox', qty: 0, lot: todayLot() }];
   renderEnfutageLines();
@@ -4999,11 +5073,11 @@ function updateEnfutageLine(idx, field, val) {
 function saveEnfutage() {
   if (!enfutageSourceFermId) return;
   const ferm = FERMENTERS.find(x => x.id === enfutageSourceFermId);
-  const beerName = ferm ? (ferm.beer || '') : '';
+  const beerName = document.getElementById('enfutage-beer-select')?.value || (ferm ? ferm.beer : '') || '';
   const liberer = document.getElementById('enfutage-liberer').checked;
 
   let saved = 0;
-  let inoxUsed = 0;
+  let inoxUsed = 0, kkUsed = 0, kktpUsed = 0;
   enfutageLines.forEach(line => {
     if (!line.qty || line.qty <= 0) return;
     const id = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,5);
@@ -5018,16 +5092,28 @@ function saveEnfutage() {
     };
     produitsData[id] = entry;
     fbSet('produits/' + id, entry);
-    // Comptabiliser les fûts inox 30L utilisés
+    // Comptabiliser les fûts vides utilisés par type
     if (line.format === 'fut30inox') inoxUsed += line.qty;
+    if (line.format === 'fut30kk')   kkUsed   += line.qty;
+    if (line.format === 'fut30kktp') kktpUsed += line.qty;
     saved++;
   });
 
-  // Déduire les fûts inox vides utilisés du parc
-  if (inoxUsed > 0) {
+  // Déduire les fûts vides utilisés du parc (Inox, KK, KKTP)
+  if (inoxUsed > 0 || kkUsed > 0 || kktpUsed > 0) {
     if (!futsData.mouvements) futsData.mouvements = [];
-    futsData.stockVide = Math.max(0, (futsData.stockVide||0) - inoxUsed);
-    futsData.mouvements.push({ type:'enfutage', ts:Date.now(), qty:-inoxUsed, biere:beerName });
+    if (inoxUsed > 0) {
+      futsData.stockVide = Math.max(0, (futsData.stockVide||0) - inoxUsed);
+      futsData.mouvements.push({ type:'enfutage', ts:Date.now(), qty:-inoxUsed, biere:beerName, client:'30L Inox' });
+    }
+    if (kkUsed > 0) {
+      futsData.stockVideKK = Math.max(0, (futsData.stockVideKK||0) - kkUsed);
+      futsData.mouvements.push({ type:'enfutage', ts:Date.now(), qty:-kkUsed, biere:beerName, client:'30L KK' });
+    }
+    if (kktpUsed > 0) {
+      futsData.stockVideKKTP = Math.max(0, (futsData.stockVideKKTP||0) - kktpUsed);
+      futsData.mouvements.push({ type:'enfutage', ts:Date.now(), qty:-kktpUsed, biere:beerName, client:'30L KKTP' });
+    }
     saveFutsData();
     renderFutsPage();
   }
@@ -9087,7 +9173,7 @@ Object.assign(window, {
   toggleOrderStockPanel, renderOrderStockPanel,
   openFutsInitModal, closeFutsInitModal, saveFutsInit,
   openFutsRetourModal, closeFutsRetourModal, saveFutsRetour,
-  openLivraisonFutsModal, openRetourClientModal, updateFutsInoxFromBl, updateStockFromBl,
+  openLivraisonFutsModal, openRetourClientModal, updateFutsInoxFromBl, updateStockFromBl, updateFutStockType,
   toggleMenu, closeMenu,
   adjustMP, setMP, setMpPrice,
   openProduitModal, closeProduitModal, selectProduitFormat, saveProduitModal, deleteProduit, adjustProduitQty, setProduitQty, selectFermBtn,
