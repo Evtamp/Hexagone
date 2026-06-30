@@ -6505,25 +6505,31 @@ function renderOrdersList() {
   }
 
   el.innerHTML = Object.values(weeks).map(({ wLabel, range, orders }, weekIdx) => {
-    // Total par bière pour la semaine + détail des clients
+    // Total par bière pour la semaine (fûts + cartons uniquement, PAS les tireuses) + détail des clients
     const totalByBeer = {};      // { beer: qty }
     const clientsByBeer = {};    // { beer: [{client, date, qty}] }
+    let totalTireusesWeek = 0;   // total tireuses de la semaine, à part
     orders.forEach(({ o, date }) => {
       o.lines.forEach(l => {
         if (!l.beer) return;
+        const tireuseQty = parseInt(l.tireuse)||0;
+        totalTireusesWeek += tireuseQty;
         const qty = (parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0)
-                  + (parseInt(l.cartons)||0) + (parseInt(l.tireuse)||0);
-        if (!qty) return;
-        totalByBeer[l.beer] = (totalByBeer[l.beer]||0) + qty;
-        if (!clientsByBeer[l.beer]) clientsByBeer[l.beer] = [];
-        clientsByBeer[l.beer].push({
-          client: o.client || '—',
-          date: date.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}),
-          qty,
-          fut30inox: parseInt(l.fut30inox)||0, fut30kk: parseInt(l.fut30kk)||0,
-          fut30kktp: parseInt(l.fut30kktp)||0, fut20: parseInt(l.fut20)||0,
-          cartons: parseInt(l.cartons)||0, tireuse: parseInt(l.tireuse)||0,
-        });
+                  + (parseInt(l.cartons)||0);
+        if (qty > 0) {
+          totalByBeer[l.beer] = (totalByBeer[l.beer]||0) + qty;
+        }
+        if (qty > 0 || tireuseQty > 0) {
+          if (!clientsByBeer[l.beer]) clientsByBeer[l.beer] = [];
+          clientsByBeer[l.beer].push({
+            client: o.client || '—',
+            date: date.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}),
+            qty,
+            fut30inox: parseInt(l.fut30inox)||0, fut30kk: parseInt(l.fut30kk)||0,
+            fut30kktp: parseInt(l.fut30kktp)||0, fut20: parseInt(l.fut20)||0,
+            cartons: parseInt(l.cartons)||0, tireuse: tireuseQty,
+          });
+        }
       });
     });
 
@@ -6535,7 +6541,9 @@ function renderOrdersList() {
       .map(([beer, qty]) => `<span onclick="openBeerClientsModal(${weekIdx},'${beer.replace(/'/g,"\'")}')"
         style="font-size:11px;color:var(--foam);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 7px;cursor:pointer"
         title="Voir le détail">${beer} <b style="color:var(--amber-lt)">${qty}</b></span>`)
-      .join('');
+      .join('') + (totalTireusesWeek > 0
+        ? `<span style="font-size:11px;color:#7ab4e8;background:rgba(122,180,232,.1);border:1px solid rgba(122,180,232,.3);border-radius:3px;padding:1px 7px">🍺 Tireuses <b>${totalTireusesWeek}</b></span>`
+        : '');
 
     const rows = orders.map(({ k, date, o }) => {
       const dateStr = date.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});
