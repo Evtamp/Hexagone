@@ -1492,6 +1492,16 @@
   </div>
 </div>
 
+<!-- ===== MODAL CLIENTS PAR BIÈRE (commandes à venir) ===== -->
+<div id="beer-clients-modal" class="modal-overlay" onclick="if(event.target===this)closeBeerClientsModal()">
+  <div class="modal-box" style="max-width:400px;margin:auto">
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700" id="beer-clients-title"></div>
+    <div style="font-size:12px;color:var(--amber-lt);font-weight:600;margin-top:4px" id="beer-clients-subtitle"></div>
+    <div id="beer-clients-list" style="margin-top:14px;display:flex;flex-direction:column;gap:0"></div>
+    <button onclick="closeBeerClientsModal()" style="margin-top:16px;width:100%;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:13px;padding:10px;cursor:pointer">Fermer</button>
+  </div>
+</div>
+
 <!-- ===== MODAL ENFÛTAGE / EMBOUTEILLAGE ===== -->
 <div id="enfutage-modal" class="modal-overlay" onclick="if(event.target===this)closeEnfutageModal()">
   <div class="modal-box" style="max-width:380px;margin:auto">
@@ -2647,6 +2657,7 @@ let editingFerm    = null;
 let prevMonthOffset = 0;
 let orderModalKey  = null;
 let editOrderId    = null;
+let _prevWeekBeerDetails = {}; // weekIdx -> { wLabel, range, clientsByBeer }
 let draftLines     = [];
 let weekOffset     = 0;
 let editingNoteId  = null;
@@ -6416,9 +6427,47 @@ function renderPrev() {
   renderOrdersList();
 }
 
+
+// ===== MODAL CLIENTS PAR BIÈRE =====
+function openBeerClientsModal(weekIdx, beer) {
+  const data = _prevWeekBeerDetails[weekIdx];
+  if (!data) return;
+  const clients = (data.clientsByBeer[beer] || []).sort((a,b) => a.date.localeCompare(b.date));
+  const total = clients.reduce((s,c) => s+c.qty, 0);
+
+  document.getElementById('beer-clients-title').textContent = beer;
+  document.getElementById('beer-clients-subtitle').textContent =
+    `${data.wLabel} · ${data.range} · ${total} unité${total>1?'s':''} pour ${clients.length} client${clients.length>1?'s':''}`;
+
+  document.getElementById('beer-clients-list').innerHTML = clients.map(c => {
+    const parts = [];
+    if (c.fut30inox) parts.push(`${c.fut30inox} Inox`);
+    if (c.fut30kk)   parts.push(`${c.fut30kk} KK`);
+    if (c.fut30kktp) parts.push(`${c.fut30kktp} KKTP`);
+    if (c.fut20)     parts.push(`${c.fut20} 20L`);
+    if (c.cartons)   parts.push(`${c.cartons} carton${c.cartons>1?'s':''}`);
+    if (c.tireuse)   parts.push(`${c.tireuse} tireuse${c.tireuse>1?'s':''}`);
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+      <div style="min-width:0;flex:1">
+        <div style="font-size:13px;font-weight:600;color:var(--foam);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.client}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">${c.date} · ${parts.join(', ')}</div>
+      </div>
+      <div style="font-size:15px;font-weight:800;color:var(--amber-lt);flex-shrink:0">${c.qty}</div>
+    </div>`;
+  }).join('') || '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px 0">Aucun détail disponible</div>';
+
+  document.getElementById('beer-clients-modal').style.display = 'flex';
+}
+
+function closeBeerClientsModal() {
+  document.getElementById('beer-clients-modal').style.display = 'none';
+}
+
 function renderOrdersList() {
   const el = document.getElementById('prev-orders-list');
   if (!el) return;
+  _prevWeekBeerDetails = {};
   const today = new Date(); today.setHours(0,0,0,0);
 
   // Collecter toutes les commandes futures, groupées par semaine
@@ -6455,21 +6504,37 @@ function renderOrdersList() {
     return;
   }
 
-  el.innerHTML = Object.values(weeks).map(({ wLabel, range, orders }) => {
-    // Total par bière pour la semaine (quantité de bière, pas par type de fût)
-    const totalByBeer = {};
-    orders.forEach(({ o }) => {
+  el.innerHTML = Object.values(weeks).map(({ wLabel, range, orders }, weekIdx) => {
+    // Total par bière pour la semaine + détail des clients
+    const totalByBeer = {};      // { beer: qty }
+    const clientsByBeer = {};    // { beer: [{client, date, qty}] }
+    orders.forEach(({ o, date }) => {
       o.lines.forEach(l => {
         if (!l.beer) return;
         const qty = (parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0)
                   + (parseInt(l.cartons)||0) + (parseInt(l.tireuse)||0);
         if (!qty) return;
         totalByBeer[l.beer] = (totalByBeer[l.beer]||0) + qty;
+        if (!clientsByBeer[l.beer]) clientsByBeer[l.beer] = [];
+        clientsByBeer[l.beer].push({
+          client: o.client || '—',
+          date: date.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}),
+          qty,
+          fut30inox: parseInt(l.fut30inox)||0, fut30kk: parseInt(l.fut30kk)||0,
+          fut30kktp: parseInt(l.fut30kktp)||0, fut20: parseInt(l.fut20)||0,
+          cartons: parseInt(l.cartons)||0, tireuse: parseInt(l.tireuse)||0,
+        });
       });
     });
+
+    // Stocker pour l'accès depuis le clic (variable globale indexée)
+    _prevWeekBeerDetails[weekIdx] = { wLabel, range, clientsByBeer };
+
     const beerTotalsHtml = Object.entries(totalByBeer)
       .sort(([,a],[,b]) => b-a)
-      .map(([beer, qty]) => `<span style="font-size:11px;color:var(--foam);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 7px">${beer} <b style="color:var(--amber-lt)">${qty}</b></span>`)
+      .map(([beer, qty]) => `<span onclick="openBeerClientsModal(${weekIdx},'${beer.replace(/'/g,"\'")}')"
+        style="font-size:11px;color:var(--foam);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 7px;cursor:pointer"
+        title="Voir le détail">${beer} <b style="color:var(--amber-lt)">${qty}</b></span>`)
       .join('');
 
     const rows = orders.map(({ k, date, o }) => {
@@ -9171,6 +9236,7 @@ function closeConfirmCreation() {
 
 Object.assign(window, {
   switchPage, switchSub, switchMpCat, renderDashboard, renderFutsPage,
+  openBeerClientsModal, closeBeerClientsModal,
   toggleOrderStockPanel, renderOrderStockPanel,
   openFutsInitModal, closeFutsInitModal, saveFutsInit,
   openFutsRetourModal, closeFutsRetourModal, saveFutsRetour,
