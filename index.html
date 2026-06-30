@@ -6401,8 +6401,8 @@ function renderPrevWeeks() {
     monDate.setDate(today.getDate() + toMon + w * 7);
     const sunDate = new Date(monDate); sunDate.setDate(monDate.getDate() + 6);
 
-    // Agréger par bière
-    const byBeer = {}; // { beerName: { futs, cartons, tireuse } }
+    // Agréger par bière avec détail par type de fût
+    const byBeer = {}; // { beerName: { futs, cartons, tireuse, fut30inox, fut30kk, fut30kktp, fut20 } }
     let totalFuts = 0, totalCartons = 0, totalTireuses = 0, orderCount = 0;
 
     for (let d = 0; d < 7; d++) {
@@ -6412,11 +6412,16 @@ function renderPrevWeeks() {
         orderCount++;
         o.lines.forEach(l => {
           const beer = l.beer || '—';
-          if (!byBeer[beer]) byBeer[beer] = { futs:0, cartons:0, tireuse:0 };
-          byBeer[beer].futs    += (parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0);
+          if (!byBeer[beer]) byBeer[beer] = { futs:0, cartons:0, tireuse:0, fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0 };
+          const fi = parseInt(l.fut30inox)||0, fk = parseInt(l.fut30kk)||0;
+          const ft = parseInt(l.fut30kktp)||0, fv = parseInt(l.fut20)||0;
+          const lFuts = fi+fk+ft+fv;
+          byBeer[beer].fut30inox += fi; byBeer[beer].fut30kk   += fk;
+          byBeer[beer].fut30kktp += ft; byBeer[beer].fut20      += fv;
+          byBeer[beer].futs    += lFuts;
           byBeer[beer].cartons += parseInt(l.cartons) || 0;
           byBeer[beer].tireuse += parseInt(l.tireuse) || 0;
-          totalFuts     += parseInt(l.futs)    || 0;
+          totalFuts     += lFuts;
           totalCartons  += parseInt(l.cartons) || 0;
           totalTireuses += parseInt(l.tireuse) || 0;
         });
@@ -6426,15 +6431,25 @@ function renderPrevWeeks() {
     const fmt = d => d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
     const wLabel = w === 0 ? 'Cette semaine' : w === 1 ? 'Semaine prochaine' : `Dans ${w} semaines`;
 
-    const beerRows = Object.entries(byBeer).map(([beer, q]) => `
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
-        <span style="font-size:12px;color:var(--amber-lt);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${beer}</span>
-        <div style="display:flex;gap:8px;flex-shrink:0;margin-left:8px">
-          ${q.futs    ? `<span style="font-size:11px;color:var(--foam)">🛢 ${q.futs}</span>`    : ''}
-          ${q.cartons ? `<span style="font-size:11px;color:var(--foam)">📦 ${q.cartons}</span>` : ''}
-          ${q.tireuse ? `<span style="font-size:11px;color:var(--foam)">🍺 ${q.tireuse}</span>` : ''}
+    const beerRows = Object.entries(byBeer).map(([beer, q]) => {
+      const futParts = [];
+      if (q.fut30inox) futParts.push(`${q.fut30inox} Inox`);
+      if (q.fut30kk)   futParts.push(`${q.fut30kk} KK`);
+      if (q.fut30kktp) futParts.push(`${q.fut30kktp} KKTP`);
+      if (q.fut20)     futParts.push(`${q.fut20} 20L`);
+      return `
+      <div style="padding:5px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:600;color:var(--amber-lt);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${beer}</span>
+          <div style="display:flex;gap:8px;flex-shrink:0;margin-left:8px">
+            ${q.futs    ? `<span style="font-size:12px;font-weight:700;color:var(--foam)">🛢 ${q.futs}</span>`    : ''}
+            ${q.cartons ? `<span style="font-size:11px;color:var(--foam)">📦 ${q.cartons}</span>` : ''}
+            ${q.tireuse ? `<span style="font-size:11px;color:var(--foam)">🍺 ${q.tireuse}</span>` : ''}
+          </div>
         </div>
-      </div>`).join('');
+        ${futParts.length ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${futParts.join(' · ')}</div>` : ''}
+      </div>`;
+    }).join('');
 
     el.insertAdjacentHTML('beforeend', `
     <div style="margin:8px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
@@ -6851,6 +6866,8 @@ function deleteOrder(key, id) {
   renderOrderList(key);
   renderPrevWeeks();
   renderPrevCalendar();
+  renderProduits();
+  renderDashboard();
 }
 
 function saveOrder() {
@@ -6888,6 +6905,8 @@ function saveOrder() {
   renderOrderList(newKey);
   renderPrevWeeks();
   renderPrevCalendar();
+  renderProduits(); // rafraîchir l'aperçu stock réservé/libre
+  renderDashboard();
   closeOrderModal();
 }
 
