@@ -415,8 +415,8 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 16px;
-      margin-bottom: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
     }
     .ferm-header {
       display: flex;
@@ -424,8 +424,8 @@
       align-items: flex-start;
       margin-bottom: 12px;
     }
-    .ferm-id { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
-    .ferm-name { font-size: 16px; font-weight: 700; color: var(--foam); margin-top: 2px; }
+    .ferm-id { font-size: 18px; color: var(--amber-lt); font-weight: 800; letter-spacing: .5px; text-align: center; }
+    .ferm-name { font-size: 13px; font-weight: 600; color: var(--foam); margin-top: 2px; text-align: center; }
     .badge {
       font-size: 11px;
       font-weight: 700;
@@ -4896,18 +4896,35 @@ function saveDhModal() {
   f.phases.fermentation = { active:false, debut:null };
   saveFermenters();
 
-  // Mettre à jour le suivi du brassin
+  // Mettre à jour le statut dans l'historique des brassins
+  if (brassin) {
+    brassin.statut = 'dh';
+    saveBrewEntry(brassin.id, brassin);
+  }
+
+  // Mettre à jour le suivi du brassin avec date + quantité de houblon ajouté
   if (brassin && dhLogs.length) {
     const s = getSuivi(brassin.id);
     if (!s.dhLog) s.dhLog = [];
     dhLogs.forEach(l => s.dhLog.push(l));
-    // Mettre à jour la date DH
     s.dateDH = today;
+    // Tracer aussi dans l'historique des phases
+    if (!s.phaseLog) s.phaseLog = [];
+    const resume = dhLogs.map(l => `${l.qty}${l.unit} ${l.hop}`).join(', ');
+    s.phaseLog.push({ date: today, phase: 'dh', label: `Dry Hopping — ${resume}` });
     saveSuivi(brassin.id);
+
+    // Rafraîchir le panneau suivi s'il est ouvert
+    const suiviPanel = document.getElementById('suivi-panel-' + brassin.id);
+    if (suiviPanel && suiviPanel.style.display !== 'none') {
+      renderSuiviDhLog(brassin.id);
+      renderSuiviPhaseLog(brassin.id);
+    }
   }
 
   renderMP();
   renderFermenters();
+  renderHistorique();
   closeDhModal();
   showToast(`DH enregistré${dhLogs.length ? ' · ' + dhLogs.map(l=>`${l.qty}${l.unit} ${l.hop}`).join(', ') : ''}`);
 }
@@ -5148,18 +5165,16 @@ function renderFermenters() {
 
     el.insertAdjacentHTML('beforeend', `
     <div class="ferm-card" id="card-${f.id}">
-      <div class="ferm-header">
-        <div>
+      <div class="ferm-header" style="position:relative;align-items:center">
+        <div style="flex:0 0 auto">${badgesHtml}</div>
+        <div style="position:absolute;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none">
           <div class="ferm-id">Cuve ${f.id}</div>
           <div class="ferm-name">${f.beer || '— Disponible —'}</div>
           ${f.brewNum ? `<div style="font-size:11px;font-family:monospace;color:var(--amber-lt);margin-top:2px">${f.brewNum}</div>` : ''}
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-          ${badgesHtml}
-          <button class="ferm-toggle-btn" onclick="toggleFermEdit('${f.id}')">
-            ${isEditing ? '▲ fermer' : '✏️ modifier'}
-          </button>
-        </div>
+        <button class="ferm-toggle-btn" onclick="toggleFermEdit('${f.id}')" style="flex:0 0 auto;margin-left:auto">
+          ${isEditing ? '▲ fermer' : '✏️ modifier'}
+        </button>
       </div>
 
       ${anyActive ? `
