@@ -8800,9 +8800,35 @@ function deleteBl(id) {
   const b = blData[id];
   if (!b) return;
   if (!confirm(`Supprimer le BL ${b.ref||id} ?`)) return;
-  delete blData[id];       // mise à jour locale immédiate
-  renderBl();              // affichage immédiat
-  deleteBl1(id);           // écriture Firebase (le listener re-renderBl mais blData est déjà à jour)
+
+  // Remettre la commande associée en état normal (déclôturer)
+  if (b.date && b.client) {
+    const key = b.date;
+    const dayOrders = ordersData[key];
+    if (dayOrders) {
+      const arr = Array.isArray(dayOrders) ? dayOrders : Object.values(dayOrders||{});
+      let changed = false;
+      arr.forEach(o => {
+        if ((o.client||'') === b.client && o._cloture) {
+          delete o._cloture;
+          changed = true;
+        }
+      });
+      if (changed) {
+        ordersData[key] = arr;
+        saveOrders();
+        renderOrderList(key);
+        renderPrevWeeks();
+        renderPrevCalendar();
+        renderOrdersList();
+        renderProduits(); // rafraîchir les réservations
+      }
+    }
+  }
+
+  delete blData[id];
+  renderBl();
+  deleteBl1(id);
 }
 
 // ===== SIGNATURE TACTILE =====
