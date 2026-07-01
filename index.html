@@ -1492,6 +1492,15 @@
   </div>
 </div>
 
+<!-- ===== MODAL COMMANDES PASSÉES ===== -->
+<div id="past-orders-modal" class="modal-overlay" onclick="if(event.target===this)closePastOrdersModal()">
+  <div class="modal-box" style="max-width:400px;margin:auto">
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700" id="past-orders-title"></div>
+    <div id="past-orders-list" style="margin-top:12px;display:flex;flex-direction:column;gap:0"></div>
+    <button onclick="closePastOrdersModal()" style="margin-top:16px;width:100%;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:13px;padding:10px;cursor:pointer">Fermer</button>
+  </div>
+</div>
+
 <!-- ===== MODAL CLIENTS PAR BIÈRE (commandes à venir) ===== -->
 <div id="beer-clients-modal" class="modal-overlay" onclick="if(event.target===this)closeBeerClientsModal()">
   <div class="modal-box" style="max-width:400px;margin:auto">
@@ -3256,7 +3265,7 @@ function calcStockEngageParBiere() {
     // Calculer l'index de semaine (0=cette semaine, 1=semaine prochaine, etc.)
     const diffDays = Math.round((d - thisMonday) / 86400000);
     const weekIdx = Math.floor(diffDays / 7);
-    orders.map(migrateOrder).forEach(o => {
+    orders.map(migrateOrder).filter(o => !o._cloture).forEach(o => {
       const client = o.client || o.lines?.[0]?.beer || '?';
       const dateStr = new Date(dateKey+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
       o.lines.forEach(l => {
@@ -5575,13 +5584,46 @@ function openClientDetailModal(id) {
     c.delai   && `<div style="display:flex;gap:8px"><span style="color:var(--muted);min-width:80px">Paiement</span><span style="color:var(--foam)">${c.delai} jours</span></div>`,
   ].filter(Boolean).join('');
 
-  const cmdsHtml = cmds.length ? cmds.slice(0,10).map(o => {
+  // BL livrés pour ce client
+  const bls = Object.values(blData||{})
+    .filter(b => b.client === c.nom)
+    .sort((a,b) => (b.ts||0)-(a.ts||0));
+
+  // Grouper BL par année
+  const blsByYear = {};
+  bls.forEach(b => {
+    const yr = b.date ? b.date.slice(0,4) : new Date(b.ts||0).getFullYear().toString();
+    if (!blsByYear[yr]) blsByYear[yr] = [];
+    blsByYear[yr].push(b);
+  });
+
+  const blsHtml = Object.entries(blsByYear)
+    .sort(([a],[b]) => parseInt(b)-parseInt(a))
+    .map(([yr, list]) => `
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px">${yr} — ${list.length} BL</div>
+      ${list.map(b => {
+        const d = b.date ? new Date(b.date+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'}) : '—';
+        const linesSum = (b.lines||[]).map(l=>`${l.designation||'—'} ×${l.qte||0}`).slice(0,3).join(', ');
+        const signe = b.statut==='signe' ? '<span style="color:var(--ok);font-size:10px">✓ signé</span>' : '';
+        return `<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+          <div style="min-width:0;flex:1">
+            <span style="font-family:monospace;color:var(--amber-lt)">${b.ref||'—'}</span>
+            <span style="color:var(--muted);margin-left:6px">${d}</span>
+            <div style="color:var(--foam);font-size:11px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${linesSum}</div>
+          </div>
+          ${signe}
+        </div>`;
+      }).join('')}`
+    ).join('') || '<div style="color:var(--muted);font-size:12px;font-style:italic">Aucune livraison</div>';
+
+  const cmdsHtml = cmds.length ? cmds.slice(0,8).map(o => {
     const d = new Date(o.dateKey+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'});
     const lines = (o.lines||[]).map(l=>{ const tf=(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0); return `${l.beer}${tf?` ×${tf}🛢`:''}${l.cartons?` ×${l.cartons}📦`:''}${l.tireuse?` ×${l.tireuse}🍺`:''}`; }).join(', ');
-    return `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
-      <div style="display:flex;justify-content:space-between">
-        <span style="color:var(--muted)">${d}</span>
-        ${o.note ? `<span style="color:var(--text-dim);font-style:italic">${o.note}</span>` : ''}
+    const clot = o._cloture ? '<span style="font-size:10px;color:var(--ok)"> ✓</span>' : '';
+    return `<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;opacity:${o._cloture?'.55':'1'}">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span style="color:var(--muted)">${d}</span>${clot}
+        ${o.note ? `<span style="color:var(--text-dim);font-style:italic;font-size:11px">${o.note}</span>` : ''}
       </div>
       <div style="color:var(--foam);margin-top:2px">${lines||'—'}</div>
     </div>`;
@@ -5611,6 +5653,9 @@ function openClientDetailModal(id) {
 
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Commandes (${cmds.length})</div>
     <div style="margin-bottom:14px">${cmdsHtml}</div>
+
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Livraisons (${bls.length} BL)</div>
+    <div style="margin-bottom:14px">${blsHtml}</div>
 
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Suivi commercial</div>
     <div>${suivisHtml}</div>
@@ -6467,6 +6512,39 @@ function renderPrev() {
 }
 
 
+
+// ===== MODAL COMMANDES PASSÉES =====
+function openPastOrdersModal(key) {
+  const orders = (ordersData[key] || []).map(migrateOrder);
+  if (!orders.length) return;
+  const d = new Date(key+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  document.getElementById('past-orders-title').textContent = d;
+  document.getElementById('past-orders-list').innerHTML = orders.map(o => {
+    const lines = (o.lines||[]).map(l => {
+      const parts = [];
+      if (parseInt(l.fut30inox)||0) parts.push(`${l.fut30inox} Inox`);
+      if (parseInt(l.fut30kk)||0)   parts.push(`${l.fut30kk} KK`);
+      if (parseInt(l.fut30kktp)||0) parts.push(`${l.fut30kktp} KKTP`);
+      if (parseInt(l.fut20)||0)     parts.push(`${l.fut20} 20L`);
+      if (parseInt(l.cartons)||0)   parts.push(`${l.cartons} carton${l.cartons>1?'s':''}`);
+      if (parseInt(l.tireuse)||0)   parts.push(`${l.tireuse} tireuse${l.tireuse>1?'s':''}`);
+      return `<div style="font-size:12px;color:var(--muted)">↳ ${l.beer||'—'} : ${parts.join(', ')||'—'}</div>`;
+    }).join('');
+    const cloture = o._cloture ? '<span style="font-size:10px;color:var(--ok);margin-left:6px">✓ BL créé</span>' : '';
+    return `
+    <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:13px;font-weight:600;color:var(--foam)">${o.client||'—'}${cloture}</div>
+      ${lines}
+      ${o.note?`<div style="font-size:11px;color:var(--muted);font-style:italic;margin-top:2px">📝 ${o.note}</div>`:''}
+    </div>`;
+  }).join('');
+  document.getElementById('past-orders-modal').style.display = 'flex';
+}
+
+function closePastOrdersModal() {
+  document.getElementById('past-orders-modal').style.display = 'none';
+}
+
 // ===== MODAL CLIENTS PAR BIÈRE =====
 function openBeerClientsModal(weekIdx, beer) {
   const data = _prevWeekBeerDetails[weekIdx];
@@ -6526,7 +6604,7 @@ function renderOrdersList() {
       const k = dateKey(cur);
       const raw = ordersData[k] || [];
       const list = Array.isArray(raw) ? raw : Object.values(raw);
-      list.map(migrateOrder).forEach(o => {
+      list.map(migrateOrder).filter(o => !o._cloture).forEach(o => {
         weekOrders.push({ k, date: cur, o });
       });
     }
@@ -6642,7 +6720,7 @@ function renderPrevWeeks() {
       const cur = new Date(monDate); cur.setDate(monDate.getDate() + d);
       if (cur < today) continue; // ignorer les jours déjà passés (cohérence avec renderOrdersList)
       const k = dateKey(cur);
-      (ordersData[k] || []).map(migrateOrder).forEach(o => {
+      (ordersData[k] || []).map(migrateOrder).filter(o => !o._cloture).forEach(o => {
         orderCount++;
         o.lines.forEach(l => {
           const beer = l.beer || '—';
@@ -6756,19 +6834,20 @@ function renderPrevCalendar() {
         ${totalT  ? `<div style="font-size:8px;color:#7ab4e8;font-weight:700;line-height:1">🍺${totalT}</div>`          : ''}
       </div>` : '';
 
+        const clickAction = isPast && hasOrders ? `openPastOrdersModal('${k}')` : !isPast ? `openOrderModal('${k}')` : '';
     gridHtml += `
-    <div onclick="${isPast?'':'openOrderModal(\''+k+'\')'}"
+    <div onclick="${clickAction}"
       style="
         background:${isToday?'rgba(200,128,10,.2)':hasOrders?'var(--surface2)':'var(--surface)'};
-        border:1px solid ${isToday?'var(--amber)':hasOrders?'var(--border)':'var(--border)'};
+        border:1px solid ${isToday?'var(--amber)':hasOrders&&isPast?'rgba(150,150,150,.3)':'var(--border)'};
         border-radius:var(--radius-sm);
         padding:4px;
         min-height:52px;
-        cursor:${isPast?'default':'pointer'};
-        opacity:${isPast?'.4':'1'};
+        cursor:${(isPast&&!hasOrders)?'default':'pointer'};
+        opacity:${isPast?'.55':'1'};
         transition:border-color .1s;
       ">
-      <div style="font-size:11px;font-weight:${isToday?'800':'600'};color:${isToday?'var(--amber-lt)':'var(--foam)'}">${day}</div>
+      <div style="font-size:11px;font-weight:${isToday?'800':'600'};color:${isToday?'var(--amber-lt)':isPast?'var(--muted)':'var(--foam)'}">${day}</div>
       ${dotHtml}
     </div>`;
   }
@@ -8693,6 +8772,25 @@ function saveBl() {
   saveBl1(id, entry);
   // Mettre à jour le parc inox uniquement à la création
   if (isNew) updateStockFromBl(client, lines, 1);
+  // Clôturer la commande associée si elle existe (dateKey = date du BL)
+  if (isNew && entry.date) {
+    const key = entry.date.replace(/-/g, '-'); // déjà au bon format YYYY-MM-DD
+    const dayOrders = ordersData[key];
+    if (dayOrders) {
+      const arr = Array.isArray(dayOrders) ? dayOrders : Object.values(dayOrders||{});
+      // Chercher la commande du même client
+      const matchIdx = arr.findIndex(o => (o.client||'') === entry.client);
+      if (matchIdx !== -1) {
+        arr[matchIdx]._cloture = true;
+        ordersData[key] = arr;
+        saveOrders();
+        renderOrderList(key);
+        renderPrevWeeks();
+        renderPrevCalendar();
+        renderOrdersList();
+      }
+    }
+  }
   closeBlModal();
   renderBl();
   showToast(`${entry.ref} créé`);
@@ -9286,6 +9384,7 @@ function closeConfirmCreation() {
 Object.assign(window, {
   switchPage, switchSub, switchMpCat, renderDashboard, renderFutsPage,
   openBeerClientsModal, closeBeerClientsModal, goToCommandesForBeer,
+  openPastOrdersModal, closePastOrdersModal,
   toggleOrderStockPanel, renderOrderStockPanel,
   openFutsInitModal, closeFutsInitModal, saveFutsInit,
   openFutsRetourModal, closeFutsRetourModal, saveFutsRetour,
