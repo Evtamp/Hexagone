@@ -8783,11 +8783,12 @@ function updateStockFromBl(client, lines, delta) {
   const formatsModified = new Set();
 
   if (delta > 0) {
+    // Livraison : déduire du stock FIFO
     Object.entries(toDestock).forEach(([fmt, qtyNeeded]) => {
       let reste = qtyNeeded;
       Object.values(produitsData)
         .filter(p => p.format === fmt && (p.qty||0) > 0)
-        .sort((a,b) => (a.ts||0) - (b.ts||0)) // FIFO
+        .sort((a,b) => (a.ts||0) - (b.ts||0))
         .forEach(p => {
           if (reste <= 0) return;
           const pris = Math.min(reste, parseInt(p.qty)||0);
@@ -8798,8 +8799,21 @@ function updateStockFromBl(client, lines, delta) {
           formatsModified.add(fmt);
         });
     });
+  } else if (delta < 0) {
+    // Annulation BL : remettre en stock sur le premier lot trouvé par format
+    Object.entries(toDestock).forEach(([fmt, qtyNeeded]) => {
+      const lots = Object.values(produitsData).filter(p => p.format === fmt).sort((a,b) => (b.ts||0)-(a.ts||0));
+      if (lots.length > 0) {
+        const p = lots[0];
+        const avantBL = p.qty;
+        produitsData[p.id] = { ...p, qty: (p.qty||0) + qtyNeeded };
+        tracerMouvProduit(p.id, avantBL, produitsData[p.id].qty, `↩ Annulation BL`);
+        formatsModified.add(fmt);
+      }
+    });
+  }
 
-    // Écrire Firebase pour tous les formats modifiés
+  if (formatsModified.size > 0) {
     _produitsLocalWrite = true;
     Object.values(produitsData)
       .filter(p => formatsModified.has(p.format))
@@ -8907,6 +8921,9 @@ function deleteBl(id) {
       renderProduits();
     }
   }
+
+  // Remettre les produits en stock (inverse de la livraison)
+  updateStockFromBl(b.client, b.lines, -1);
 
   delete blData[id];
   renderBl();
@@ -9378,6 +9395,23 @@ function creerBlDepuisCommande(dateKey, orderId) {
       lines:   blLinesFromOrder,
       sourceCommande: orderId,
     };
+    // Clôturer la commande source immédiatement
+    const rawSrc = ordersData[dateKey];
+    const arrSrc = rawSrc ? (Array.isArray(rawSrc) ? rawSrc : Object.values(rawSrc)) : [];
+    const matchSrc = arrSrc.find(x => x.id === orderId);
+    if (matchSrc) {
+      matchSrc._cloture = true;
+      ordersData[dateKey] = arrSrc;
+      _ordersLocalWrite = true;
+      fbSet('orders', ordersData);
+      setTimeout(() => { _ordersLocalWrite = false; }, 3000);
+      renderOrderList(dateKey);
+      renderPrevWeeks();
+      renderPrevCalendar();
+      renderOrdersList();
+      renderProduits();
+    }
+
     // Mise à jour locale + rendu immédiat
     blData[id] = entry;
     renderBl();
@@ -9386,7 +9420,7 @@ function creerBlDepuisCommande(dateKey, orderId) {
     // Fermer modal + confirmation
     document.getElementById('order-modal')?.classList.remove('open');
     showConfirmCreation('bl', entry.ref, id);
-    // Firebase en arrière-plan (le listener re-renderBl mais blData[id] est déjà là)
+    // Firebase en arrière-plan
     saveBl1(id, entry);
   } catch(e) {
     console.error('Erreur création BL:', e);
