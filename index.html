@@ -2335,7 +2335,8 @@
       <div class="modal-field">
         <label>Date</label>
         <input id="order-date" type="date"
-          style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;width:100%"/>
+          onclick="this.showPicker&&this.showPicker()"
+          style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;width:100%;cursor:pointer"/>
       </div>
 
       <div class="modal-field">
@@ -7244,9 +7245,9 @@ function editOrderForm(key, id) {
     prixCarton: l.prixCarton||0, prixTireuse: l.prixTireuse||0
   }));
   renderDraftLines();
-  // Scroller vers le formulaire pour que les quantités soient visibles
+  // Scroller vers le haut du formulaire pour voir la date et le client
   setTimeout(() => {
-    const el = document.getElementById('order-lines');
+    const el = document.getElementById('order-form-title');
     if (el) el.scrollIntoView({ behavior:'smooth', block:'start' });
   }, 100);
 }
