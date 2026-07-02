@@ -8770,12 +8770,16 @@ function _detectFormat(designation) {
 function updateStockFromBl(client, lines, delta) {
   if (!lines || !lines.length) return;
 
-  // Regrouper les qtés à détocker par format
-  const toDestock = {}; // { format: qty }
+  // Regrouper les qtés à détocker par bière+format
+  const toDestock = {}; // { "beer|format": { beer, fmt, qty } }
   (lines||[]).forEach(l => {
     const fmt = _detectFormat(l.designation);
     if (!fmt) return;
-    toDestock[fmt] = (toDestock[fmt]||0) + (parseInt(l.qte)||0);
+    // Extraire le nom de la bière depuis la désignation : "Enfant Terrible — Fût 30L Inox"
+    const beerMatch = (l.designation||'').split(' — ')[0].trim();
+    const key = beerMatch + '|' + fmt;
+    if (!toDestock[key]) toDestock[key] = { beer: beerMatch, fmt, qty: 0 };
+    toDestock[key].qty += parseInt(l.qte)||0;
   });
 
   if (!Object.keys(toDestock).length) return;
@@ -8783,11 +8787,11 @@ function updateStockFromBl(client, lines, delta) {
   const formatsModified = new Set();
 
   if (delta > 0) {
-    // Livraison : déduire du stock FIFO
-    Object.entries(toDestock).forEach(([fmt, qtyNeeded]) => {
+    // Livraison : déduire du stock FIFO par bière+format
+    Object.values(toDestock).forEach(({ beer, fmt, qty: qtyNeeded }) => {
       let reste = qtyNeeded;
       Object.values(produitsData)
-        .filter(p => p.format === fmt && (p.qty||0) > 0)
+        .filter(p => p.format === fmt && (p.qty||0) > 0 && (!beer || p.biere === beer))
         .sort((a,b) => (a.ts||0) - (b.ts||0))
         .forEach(p => {
           if (reste <= 0) return;
@@ -8796,19 +8800,21 @@ function updateStockFromBl(client, lines, delta) {
           produitsData[p.id] = { ...p, qty: p.qty - pris };
           tracerMouvProduit(p.id, avantBL, produitsData[p.id].qty, `📦 Livraison BL`);
           reste -= pris;
-          formatsModified.add(fmt);
+          formatsModified.add(p.id);
         });
     });
   } else if (delta < 0) {
-    // Annulation BL : remettre en stock sur le premier lot trouvé par format
-    Object.entries(toDestock).forEach(([fmt, qtyNeeded]) => {
-      const lots = Object.values(produitsData).filter(p => p.format === fmt).sort((a,b) => (b.ts||0)-(a.ts||0));
+    // Annulation BL : remettre en stock par bière+format
+    Object.values(toDestock).forEach(({ beer, fmt, qty: qtyNeeded }) => {
+      const lots = Object.values(produitsData)
+        .filter(p => p.format === fmt && (!beer || p.biere === beer))
+        .sort((a,b) => (b.ts||0)-(a.ts||0));
       if (lots.length > 0) {
         const p = lots[0];
         const avantBL = p.qty;
         produitsData[p.id] = { ...p, qty: (p.qty||0) + qtyNeeded };
         tracerMouvProduit(p.id, avantBL, produitsData[p.id].qty, `↩ Annulation BL`);
-        formatsModified.add(fmt);
+        formatsModified.add(p.id);
       }
     });
   }
@@ -8816,7 +8822,7 @@ function updateStockFromBl(client, lines, delta) {
   if (formatsModified.size > 0) {
     _produitsLocalWrite = true;
     Object.values(produitsData)
-      .filter(p => formatsModified.has(p.format))
+      .filter(p => formatsModified.has(p.id))
       .forEach(p => fbSet('produits/' + p.id, p));
     setTimeout(() => { _produitsLocalWrite = false; }, 3000);
   }
