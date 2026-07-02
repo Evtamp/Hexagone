@@ -8837,11 +8837,14 @@ function updateStockFromBl(client, lines, delta) {
   if (client) {
     if (!futsData.parClient)  futsData.parClient  = {};
     if (!futsData.mouvements) futsData.mouvements = [];
-    const qtyInox = toDestock['fut30inox'] || 0;
+    // Compter les fûts inox toutes bières confondues
+    const qtyInox = Object.values(toDestock)
+      .filter(d => d.fmt === 'fut30inox')
+      .reduce((s,d) => s + d.qty, 0);
     if (qtyInox > 0) {
       futsData.parClient[client] = Math.max(0, (futsData.parClient[client]||0) + qtyInox * delta);
       if (!futsData.parClient[client]) delete futsData.parClient[client];
-      futsData.mouvements.push({ type:'livraison', ts:Date.now(), client, qty: delta > 0 ? -qtyInox : qtyInox });
+      futsData.mouvements.push({ type: delta > 0 ? 'livraison' : 'retour_annulation', ts:Date.now(), client, qty: delta > 0 ? -qtyInox : qtyInox });
       saveFutsData();
       renderFutsPage();
     }
@@ -8912,13 +8915,16 @@ function deleteBl(id) {
   if (!b) return;
   if (!confirm(`Supprimer le BL ${b.ref||id} ?`)) return;
 
-  // Remettre la commande associée en état normal sur toutes les dates
-  if (b.client) {
+  // Remettre la commande associée en état normal
+  {
     let changed = false;
+    const srcId = b.sourceCommande; // ID de la commande source si créé depuis commande
     Object.entries(ordersData).forEach(([key, dayOrders]) => {
       const arr = Array.isArray(dayOrders) ? dayOrders : Object.values(dayOrders||{});
       arr.forEach(o => {
-        if ((o.client||'') === b.client && o._cloture) {
+        // Cibler par ID source si disponible, sinon par client+cloture
+        const match = srcId ? o.id === srcId : ((o.client||'') === b.client && o._cloture);
+        if (match && o._cloture) {
           delete o._cloture;
           changed = true;
         }
@@ -8926,7 +8932,10 @@ function deleteBl(id) {
       if (changed) ordersData[key] = arr;
     });
     if (changed) {
-      saveOrders();
+      _ordersLocalWrite = true;
+      fbSet('orders', ordersData);
+      setTimeout(() => { _ordersLocalWrite = false; }, 3000);
+      renderOrderList(b.date || '');
       renderPrevWeeks();
       renderPrevCalendar();
       renderOrdersList();
