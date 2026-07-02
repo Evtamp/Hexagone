@@ -2623,6 +2623,7 @@ let FERMENTERS   = JSON.parse(JSON.stringify(FERM_DEFAULT));
 let planningData = {};
 let ordersData   = {};
 let _localBrewPatches = {}; // patches locaux temporaires pour éviter l'écrasement par Firebase
+let produitsMouvements = {}; // { id: [{ts, delta, qtyAvant, qtyApres, raison}] }
 let fermSuiviData = {}; // { fermId: { densites:[{date,val}], dateDH:'', dateEnfutage:'' } }
 let notesData    = {};
 let recipesData  = {};
@@ -2943,6 +2944,10 @@ function initApp() {
     onLoaded();
   });
 
+  fbListen('produitsMouvements', data => {
+    produitsMouvements = data || {};
+  });
+
   fbListen('futsData', data => {
     // Ne pas écraser si on vient de faire un write local (protection race condition)
     if (_futsDataLocalWrite) return;
@@ -3232,11 +3237,23 @@ function deleteProduit(id) {
   renderProduits();
 }
 
+function tracerMouvProduit(id, qtyAvant, qtyApres, raison) {
+  const delta = qtyApres - qtyAvant;
+  if (delta === 0) return;
+  const p = produitsData[id];
+  if (!produitsMouvements[id]) produitsMouvements[id] = [];
+  const entry = { ts: Date.now(), delta, qtyAvant, qtyApres, raison: raison||'Ajustement manuel' };
+  produitsMouvements[id].push(entry);
+  fbSet('produitsMouvements/' + id, produitsMouvements[id]);
+}
+
 function adjustProduitQty(id, delta) {
   const p = produitsData[id];
   if (!p) return;
-  p.qty = Math.max(0, (p.qty||0) + delta);
+  const avant = p.qty||0;
+  p.qty = Math.max(0, avant + delta);
   fbSet('produits/' + id + '/qty', p.qty);
+  tracerMouvProduit(id, avant, p.qty, delta < 0 ? 'Sortie manuelle' : 'Entrée manuelle');
   renderProduits();
 }
 
@@ -3245,8 +3262,51 @@ function setProduitQty(id, val) {
   if (!p) return;
   const v = parseInt(val);
   if (isNaN(v) || v < 0) return;
+  const avant = p.qty||0;
   p.qty = v;
   fbSet('produits/' + id + '/qty', v);
+  tracerMouvProduit(id, avant, v, 'Saisie manuelle');
+}
+
+
+// ===== HISTORIQUE MOUVEMENTS PRODUITS FINIS =====
+function toggleProduitHisto(id) {
+  const el = document.getElementById('produit-histo-' + id);
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  if (!open) renderProduitHisto(id);
+  el.style.display = open ? 'none' : 'block';
+}
+
+function renderProduitHisto(id) {
+  const el = document.getElementById('produit-histo-' + id);
+  if (!el) return;
+  const mouvs = [...(produitsMouvements[id] || [])].reverse();
+  if (!mouvs.length) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--muted);font-style:italic;padding:4px 0">Aucun mouvement enregistré</div>';
+    return;
+  }
+  el.innerHTML = mouvs.map((m, i) => {
+    const d = new Date(m.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+    const color = m.delta > 0 ? 'var(--ok)' : 'var(--danger)';
+    const sign  = m.delta > 0 ? '+' : '';
+    const revIdx = mouvs.length - 1 - i; // index réel dans le tableau
+    return `
+    <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px">
+      <span style="color:var(--muted);min-width:90px;flex-shrink:0">${d}</span>
+      <span style="font-weight:700;color:${color};min-width:32px">${sign}${m.delta}</span>
+      <span style="color:var(--muted);flex:1">${m.raison||'—'}</span>
+      <span style="color:var(--muted)">${m.qtyAvant}→${m.qtyApres}</span>
+      <button onclick="deleteProduitMouv('${id}',${revIdx})" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:1px 3px;flex-shrink:0" title="Supprimer ce mouvement">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function deleteProduitMouv(id, idx) {
+  if (!produitsMouvements[id]) return;
+  produitsMouvements[id].splice(idx, 1);
+  fbSet('produitsMouvements/' + id, produitsMouvements[id]);
+  renderProduitHisto(id);
 }
 
 // ─── Calcul des stocks engagés par bière/format à partir des commandes futures ───
@@ -3377,8 +3437,10 @@ function renderProduits() {
           <span class="mp-unit-label" style="min-width:30px">${FORMAT_UNITS[p.format]||'u.'}</span>
         </div>
         <button onclick="openProduitModal('${p.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:3px 6px;cursor:pointer;flex-shrink:0">✏️</button>
+        <button onclick="toggleProduitHisto('${p.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:3px 6px;cursor:pointer;flex-shrink:0">📋</button>
         <button onclick="deleteProduit('${p.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:3px 6px;cursor:pointer;flex-shrink:0">🗑</button>
-      </div>`;
+      </div>
+      <div id="produit-histo-${p.id}" style="display:none;padding:6px 0 2px"></div>`;
     }).join('');
 
     // Ligne de stock inline (sans cadres)
@@ -5151,6 +5213,7 @@ function saveEnfutage() {
     };
     produitsData[id] = entry;
     fbSet('produits/' + id, entry);
+    tracerMouvProduit(id, 0, line.qty, `🛢 Enfûtage`);
     // Comptabiliser les fûts vides utilisés par type
     if (line.format === 'fut30inox') inoxUsed += line.qty;
     if (line.format === 'fut30kk')   kkUsed   += line.qty;
@@ -6942,19 +7005,10 @@ function renderOrderList(key) {
         </div>
       </div>`;
     }).join('');
+        const clicAction = o._cloture ? '' : `editOrderForm('${key}','${o.id}')`;
     return `
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:10px;cursor:pointer"
-         onclick="editOrderForm('${key}','${o.id}')" title="Cliquer pour modifier">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div style="font-size:13px;font-weight:700;color:var(--foam)">${o.client||'Client'}</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          ${totalHT > 0 ? `<span style="font-size:13px;font-weight:800;color:var(--amber-lt)">${totalHT.toFixed(2)} €</span>` : ''}
-          <button onclick="event.stopPropagation();deleteOrder('${key}','${o.id}')"
-            style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;cursor:pointer;padding:3px 8px;flex-shrink:0">
-            Supprimer
-          </button>
-        </div>
-      </div>
+    <div style="background:var(--surface2);border:1px solid ${o._cloture?'var(--ok)':'var(--border)'};border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:10px;cursor:pointer;opacity:${o._cloture?'.5':'1'}"
+         onclick="${clicAction}" title="${o._cloture?'Commande clôturée':'Cliquer pour modifier'}">
       ${linesHtml}
       ${o.note ? `<div style="font-size:12px;color:var(--text-dim);font-style:italic;margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">📝 ${o.note}</div>` : ''}
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
@@ -8712,7 +8766,9 @@ function updateStockFromBl(client, lines, delta) {
         .forEach(p => {
           if (reste <= 0) return;
           const pris = Math.min(reste, parseInt(p.qty)||0);
+          const avantBL = p.qty;
           produitsData[p.id] = { ...p, qty: p.qty - pris };
+          tracerMouvProduit(p.id, avantBL, produitsData[p.id].qty, `📦 Livraison BL`);
           reste -= pris;
           formatsModified.add(fmt);
         });
@@ -8772,23 +8828,27 @@ function saveBl() {
   saveBl1(id, entry);
   // Mettre à jour le parc inox uniquement à la création
   if (isNew) updateStockFromBl(client, lines, 1);
-  // Clôturer la commande associée si elle existe (dateKey = date du BL)
-  if (isNew && entry.date) {
-    const key = entry.date.replace(/-/g, '-'); // déjà au bon format YYYY-MM-DD
-    const dayOrders = ordersData[key];
-    if (dayOrders) {
+  // Clôturer la commande associée : chercher sur toutes les dates futures le client correspondant
+  if (isNew && entry.client) {
+    let found = false;
+    const today = new Date(); today.setHours(0,0,0,0);
+    Object.entries(ordersData).forEach(([key, dayOrders]) => {
+      if (found) return;
+      const d = new Date(key + 'T12:00:00');
       const arr = Array.isArray(dayOrders) ? dayOrders : Object.values(dayOrders||{});
-      // Chercher la commande du même client
-      const matchIdx = arr.findIndex(o => (o.client||'') === entry.client);
+      const matchIdx = arr.findIndex(o => (o.client||'') === entry.client && !o._cloture);
       if (matchIdx !== -1) {
         arr[matchIdx]._cloture = true;
         ordersData[key] = arr;
-        saveOrders();
-        renderOrderList(key);
-        renderPrevWeeks();
-        renderPrevCalendar();
-        renderOrdersList();
+        found = true;
       }
+    });
+    if (found) {
+      saveOrders();
+      renderPrevWeeks();
+      renderPrevCalendar();
+      renderOrdersList();
+      renderProduits();
     }
   }
   closeBlModal();
@@ -8801,28 +8861,25 @@ function deleteBl(id) {
   if (!b) return;
   if (!confirm(`Supprimer le BL ${b.ref||id} ?`)) return;
 
-  // Remettre la commande associée en état normal (déclôturer)
-  if (b.date && b.client) {
-    const key = b.date;
-    const dayOrders = ordersData[key];
-    if (dayOrders) {
+  // Remettre la commande associée en état normal sur toutes les dates
+  if (b.client) {
+    let changed = false;
+    Object.entries(ordersData).forEach(([key, dayOrders]) => {
       const arr = Array.isArray(dayOrders) ? dayOrders : Object.values(dayOrders||{});
-      let changed = false;
       arr.forEach(o => {
         if ((o.client||'') === b.client && o._cloture) {
           delete o._cloture;
           changed = true;
         }
       });
-      if (changed) {
-        ordersData[key] = arr;
-        saveOrders();
-        renderOrderList(key);
-        renderPrevWeeks();
-        renderPrevCalendar();
-        renderOrdersList();
-        renderProduits(); // rafraîchir les réservations
-      }
+      if (changed) ordersData[key] = arr;
+    });
+    if (changed) {
+      saveOrders();
+      renderPrevWeeks();
+      renderPrevCalendar();
+      renderOrdersList();
+      renderProduits();
     }
   }
 
@@ -9418,6 +9475,7 @@ Object.assign(window, {
   toggleMenu, closeMenu,
   adjustMP, setMP, setMpPrice,
   openProduitModal, closeProduitModal, selectProduitFormat, saveProduitModal, deleteProduit, adjustProduitQty, setProduitQty, selectFermBtn,
+  toggleProduitHisto, renderProduitHisto, deleteProduitMouv, tracerMouvProduit,
   openDhModal, closeDhModal, saveDhModal,
   openEnfutageModal, closeEnfutageModal, saveEnfutage, addEnfutageLine, removeEnfutageLine, updateEnfutageLine,
   toggleSuivi, addDensite, deleteDensite, updateSuiviDate, renderSuiviDensites,
