@@ -7199,18 +7199,24 @@ function editOrderForm(key, id) {
   if (!o) return;
   editOrderId = id;
   document.getElementById('order-date').value   = key;
-  document.getElementById('order-client').value = o.client || '';
-  document.getElementById('order-note').value   = o.note   || '';
-  document.getElementById('order-form-title').textContent = '✏️ Modifier le bon — ' + (o.client||'');
+  document.getElementById('order-note').value   = o.note || '';
+  document.getElementById('order-form-title').textContent = '✏️ Modifier — ' + (o.client||'');
   document.getElementById('order-save-btn').textContent = '✓ Mettre à jour';
+  // Gestion client : select ou champ libre
   populateOrderClientSelect(o.client || '');
-  // Si le client est dans la liste, masquer le champ libre ; sinon l'afficher
   const knownNames = Object.values(clientsData).map(c => c.nom);
   const isKnown = knownNames.includes(o.client || '');
-  document.getElementById('order-client').style.display = isKnown ? 'none' : '';
-  if (isKnown) document.getElementById('order-client-select').value = o.client;
-  document.getElementById('order-form-title').textContent = 'Modifier le bon';
-  document.getElementById('order-save-btn').textContent = '✓ Mettre à jour';
+  const clientInput  = document.getElementById('order-client');
+  const clientSelect = document.getElementById('order-client-select');
+  if (isKnown) {
+    clientInput.style.display = 'none';
+    clientInput.value = o.client;
+    if (clientSelect) clientSelect.value = o.client;
+  } else {
+    clientInput.style.display = '';
+    clientInput.value = o.client || '';
+    if (clientSelect) clientSelect.value = '';
+  }
   draftLines = o.lines.map(l => ({
     beer: l.beer||BEERS[0],
     fut30inox: l.fut30inox||0, fut30kk: l.fut30kk||0, fut30kktp: l.fut30kktp||0, fut20: l.fut20||0,
