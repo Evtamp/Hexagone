@@ -4093,10 +4093,12 @@ function annulerSortieMP(id) {
   showToast('Sortie annulée — stock remis à ' + s.valAvant + ' ' + s.mpUnit);
 }
 
+let _sortieCounter = 0;
 function tracerSortieMP(item, valAvant, valApres, raison) {
   if (valAvant === valApres) return;
-  const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
-  const entry = { id, mpId: item.id, mpName: item.name, mpUnit: item.unit||'', delta: parseFloat((valApres-valAvant).toFixed(3)), valAvant, valApres, ts: Date.now(), raison: raison||'Ajustement manuel' };
+  _sortieCounter++;
+  const id = Date.now().toString(36) + '_' + (_sortieCounter).toString(36) + '_' + Math.random().toString(36).slice(2,4);
+  const entry = { id, mpId: item.id, mpName: item.name, mpUnit: item.unit||'', delta: parseFloat((valApres-valAvant).toFixed(3)), valAvant, valApres, ts: Date.now() + _sortieCounter, raison: raison||'Ajustement manuel' };
   mpSortiesData[id] = entry;
   fbSet('mpSorties/' + id, entry);
 }
@@ -7294,11 +7296,14 @@ function saveOrder() {
   document.getElementById('order-note').value   = '';
   document.getElementById('order-form-title').textContent = 'Nouveau bon de commande';
   document.getElementById('order-save-btn').textContent = '✓ Enregistrer le bon';
+  // Aussi mettre à jour l'ancienne date si elle a changé
+  if (oldKey && oldKey !== newKey) renderOrderList(oldKey);
   renderDraftLines();
   renderOrderList(newKey);
   renderPrevWeeks();
   renderPrevCalendar();
-  renderProduits(); // rafraîchir l'aperçu stock réservé/libre
+  renderOrdersList(); // liste des commandes à venir (section principale)
+  renderProduits();
   renderDashboard();
   closeOrderModal();
 }
