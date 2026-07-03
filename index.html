@@ -1512,8 +1512,8 @@
 </div>
 
 <!-- ===== MODAL ENFÛTAGE / EMBOUTEILLAGE ===== -->
-<div id="enfutage-modal" class="modal-overlay" onclick="if(event.target===this)closeEnfutageModal()">
-  <div class="modal-box" style="max-width:380px;margin:auto">
+<div id="enfutage-modal" class="modal-overlay" onclick="if(event.target===this)closeEnfutageModal()" style="align-items:flex-start;padding:16px 0;overflow-y:auto">
+  <div class="modal-box" style="max-width:380px;margin:auto;max-height:none">
     <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700">🛢 Enfûtage / Embouteillage</div>
     <div id="enfutage-ferm-info" style="margin-top:10px;font-size:13px;color:var(--amber);font-weight:600"></div>
 
@@ -4361,12 +4361,21 @@ function renderSuiviEnfutageLog(brassinId) {
     el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px 0">Aucun conditionnement enregistré</div>';
     return;
   }
-  el.innerHTML = s.enfutageLog.map((e, i) => `
-    <div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
-      <span style="font-size:11px;color:var(--muted);min-width:82px;flex-shrink:0">${e.date}</span>
-      <span style="font-size:12px;color:var(--foam);flex:1">${e.lignes}${e.liberer?' · Cuve libérée':''}</span>
-      <button onclick="deleteSuiviEnfutageLog('${brassinId}',${i})" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:2px 4px;flex-shrink:0">✕</button>
-    </div>`).join('');
+  el.innerHTML = s.enfutageLog.map((e, i) => {
+    // Badges par contenant (nouveaux enregistrements avec details, ou fallback texte)
+    const badgesHtml = (e.details && e.details.length)
+      ? e.details.map(d => `<span style="font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 6px;color:var(--foam);white-space:nowrap">${d.qty} × ${d.label}${d.lot?' <span style=\"font-size:10px;color:var(--muted)\">('+d.lot+')</span>':''}</span>`).join('')
+      : `<span style="font-size:12px;color:var(--foam)">${e.lignes}</span>`;
+    return `
+    <div style="padding:6px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span style="font-size:11px;color:var(--muted);min-width:82px;flex-shrink:0">${e.date}</span>
+        ${e.liberer ? '<span style="font-size:10px;color:var(--ok)">✓ Cuve libérée</span>' : ''}
+        <button onclick="deleteSuiviEnfutageLog('${brassinId}',${i})" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:2px 4px;margin-left:auto">✕</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">${badgesHtml}</div>
+    </div>`;
+  }).join('');
 }
 
 function deleteSuiviEnfutageLog(brassinId, idx) {
@@ -5262,15 +5271,14 @@ function saveEnfutage() {
     const s = getSuivi(brassin.id);
     if (!s.enfutageLog) s.enfutageLog = [];
     const today = new Date().toISOString().split('T')[0];
-    // Résumé des lignes conditionnées
-    const lignes = enfutageLines
+    // Détail par contenant
+    const details = enfutageLines
       .filter(l => l.qty > 0)
-      .map(l => `${l.qty} × ${FORMAT_LABELS[l.format]||l.format}${l.lot?' ('+l.lot+')':''}`)
-      .join(', ');
-    s.enfutageLog.push({ date: today, lignes, liberer });
+      .map(l => ({ format: l.format, label: FORMAT_LABELS[l.format]||l.format, qty: l.qty, lot: l.lot||'' }));
+    const lignes = details.map(d => `${d.qty} × ${d.label}${d.lot?' ('+d.lot+')':''}`).join(', ');
+    s.enfutageLog.push({ date: today, lignes, details, liberer });
     saveSuivi(brassin.id);
     refreshEnfutageRecap(brassin.id);
-    // Rafraîchir le log si le panneau suivi est ouvert
     const suiviPanel = document.getElementById('suivi-panel-' + brassin.id);
     if (suiviPanel && suiviPanel.style.display !== 'none') renderSuiviEnfutageLog(brassin.id);
   }
