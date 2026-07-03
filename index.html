@@ -6552,8 +6552,46 @@ function saveTask() {
     planningData[modalDateKey].push(task);
   }
   savePlanning();
+
+  // Si c'est un brassin, créer automatiquement les tâches suivantes
+  if (type === 'brassin' && !editingTaskId) {
+    addTaskAt(modalDateKey, 10, {
+      type: 'garde', beer, fermId, brewNum,
+      note: 'Auto — Mise en garde J+10'
+    });
+
+    addTaskAt(modalDateKey, 18, {
+      type: 'enfutage', beer, fermId, brewNum,
+      note: 'Auto — Enfûtage J+18'
+    });
+
+    // DH si la recette contient un houblon DH
+    const rec = Object.values(recipesData).find(r => r.name === beer);
+    const hasDH = rec && (rec.houblons||[]).some(h => h.moment === 'DH');
+    if (hasDH) {
+      addTaskAt(modalDateKey, 14, {
+        type: 'dh', beer, fermId, brewNum,
+        note: 'Auto — Dry Hopping J+14'
+      });
+    }
+
+    savePlanning();
+    showToast(`Brassin ajouté + ${hasDH ? '3' : '2'} tâches créées automatiquement`);
+  }
+
   closeModal();
   renderPlanning();
+}
+
+function addTaskAt(fromDateKey, daysOffset, taskFields) {
+  const base = new Date(fromDateKey + 'T12:00:00');
+  base.setDate(base.getDate() + daysOffset);
+  const key = dateKey(base);
+  if (!planningData[key]) planningData[key] = [];
+  planningData[key].push({
+    id: Date.now().toString(36) + '_' + daysOffset,
+    ...taskFields
+  });
 }
 
 function taskDetail(t) {
