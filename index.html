@@ -6545,33 +6545,65 @@ function saveTask() {
   const task = { id: editingTaskId || Date.now().toString(36), type, beer, fermId, eventName, brewNum, note };
 
   if (!planningData[modalDateKey]) planningData[modalDateKey] = [];
+
   if (editingTaskId) {
+    // Trouver l'ancienne tâche pour comparer
+    const oldTask = planningData[modalDateKey]?.find(t => t.id === editingTaskId);
+    const oldBeer = oldTask?.beer || '';
+    const oldDate = modalDateKey;
     const idx = planningData[modalDateKey].findIndex(t => t.id === editingTaskId);
     if (idx >= 0) planningData[modalDateKey][idx] = task;
+
+    // Si c'est un brassin, mettre à jour les tâches liées
+    if (type === 'brassin') {
+      const linked = getLinkedTasks(editingTaskId);
+      const dateChanged = false; // la date du brassin ne change pas dans ce modal (même key)
+      linked.forEach(({ key: linkedKey, task: linkedTask }) => {
+        // Calculer le décalage original depuis le brassin
+        const offsetDays = Math.round((new Date(linkedKey+'T12:00:00') - new Date(oldDate+'T12:00:00')) / 86400000);
+        // Mettre à jour la bière
+        linkedTask.beer = beer;
+        linkedTask.brewNum = brewNum;
+        linkedTask.fermId = fermId;
+        // Si la date du brassin a changé, déplacer la tâche
+        const newLinkedDate = new Date(modalDateKey+'T12:00:00');
+        newLinkedDate.setDate(newLinkedDate.getDate() + offsetDays);
+        const newLinkedKey = dateKey(newLinkedDate);
+        if (newLinkedKey !== linkedKey) {
+          removeTaskFromDay(linkedKey, linkedTask.id);
+          if (!planningData[newLinkedKey]) planningData[newLinkedKey] = [];
+          planningData[newLinkedKey].push(linkedTask);
+        }
+      });
+    }
   } else {
     planningData[modalDateKey].push(task);
   }
   savePlanning();
 
-  // Si c'est un brassin, créer automatiquement les tâches suivantes
+  // Si c'est un brassin (création), créer automatiquement les tâches liées
   if (type === 'brassin' && !editingTaskId) {
+    const brassinId = task.id; // utiliser l'ID du brassin comme lien
+    const rec = Object.values(recipesData).find(r => r.name === beer);
+    const hasDH = rec && (rec.houblons||[]).some(h => h.moment === 'DH');
+
     addTaskAt(modalDateKey, 10, {
       type: 'garde', beer, fermId, brewNum,
-      note: 'Auto — Mise en garde J+10'
+      note: 'Auto — Mise en garde J+10',
+      brassinId
     });
 
     addTaskAt(modalDateKey, 18, {
       type: 'enfutage', beer, fermId, brewNum,
-      note: 'Auto — Enfûtage J+18'
+      note: 'Auto — Enfûtage J+18',
+      brassinId
     });
 
-    // DH si la recette contient un houblon DH
-    const rec = Object.values(recipesData).find(r => r.name === beer);
-    const hasDH = rec && (rec.houblons||[]).some(h => h.moment === 'DH');
     if (hasDH) {
       addTaskAt(modalDateKey, 14, {
         type: 'dh', beer, fermId, brewNum,
-        note: 'Auto — Dry Hopping J+14'
+        note: 'Auto — Dry Hopping J+14',
+        brassinId
       });
     }
 
@@ -6589,9 +6621,27 @@ function addTaskAt(fromDateKey, daysOffset, taskFields) {
   const key = dateKey(base);
   if (!planningData[key]) planningData[key] = [];
   planningData[key].push({
-    id: Date.now().toString(36) + '_' + daysOffset,
+    id: Date.now().toString(36) + '_' + daysOffset + '_' + Math.random().toString(36).slice(2,4),
     ...taskFields
   });
+}
+
+// Retrouver toutes les tâches liées à un brassin (via brassinId)
+function getLinkedTasks(brassinId) {
+  const found = [];
+  Object.entries(planningData).forEach(([key, tasks]) => {
+    (tasks||[]).forEach(t => {
+      if (t.brassinId === brassinId) found.push({ key, task: t });
+    });
+  });
+  return found;
+}
+
+// Supprimer une tâche d'un jour du planning
+function removeTaskFromDay(key, taskId) {
+  if (!planningData[key]) return;
+  planningData[key] = planningData[key].filter(t => t.id !== taskId);
+  if (!planningData[key].length) delete planningData[key];
 }
 
 function taskDetail(t) {
