@@ -2306,6 +2306,20 @@
   </div>
 </div>
 
+<!-- ===== MODAL RECETTES UTILISANT UN INGRÉDIENT ===== -->
+<div id="ingredient-recipes-modal" class="modal-overlay" onclick="if(event.target===this)closeIngredientRecipesModal()">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-header">
+      <div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Utilisé dans</div>
+        <div id="ingredient-recipes-title" style="font-size:15px;font-weight:700;color:var(--foam);margin-top:2px"></div>
+      </div>
+      <button onclick="closeIngredientRecipesModal()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div id="ingredient-recipes-list"></div>
+  </div>
+</div>
+
 <!-- ===== MODAL NOTE ===== -->
 <div id="note-modal" class="modal-overlay" onclick="if(event.target===this)closeNoteModal()">
   <div class="modal-box">
@@ -3957,12 +3971,13 @@ function renderMP() {
       const step = item.step || (isHop ? 0.1 : item.unit === 'kg' ? 5 : 1);
       const inputStep = isHop ? '0.01' : step < 1 ? step.toFixed(1) : step;
       const displayVal = isHop ? item.val.toFixed(2) : (Number.isInteger(item.val) ? item.val : item.val.toFixed(1));
+      const nameAttr = name.replace(/'/g, "\\'");
       return `
       <div class="mp-row" data-name="${name}">
         <div class="mp-row-left">
           <div style="display:flex;align-items:center;gap:5px">
             <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dc};flex-shrink:0"></span>
-            <div class="mp-name">${name}</div>
+            <div class="mp-name" style="cursor:pointer" onclick="openIngredientRecipes('${nameAttr}')" title="Voir les recettes utilisant cet ingrédient">${name}</div>
             ${item.lot ? `<span style="font-size:10px;color:var(--amber-lt);background:rgba(200,128,10,.15);border:1px solid rgba(200,128,10,.25);border-radius:3px;padding:1px 5px;font-family:monospace">${item.lot}</span>` : ''}
             ${item.aa ? `<span style="font-size:10px;color:#7ab4e8;background:rgba(122,180,232,.1);border:1px solid rgba(122,180,232,.25);border-radius:3px;padding:1px 5px;font-weight:700">${item.aa}%AA</span>` : ''}
           </div>
@@ -4014,7 +4029,7 @@ function renderMP() {
       <div class="mp-row-left">
         <div style="display:flex;align-items:center;gap:5px">
           <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dc};flex-shrink:0"></span>
-          <div class="mp-name">${name}</div>
+          <div class="mp-name" onclick="event.stopPropagation();openIngredientRecipes('${name.replace(/'/g, "\\'")}')" title="Voir les recettes utilisant cet ingrédient">${name}</div>
           <span style="font-size:10px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 5px">${lots.length} lots</span>
         </div>
         <div class="mp-bar-wrap"><div class="mp-bar ${bc}" style="width:${pct}%"></div></div>
@@ -4038,6 +4053,42 @@ function setMpPrice(id, rawVal) {
   item.price = isNaN(v) ? 0 : Math.max(0, v);
   saveMpPrice(id, item.price);
   renderRecipes(); // recalcule les coûts automatiquement
+}
+
+// ===== RECETTES UTILISANT UN INGRÉDIENT =====
+function openIngredientRecipes(name) {
+  const matches = [];
+  Object.values(recipesData).forEach(r => {
+    const allLines = [
+      ...(r.malts    || []).map(l => ({ ...l, unit: 'kg'  })),
+      ...(r.houblons || []).map(l => ({ ...l, unit: 'kg'  })),
+      ...(r.levures  || []).map(l => ({ ...l, unit: 'pqt' })),
+      ...(r.sels     || []).map(l => ({ ...l, unit: l.unite || 'g' })),
+    ];
+    allLines.filter(l => l.name === name).forEach(l => {
+      matches.push({ recipeId: r.id, recipeName: r.name, qty: l.qty || 0, unit: l.unit, moment: l.moment || '' });
+    });
+  });
+
+  document.getElementById('ingredient-recipes-title').textContent = name;
+  const listEl = document.getElementById('ingredient-recipes-list');
+
+  if (!matches.length) {
+    listEl.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px 0;text-align:center">Cet ingrédient n\'est utilisé dans aucune recette</div>';
+  } else {
+    listEl.innerHTML = matches.map(m => `
+      <div onclick="closeIngredientRecipesModal();openRecipeModal('${m.recipeId}')"
+        style="padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:13px;color:var(--foam);font-weight:600">${m.recipeName}</span>
+        <span style="font-size:12px;color:var(--muted)">${m.qty} ${m.unit}${m.moment ? ' · ' + m.moment : ''}</span>
+      </div>`).join('');
+  }
+
+  document.getElementById('ingredient-recipes-modal').classList.add('open');
+}
+
+function closeIngredientRecipesModal() {
+  document.getElementById('ingredient-recipes-modal').classList.remove('open');
 }
 
 function toggleMpSorties() {
@@ -6472,10 +6523,24 @@ function moveTask(fromKey, toKey, taskId) {
 
 function deleteTask(key, taskId) {
   if (!planningData[key]) return;
+  const task = planningData[key].find(t => t.id === taskId);
   planningData[key] = planningData[key].filter(t => t.id !== taskId);
   if (!planningData[key].length) delete planningData[key];
+
+  // Si c'est un brassin, supprimer aussi les tâches liées (mise en garde, enfûtage, DH…)
+  let removed = 0;
+  if (task && task.type === 'brassin') {
+    getLinkedTasks(taskId).forEach(({ key: linkedKey, task: linkedTask }) => {
+      removeTaskFromDay(linkedKey, linkedTask.id);
+      removed++;
+    });
+  }
+
   savePlanning();
   renderPlanning();
+  if (removed > 0) {
+    showToast(`Brassin supprimé + ${removed} tâche${removed>1?'s':''} liée${removed>1?'s':''} supprimée${removed>1?'s':''} ✓`);
+  }
 }
 
 let editingTaskKey = null;
@@ -9767,6 +9832,7 @@ Object.assign(window, {
   showToast, toggleRecipeAccordion,
   openMpModal, closeMpModal, selectMpCatModal, saveMpModal, deleteMpItem,
   openLotPicker, selectLotOverride, closeLotPicker,
+  openIngredientRecipes, closeIngredientRecipesModal,
 });
 
 // ── Listeners modal MP ──────────────────────────────────────────
