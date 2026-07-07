@@ -2620,6 +2620,13 @@ const BEERS = [
 const BOTTLE_CONFIG = { "J'Peux pas j'ai Tour": { cl: 44, cartonSize: 24 } };
 function beerConfig(beer) { return BOTTLE_CONFIG[beer] || { cl: 33, cartonSize: 12 }; }
 
+// Noms de bières issus des recettes (source de vérité), pour garantir la cohérence des noms
+// entre le planning, les brassins et les autres écrans. Repli sur BEERS si aucune recette n'existe.
+function getRecipeBeerNames() {
+  const names = Object.values(recipesData).map(r => r.name).filter(Boolean);
+  return names.length ? [...new Set(names)].sort((a, b) => a.localeCompare(b)) : BEERS;
+}
+
 const MP_SCHEMA = {
   malt: [
     { id:'pilsen',       name:'Pilsen',           unit:'kg',  max:1000, low:100, mid:150, price:0 },
@@ -3416,6 +3423,17 @@ function calcStockEngageParBiere() {
   return engage;
 }
 
+// Normalise un nom de bière pour comparaison tolérante (accents, apostrophes, casse, espaces)
+function normBeerName(s) {
+  return (s || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[''‘’´`]/g, "'")
+    .replace(/\s+/g, ' ');
+}
+
 // ─── Production en cours (brassins pas encore enfûtés/conditionnés) par bière ───
 function calcProductionEnCours() {
   const result = {}; // beer -> { volumeTotal, entries:[{brewNum, cuve, statut, volume, dateEnfutage}] }
@@ -3435,13 +3453,20 @@ function calcProductionEnCours() {
         return false;
       });
     }
-    // 1bis) Sinon, essayer de faire correspondre par cuve + bière (plus robuste si le n° de brassin diffère ou est vide)
-    if (!dateEnfutage && b.cuve && beer) {
-      Object.entries(planningData).some(([key, tasks]) => {
-        const found = (tasks || []).some(t => t.type === 'enfutage' && t.fermId === b.cuve && t.beer === beer);
-        if (found) { dateEnfutage = key; return true; }
-        return false;
+    // 1bis) Sinon, correspondance cuve + bière — tolérante aux accents/apostrophes/casse,
+    // avec un dernier recours sur la cuve seule si le nom de bière ne matche toujours pas
+    // (ex : nom de recette légèrement différent du nom choisi dans le planning)
+    if (!dateEnfutage && b.cuve) {
+      const beerNorm = normBeerName(beer);
+      let matchKey = null, fermOnlyKey = null;
+      Object.entries(planningData).forEach(([key, tasks]) => {
+        (tasks || []).forEach(t => {
+          if (t.type !== 'enfutage' || t.fermId !== b.cuve) return;
+          if (!fermOnlyKey) fermOnlyKey = key;
+          if (normBeerName(t.beer) === beerNorm) matchKey = key;
+        });
       });
+      dateEnfutage = matchKey || fermOnlyKey || null;
     }
     // Pas de date trouvée dans le planning → on ne devine pas, dateEnfutage reste null
     // (cette production ne sera pas comptée dans la simulation de rupture, seulement affichée sans date)
@@ -6750,7 +6775,7 @@ function openAddTask(key) {
   document.getElementById('modal-duree-ferm').value  = 10;
   document.getElementById('modal-duree-garde').value = 8;
   const beerSel = document.getElementById('modal-beer');
-  beerSel.innerHTML = BEERS.map(b => `<option value="${b}">${b}</option>`).join('');
+  beerSel.innerHTML = getRecipeBeerNames().map(b => `<option value="${b}">${b}</option>`).join('');
   const fermSel = document.getElementById('modal-ferm');
   fermSel.innerHTML = '<option value="">— Aucune (à définir) —</option>' + FERMENTERS.map(f => `<option value="${f.id}">${f.id}${f.beer?' – '+f.beer:' (libre)'}</option>`).join('');
   updateModalFields();
@@ -6772,7 +6797,12 @@ function openEditTask(key, taskId) {
   document.getElementById('task-save-btn').textContent = '✓ Modifier';
   document.getElementById('modal-type').value = t.type || 'brassin';
   const beerSel = document.getElementById('modal-beer');
-  beerSel.innerHTML = BEERS.map(b => `<option value="${b}">${b}</option>`).join('');
+  const recipeBeerNames = getRecipeBeerNames();
+  let beerOptions = recipeBeerNames.map(b => `<option value="${b}">${b}</option>`).join('');
+  if (t.beer && !recipeBeerNames.includes(t.beer)) {
+    beerOptions += `<option value="${t.beer}">${t.beer} (ancien)</option>`;
+  }
+  beerSel.innerHTML = beerOptions;
   const fermSel = document.getElementById('modal-ferm');
   fermSel.innerHTML = '<option value="">— Aucune (à définir) —</option>' + FERMENTERS.map(f => `<option value="${f.id}">${f.id}${f.beer?' – '+f.beer:' (libre)'}</option>`).join('');
   updateModalFields();
