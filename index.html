@@ -2292,6 +2292,20 @@
   </div>
 </div>
 
+<!-- ===== MODAL CHOIX DE LOT (sélection manuelle du lot à consommer) ===== -->
+<div id="lot-picker-modal" class="modal-overlay" onclick="if(event.target===this)closeLotPicker()">
+  <div class="modal-box" style="max-width:380px">
+    <div class="modal-header">
+      <div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Choisir un lot</div>
+        <div id="lot-picker-name" style="font-size:15px;font-weight:700;color:var(--foam);margin-top:2px"></div>
+      </div>
+      <button onclick="closeLotPicker()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div id="lot-picker-list"></div>
+  </div>
+</div>
+
 <!-- ===== MODAL NOTE ===== -->
 <div id="note-modal" class="modal-overlay" onclick="if(event.target===this)closeNoteModal()">
   <div class="modal-box">
@@ -2675,6 +2689,8 @@ let editingNoteId  = null;
 let modalDateKey   = null;
 let editingRecipeId = null;
 let brewRecipeId    = null;
+let brewLotOverrides = {}; // nom ingrédient -> id de l'item/lot choisi manuellement
+let lotPickerIngredient = null;
 let recipeDraftLines = { malt:[], houblon:[], levure:[], sel:[] };
 
 // =========================================================
@@ -7795,6 +7811,7 @@ function genBrewNum() {
 // ===== MODAL BRASSER =====
 function openBrewModal(id) {
   brewRecipeId = id;
+  brewLotOverrides = {};
   const r = recipesData[id];
   if (!r) return;
   document.getElementById('brew-recipe-name').textContent = r.name;
@@ -7810,6 +7827,28 @@ function openBrewModal(id) {
 function closeBrewModal() {
   document.getElementById('brew-modal').classList.remove('open');
   brewRecipeId = null;
+  brewLotOverrides = {};
+}
+
+// Retourne les items MP correspondant à un nom d'ingrédient, triés FIFO,
+// avec en tête le lot forcé manuellement (brewLotOverrides) s'il existe encore en stock.
+function getSortedMatchingItems(name) {
+  const items = Object.values(MP_DATA).flat().filter(i => i.name === name);
+  const sorted = items.slice().sort((a, b) => {
+    if (!a.lot && !b.lot) return 0;
+    if (!a.lot) return 1;
+    if (!b.lot) return -1;
+    return a.lot.localeCompare(b.lot);
+  });
+  const overrideId = brewLotOverrides[name];
+  if (overrideId) {
+    const idx = sorted.findIndex(i => i.id === overrideId);
+    if (idx > 0) {
+      const [chosen] = sorted.splice(idx, 1);
+      sorted.unshift(chosen);
+    }
+  }
+  return sorted;
 }
 
 function renderBrewPreview(r) {
@@ -7824,15 +7863,9 @@ function renderBrewPreview(r) {
   allLines.forEach(l => {
     const needed = parseFloat(l.qty) || 0;
 
-    // Récupérer tous les items de même nom triés FIFO
-    const matchingItems = Object.values(MP_DATA).flat()
-      .filter(i => i.name === l.name)
-      .sort((a, b) => {
-        if (!a.lot && !b.lot) return 0;
-        if (!a.lot) return 1;
-        if (!b.lot) return -1;
-        return a.lot.localeCompare(b.lot);
-      });
+    // Récupérer tous les items de même nom (lot forcé en tête si choisi, sinon FIFO)
+    const matchingItems = getSortedMatchingItems(l.name);
+    const hasOverride = !!brewLotOverrides[l.name];
 
     const totalStock = matchingItems.reduce((s, i) => s + (i.val||0), 0);
     const ok = totalStock >= needed;
@@ -7852,9 +7885,10 @@ function renderBrewPreview(r) {
       }
     });
 
-    html += `<div style="padding:5px 0;border-bottom:1px solid var(--border)">
+    const nameAttr = l.name.replace(/'/g, "\\'");
+    html += `<div style="padding:5px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="openLotPicker('${nameAttr}','${l.unit}')">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:13px;color:var(--foam)">${l.name}</span>
+        <span style="font-size:13px;color:var(--foam)">${l.name} <span style="font-size:10px;color:var(--muted)">🏷 ${hasOverride?'lot choisi ›':'auto ›'}</span></span>
         <span style="font-size:12px">
           <span style="color:${ok?'var(--ok)':'var(--danger)'}">−${needed} ${l.unit}</span>
           <span style="color:var(--muted);margin-left:6px">stock: ${totalStock.toFixed(totalStock % 1 === 0 ? 0 : 1)}</span>
@@ -7872,6 +7906,53 @@ function renderBrewPreview(r) {
   } else {
     warnEl.style.display = 'none';
   }
+}
+
+// ===== SÉLECTION MANUELLE DU LOT =====
+function openLotPicker(name, unit) {
+  lotPickerIngredient = name;
+  document.getElementById('lot-picker-name').textContent = name;
+
+  const sorted = getSortedMatchingItems(name);
+  const current = brewLotOverrides[name] || null;
+  const nameAttr = name.replace(/'/g, "\\'");
+
+  let html = `<div onclick="selectLotOverride('${nameAttr}',null)" style="padding:10px 12px;border:1px solid ${!current ? 'var(--amber-lt)' : 'var(--border)'};border-radius:var(--radius-sm);margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:13px;color:var(--foam);font-weight:600">↻ Auto (FIFO — lot le plus ancien)</span>
+    ${!current ? '<span style="color:var(--amber-lt)">✓</span>' : ''}
+  </div>`;
+
+  if (!sorted.length) {
+    html += `<div style="color:var(--muted);font-size:12px;padding:8px 0">Aucun lot disponible en stock pour cet ingrédient</div>`;
+  }
+
+  sorted.forEach(it => {
+    const sel = current === it.id;
+    const stockVal = it.val || 0;
+    html += `<div onclick="selectLotOverride('${nameAttr}','${it.id}')" style="padding:10px 12px;border:1px solid ${sel ? 'var(--amber-lt)' : 'var(--border)'};border-radius:var(--radius-sm);margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+      <span>
+        <span style="font-family:monospace;color:var(--amber-lt);font-size:13px;font-weight:700">${it.lot || 'sans lot'}</span>
+        <span style="color:var(--muted);font-size:11px;margin-left:8px">stock: ${stockVal.toFixed(stockVal % 1 === 0 ? 0 : 1)} ${unit}</span>
+      </span>
+      ${sel ? '<span style="color:var(--amber-lt)">✓</span>' : ''}
+    </div>`;
+  });
+
+  document.getElementById('lot-picker-list').innerHTML = html;
+  document.getElementById('lot-picker-modal').classList.add('open');
+}
+
+function selectLotOverride(name, itemId) {
+  if (itemId) brewLotOverrides[name] = itemId;
+  else delete brewLotOverrides[name];
+  closeLotPicker();
+  const r = recipesData[brewRecipeId];
+  if (r) renderBrewPreview(r);
+}
+
+function closeLotPicker() {
+  document.getElementById('lot-picker-modal').classList.remove('open');
+  lotPickerIngredient = null;
 }
 
 function confirmBrew(skipDestock = false) {
@@ -7912,16 +7993,8 @@ function confirmBrew(skipDestock = false) {
       let remaining = parseFloat(l.qty) || 0;
       if (remaining <= 0) return;
 
-      // Récupérer tous les items de même nom dans toutes les catégories
-      const matchingItems = Object.values(MP_DATA).flat()
-        .filter(i => i.name === l.name)
-        .sort((a, b) => {
-          // Trier FIFO : lot vide = plus récent (en dernier), sinon tri alphanumérique du numéro de lot
-          if (!a.lot && !b.lot) return 0;
-          if (!a.lot) return 1;
-          if (!b.lot) return -1;
-          return a.lot.localeCompare(b.lot);
-        });
+      // Récupérer tous les items de même nom (lot forcé manuellement en tête, sinon FIFO)
+      const matchingItems = getSortedMatchingItems(l.name);
 
       const lotsUtilises = [];
       matchingItems.forEach(item => {
