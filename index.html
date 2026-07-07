@@ -3443,15 +3443,8 @@ function calcProductionEnCours() {
         return false;
       });
     }
-    // 2) Sinon, estimer depuis le début de fermentation de la cuve (durées par défaut 10+8j)
-    if (!dateEnfutage && b.cuve) {
-      const ferm = FERMENTERS.find(f => f.id === b.cuve);
-      if (ferm?.phases?.fermentation?.debut) {
-        const d = new Date(ferm.phases.fermentation.debut + 'T12:00:00');
-        d.setDate(d.getDate() + 18);
-        dateEnfutage = dateKey(d);
-      }
-    }
+    // Pas de date trouvée dans le planning → on ne devine pas, dateEnfutage reste null
+    // (cette production ne sera pas comptée dans la simulation de rupture, seulement affichée sans date)
 
     result[beer].volumeTotal += (b.volume || 0);
     result[beer].entries.push({
@@ -3708,10 +3701,14 @@ function renderProduits() {
     if (prod && prod.volumeTotal > 0) {
       const dates = prod.entries.filter(e => e.dateEnfutage).map(e => e.dateEnfutage).sort();
       const readyTxt = dates.length ? ` · prêt vers le ${fmtDateFr(dates[0])}` : '';
+      const nbSansDate = prod.entries.filter(e => !e.dateEnfutage).length;
       const tooltip = prod.entries.map(e =>
-        `${e.brewNum} (cuve ${e.cuve}, ${e.statut}) — ${e.volume}L${e.dateEnfutage ? ', prêt vers le ' + fmtDateFr(e.dateEnfutage) : ''}`
+        `${e.brewNum} (cuve ${e.cuve}, ${e.statut}) — ${e.volume}L${e.dateEnfutage ? ', prêt vers le ' + fmtDateFr(e.dateEnfutage) : ', pas de date planifiée'}`
       ).join(' | ').replace(/"/g, "'");
       prodHtml = `<div style="font-size:11px;color:#7ec87e;margin-top:2px" title="${tooltip}">🍺 +${prod.volumeTotal}L en cours (≈${Math.floor(prod.volumeTotal/30)} fûts)${readyTxt}</div>`;
+      if (nbSansDate > 0) {
+        prodHtml += `<div style="font-size:10px;color:#c08a20;margin-top:2px" title="${tooltip}">⚠️ ${nbSansDate} brassin${nbSansDate>1?'s':''} en cours sans date d'enfûtage planifiée</div>`;
+      }
     }
 
     html += `
