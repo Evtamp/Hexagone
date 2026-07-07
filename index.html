@@ -3430,7 +3430,15 @@ function calcProductionEnCours() {
     let dateEnfutage = null;
     if (b.brewNum) {
       Object.entries(planningData).some(([key, tasks]) => {
-        const found = (tasks || []).some(t => t.type === 'enfutage' && t.brewNum === b.brewNum);
+        const found = (tasks || []).some(t => t.type === 'enfutage' && t.brewNum && t.brewNum === b.brewNum);
+        if (found) { dateEnfutage = key; return true; }
+        return false;
+      });
+    }
+    // 1bis) Sinon, essayer de faire correspondre par cuve + bière (plus robuste si le n° de brassin diffère ou est vide)
+    if (!dateEnfutage && b.cuve && beer) {
+      Object.entries(planningData).some(([key, tasks]) => {
+        const found = (tasks || []).some(t => t.type === 'enfutage' && t.fermId === b.cuve && t.beer === beer);
         if (found) { dateEnfutage = key; return true; }
         return false;
       });
@@ -3491,9 +3499,16 @@ function calcRupturesPrevues() {
   Object.entries(ordersByBeer).forEach(([beer, events]) => {
     events.sort((a, b) => a.date - b.date);
     const stock = stockByBeer[beer] || { futs: 0, cartons: 0 };
+    const cfg = beerConfig(beer);
+    const litersPerCarton = ((cfg.cl || 33) / 100) * (cfg.cartonSize || 12);
     const prodEntries = (production[beer]?.entries || [])
       .filter(e => e.dateEnfutage)
-      .map(e => ({ ...e, date: new Date(e.dateEnfutage + 'T12:00:00'), futsEquiv: Math.floor((e.volume||0) / 30) }))
+      .map(e => ({
+        ...e,
+        date: new Date(e.dateEnfutage + 'T12:00:00'),
+        futsEquiv:    Math.floor((e.volume||0) / 30),
+        cartonsEquiv: litersPerCarton > 0 ? Math.floor((e.volume||0) / litersPerCarton) : 0,
+      }))
       .sort((a, b) => a.date - b.date);
 
     let runningFuts = stock.futs;
@@ -3503,7 +3518,8 @@ function calcRupturesPrevues() {
 
     events.forEach(ev => {
       while (prodIdx < prodEntries.length && prodEntries[prodIdx].date <= ev.date) {
-        runningFuts += prodEntries[prodIdx].futsEquiv;
+        runningFuts    += prodEntries[prodIdx].futsEquiv;
+        runningCartons += prodEntries[prodIdx].cartonsEquiv;
         prodIdx++;
       }
       runningFuts    -= ev.futs;
