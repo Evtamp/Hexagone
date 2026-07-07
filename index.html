@@ -3500,6 +3500,13 @@ function normBeerName(s) {
     .replace(/\s+/g, ' ');
 }
 
+// Recherche une recette par nom, de façon tolérante (accents/apostrophes/casse/espaces)
+function findRecipeByName(name) {
+  if (!name) return null;
+  const norm = normBeerName(name);
+  return Object.values(recipesData).find(r => normBeerName(r.name) === norm) || null;
+}
+
 // ─── Production en cours (brassins pas encore enfûtés/conditionnés) par bière ───
 function calcProductionEnCours() {
   const result = {}; // beer -> { volumeTotal, entries:[{brewNum, cuve, statut, volume, dateEnfutage}] }
@@ -4794,7 +4801,7 @@ function buildCalculs(brassinId, s) {
 
   // Recette + masse sèche + atténuation levure
   let masseSeche = 0;
-  const rec = b ? Object.values(recipesData).find(r => r.name === b.recette) : null;
+  const rec = b ? findRecipeByName(b.recette) : null;
   let attLevure = 0;
   if (rec) {
     (rec.malts||[]).forEach(l => {
@@ -5331,7 +5338,7 @@ function openDhModal(fermId, today) {
   _dhFermId = fermId;
   _dhDate   = today;
   const f    = FERMENTERS.find(x => x.id === fermId);
-  const rec  = f ? Object.values(recipesData).find(r => r.name === f.beer) : null;
+  const rec  = f ? findRecipeByName(f.beer) : null;
   const dhHops = rec ? (rec.houblons||[]).filter(h => h.moment === 'DH') : [];
 
   document.getElementById('dh-modal-info').textContent =
@@ -6456,7 +6463,7 @@ function openBrewDetailModal(id) {
   const b = historiqueData[id];
   if (!b) return;
   document.getElementById('brew-detail-lot').textContent = `${b.lot} · ${b.recette}`;
-  const r = Object.values(recipesData).find(r => r.name === b.recette);
+  const r = findRecipeByName(b.recette);
   const allLines = r ? [...(r.malts||[]),...(r.houblons||[]),...(r.levures||[])] : [];
   const mpLots = b.mpLots || {};
   const unit = l => (r?.levures||[]).find(x=>x.name===l.name) ? 'pqt' : 'kg';
@@ -6977,7 +6984,7 @@ function saveTask() {
   // Si c'est un brassin (création), créer automatiquement les tâches liées
   if (type === 'brassin' && !editingTaskId) {
     const brassinId = task.id; // utiliser l'ID du brassin comme lien
-    const rec = Object.values(recipesData).find(r => r.name === beer);
+    const rec = findRecipeByName(beer);
     const hasDH = rec && (rec.houblons||[]).some(h => h.moment === 'DH');
 
     const gardeOffset    = dureeFerm;
