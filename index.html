@@ -1177,6 +1177,7 @@
           <div class="section-title">Produits finis</div>
           <button onclick="openProduitModal()" style="background:var(--amber);color:var(--bg);border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">+ Ajouter</button>
         </div>
+        <div style="padding:8px 16px 0" id="ruptures-alert-produits"></div>
         <div style="padding:8px 16px 100px" id="list-produits"></div>
       </div>
 
@@ -1245,6 +1246,9 @@
 
     <!-- ===== PAGE COMMANDES ===== -->
     <div class="page" id="page-prev">
+
+      <!-- Alertes de rupture prévue -->
+      <div style="padding:10px 16px 0" id="ruptures-alert-prev"></div>
 
       <!-- Calendrier commandes -->
       <div style="padding:10px 16px 4px;display:flex;align-items:center;justify-content:space-between">
@@ -3412,6 +3416,143 @@ function calcStockEngageParBiere() {
   return engage;
 }
 
+// ─── Production en cours (brassins pas encore enfûtés/conditionnés) par bière ───
+function calcProductionEnCours() {
+  const result = {}; // beer -> { volumeTotal, entries:[{brewNum, cuve, statut, volume, dateEnfutage}] }
+
+  Object.values(historiqueData).forEach(b => {
+    if (!['fermentation', 'garde', 'dh'].includes(b.statut)) return;
+    const beer = b.recette;
+    if (!beer) return;
+    if (!result[beer]) result[beer] = { volumeTotal: 0, entries: [] };
+
+    // 1) Chercher la tâche planning "enfûtage" liée par n° de brassin
+    let dateEnfutage = null;
+    if (b.brewNum) {
+      Object.entries(planningData).some(([key, tasks]) => {
+        const found = (tasks || []).some(t => t.type === 'enfutage' && t.brewNum === b.brewNum);
+        if (found) { dateEnfutage = key; return true; }
+        return false;
+      });
+    }
+    // 2) Sinon, estimer depuis le début de fermentation de la cuve (durées par défaut 10+8j)
+    if (!dateEnfutage && b.cuve) {
+      const ferm = FERMENTERS.find(f => f.id === b.cuve);
+      if (ferm?.phases?.fermentation?.debut) {
+        const d = new Date(ferm.phases.fermentation.debut + 'T12:00:00');
+        d.setDate(d.getDate() + 18);
+        dateEnfutage = dateKey(d);
+      }
+    }
+
+    result[beer].volumeTotal += (b.volume || 0);
+    result[beer].entries.push({
+      brewNum: b.brewNum || '—', cuve: b.cuve || '—', statut: b.statut,
+      volume: b.volume || 0, dateEnfutage
+    });
+  });
+
+  return result;
+}
+
+// ─── Détection des ruptures de stock prévues (commandes futures vs stock + production en cours) ───
+function calcRupturesPrevues() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const production = calcProductionEnCours();
+  const alerts = []; // { beer, track:'futs'|'cartons', ruptureDate, manque, prochaineProdDate }
+
+  // Stock physique actuel par bière (fûts vs bouteilles)
+  const stockByBeer = {};
+  Object.values(produitsData).forEach(p => {
+    if (!p.biere) return;
+    if (!stockByBeer[p.biere]) stockByBeer[p.biere] = { futs: 0, cartons: 0 };
+    if (['fut30inox','fut30kk','fut30kktp','fut20'].includes(p.format)) stockByBeer[p.biere].futs += (p.qty||0);
+    if (p.format === 'btl33' || p.format === 'btl75') stockByBeer[p.biere].cartons += (p.qty||0);
+  });
+
+  // Commandes futures triées chronologiquement, groupées par bière
+  const ordersByBeer = {};
+  Object.entries(ordersData).forEach(([dk, dayOrders]) => {
+    const d = new Date(dk + 'T12:00:00');
+    if (d < today) return;
+    const orders = Array.isArray(dayOrders) ? dayOrders : Object.values(dayOrders || {});
+    orders.map(migrateOrder).filter(o => !o._cloture).forEach(o => {
+      o.lines.forEach(l => {
+        if (!l.beer) return;
+        const futs = (parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0);
+        const cartons = parseInt(l.cartons)||0;
+        if (futs <= 0 && cartons <= 0) return;
+        if (!ordersByBeer[l.beer]) ordersByBeer[l.beer] = [];
+        ordersByBeer[l.beer].push({ date: d, dk, futs, cartons });
+      });
+    });
+  });
+
+  Object.entries(ordersByBeer).forEach(([beer, events]) => {
+    events.sort((a, b) => a.date - b.date);
+    const stock = stockByBeer[beer] || { futs: 0, cartons: 0 };
+    const prodEntries = (production[beer]?.entries || [])
+      .filter(e => e.dateEnfutage)
+      .map(e => ({ ...e, date: new Date(e.dateEnfutage + 'T12:00:00'), futsEquiv: Math.floor((e.volume||0) / 30) }))
+      .sort((a, b) => a.date - b.date);
+
+    let runningFuts = stock.futs;
+    let runningCartons = stock.cartons;
+    let prodIdx = 0;
+    let alertedFuts = false, alertedCartons = false;
+
+    events.forEach(ev => {
+      while (prodIdx < prodEntries.length && prodEntries[prodIdx].date <= ev.date) {
+        runningFuts += prodEntries[prodIdx].futsEquiv;
+        prodIdx++;
+      }
+      runningFuts    -= ev.futs;
+      runningCartons -= ev.cartons;
+
+      if (runningFuts < 0 && !alertedFuts) {
+        alertedFuts = true;
+        const nextProd = prodEntries.slice(prodIdx)[0];
+        alerts.push({ beer, track: 'futs', ruptureDate: ev.dk, manque: Math.abs(runningFuts), prochaineProdDate: nextProd ? dateKey(nextProd.date) : null });
+      }
+      if (runningCartons < 0 && !alertedCartons) {
+        alertedCartons = true;
+        const nextProd = prodEntries.slice(prodIdx)[0];
+        alerts.push({ beer, track: 'cartons', ruptureDate: ev.dk, manque: Math.abs(runningCartons), prochaineProdDate: nextProd ? dateKey(nextProd.date) : null });
+      }
+    });
+  });
+
+  return alerts.sort((a, b) => a.ruptureDate.localeCompare(b.ruptureDate));
+}
+
+function fmtDateFr(dk) {
+  return new Date(dk + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+
+// ─── Rendu du bandeau d'alertes de rupture (réutilisé sur Produits + Prévisions) ───
+function renderRupturesAlert(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const alerts = calcRupturesPrevues();
+  if (!alerts.length) { el.innerHTML = ''; return; }
+
+  el.innerHTML = `
+  <div style="background:rgba(192,57,27,.1);border:1px solid var(--danger);border-radius:var(--radius);padding:10px 12px;margin-bottom:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--danger);margin-bottom:6px">⚠️ Rupture${alerts.length>1?'s':''} prévue${alerts.length>1?'s':''}</div>
+    ${alerts.map(a => {
+      const trackLabel = a.track === 'futs' ? 'fûts' : 'bouteilles';
+      const prodTxt = a.prochaineProdDate
+        ? `— prochain brassin prêt vers le ${fmtDateFr(a.prochaineProdDate)}`
+        : `— aucun brassin en cours pour cette bière`;
+      return `
+      <div style="font-size:12px;color:var(--foam);padding:3px 0">
+        <strong>${a.beer}</strong> : rupture ${trackLabel} prévue vers le <strong>${fmtDateFr(a.ruptureDate)}</strong>
+        (manque ~${a.manque}) ${prodTxt}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
 function renderProduits() {
   const el = document.getElementById('list-produits');
   if (!el) return;
@@ -3421,6 +3562,8 @@ function renderProduits() {
     return (a.lot||'').localeCompare(b.lot||'');
   });
 
+  renderRupturesAlert('ruptures-alert-produits');
+
   if (!entries.length) {
     el.innerHTML = '<div style="text-align:center;padding:30px 0;color:var(--muted);font-size:13px">Aucun produit — cliquez sur + pour en ajouter</div>';
     return;
@@ -3428,6 +3571,8 @@ function renderProduits() {
 
   // Calcul des engagements issus des commandes futures
   const engage = calcStockEngageParBiere();
+  // Calcul de la production en cours (brassins pas encore enfûtés)
+  const production = calcProductionEnCours();
 
   // Grouper par bière
   const grouped = {};
@@ -3541,6 +3686,18 @@ function renderProduits() {
         return `<span style="font-size:10px;color:rgba(180,180,180,.8)">${label} : <b style="color:rgba(220,180,100,.85)">${qty}</b></span>`;
       }).join(' · ');
 
+    // Production en cours (brassins pas encore enfûtés) pour cette bière
+    const prod = production[biere];
+    let prodHtml = '';
+    if (prod && prod.volumeTotal > 0) {
+      const dates = prod.entries.filter(e => e.dateEnfutage).map(e => e.dateEnfutage).sort();
+      const readyTxt = dates.length ? ` · prêt vers le ${fmtDateFr(dates[0])}` : '';
+      const tooltip = prod.entries.map(e =>
+        `${e.brewNum} (cuve ${e.cuve}, ${e.statut}) — ${e.volume}L${e.dateEnfutage ? ', prêt vers le ' + fmtDateFr(e.dateEnfutage) : ''}`
+      ).join(' | ').replace(/"/g, "'");
+      prodHtml = `<div style="font-size:11px;color:#7ec87e;margin-top:2px" title="${tooltip}">🍺 +${prod.volumeTotal}L en cours (≈${Math.floor(prod.volumeTotal/30)} fûts)${readyTxt}</div>`;
+    }
+
     html += `
     <div style="margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px 4px;flex-wrap:wrap;gap:4px">
@@ -3558,6 +3715,7 @@ function renderProduits() {
             <div style="font-size:11px;color:rgba(180,180,180,.8);text-decoration:underline;text-underline-offset:2px">🔒 ${totalReserve} réservé${totalReserve>1?'s':''}</div>
             ${weekBadges ? `<div style="margin-top:2px">${weekBadges}</div>` : ''}
           </div>` : ''}
+          ${prodHtml}
         </div>
       </div>
       <div class="mp-list">${rows}</div>
@@ -6804,6 +6962,7 @@ function getWeekKey(d) {
 }
 
 function renderPrev() {
+  renderRupturesAlert('ruptures-alert-prev');
   renderPrevWeeks();
   renderPrevCalendar();
   renderOrdersList();
