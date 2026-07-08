@@ -5276,9 +5276,9 @@ function renderFutsPage() {
     .sort(([a],[b]) => a.localeCompare(b))
     .map(([client, qty]) => `
       <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
-        <span style="font-size:13px;color:var(--foam);flex:1">${client}</span>
+        <span style="font-size:13px;color:var(--foam);flex:1">${esc(client)}</span>
         <span style="font-size:15px;font-weight:700;color:var(--foam);min-width:28px;text-align:right">${qty}</span>
-        <button onclick="openRetourClientModal('${client.replace(/'/g,"\'")}')"
+        <button data-client="${esc(client)}" onclick="openRetourClientModal(this.dataset.client)"
           style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer">
           ↩ Retour
         </button>
@@ -5428,7 +5428,7 @@ function openLivraisonFutsModal() {
       <div class="field-label" style="margin-bottom:4px">Client</div>
       <select id="fut-livr-client" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:8px 12px;box-sizing:border-box">
         <option value="">— Choisir —</option>
-        ${clients.map(c=>`<option value="${c}">${c}</option>`).join('')}
+        ${clients.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}
         <option value="__new__">+ Autre client…</option>
       </select>
       <input type="text" id="fut-livr-client-new" placeholder="Nom du client"
@@ -5495,6 +5495,8 @@ function saveFutsRetour() {
       ? (document.getElementById('fut-livr-client-new')?.value||'').trim()
       : sel?.value||'';
     if (!client) { showToast('Choisir un client', true); return; }
+    // Nettoyer les caractères interdits dans les clés Firebase (. # $ / [ ])
+    client = client.replace(/[.#$/\[\]]/g, '-');
     const qty = parseInt(document.getElementById('fut-livr-qty')?.value)||0;
     if (!qty) { showToast('Quantité invalide', true); return; }
     futsData.stockVide = Math.max(0,(futsData.stockVide||0)-qty);
