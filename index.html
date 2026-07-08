@@ -17,6 +17,13 @@
       const base = location.pathname.replace(/\/[^/]*$/, '') || '';
       const link = document.querySelector('link[rel="manifest"]');
       if (link && base) link.href = base + '/manifest.json';
+      // Service worker : mode hors-ligne
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register((base || '.') + '/sw.js').catch(err =>
+            console.warn('Service worker non enregistré:', err));
+        });
+      }
     })();
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
@@ -1067,6 +1074,8 @@
       <h1>Microbrasserie</h1>
       <div class="subtitle" id="header-page-name">Stocks</div>
     </div>
+    <button onclick="openGlobalSearch()" aria-label="Recherche"
+      style="background:none;border:none;cursor:pointer;padding:6px;font-size:18px;flex-shrink:0;color:var(--muted)">🔍</button>
     <button id="hamburger-btn" onclick="toggleMenu()" aria-label="Menu"
       style="background:none;border:none;cursor:pointer;padding:6px;display:flex;flex-direction:column;gap:5px;flex-shrink:0">
       <span class="hb-bar"></span>
@@ -1074,6 +1083,20 @@
       <span class="hb-bar"></span>
     </button>
   </header>
+
+  <!-- ===== MODAL RECHERCHE GLOBALE ===== -->
+  <div id="global-search-modal" class="modal-overlay" onclick="if(event.target===this)closeGlobalSearch()">
+    <div class="modal-box" style="max-width:440px">
+      <div class="modal-header">
+        <div style="font-size:15px;font-weight:700;color:var(--foam)">🔍 Recherche</div>
+        <button onclick="closeGlobalSearch()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">×</button>
+      </div>
+      <input id="global-search-input" type="search" placeholder="Client, brassin, recette, facture…" autocomplete="off"
+        oninput="runGlobalSearch(this.value)"
+        style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:10px 12px;width:100%;margin-bottom:10px"/>
+      <div id="global-search-results" style="max-height:55vh;overflow-y:auto"></div>
+    </div>
+  </div>
 
   <!-- Overlay fond -->
   <div id="menu-overlay" onclick="closeMenu()"
@@ -2614,8 +2637,26 @@ const auth = getAuth(app);
 // =========================================================
 // HELPERS FIREBASE
 // =========================================================
-function fbSet(path, val)    { return set(ref(db, path), val); }
-function fbUpdate(path, val) { return update(ref(db, path), val); }
+// Point unique d'écriture : bloque les rôles "lecteur" et signale les échecs réseau
+function isLecteur() {
+  try { return getRoleActuel() === 'lecteur'; } catch(e) { return false; }
+}
+function fbSet(path, val) {
+  if (isLecteur()) { showToast('🔒 Compte en lecture seule — modification refusée', true); return Promise.resolve(); }
+  return set(ref(db, path), val).catch(err => {
+    console.error('Écriture Firebase échouée:', path, err);
+    showToast('❌ Enregistrement échoué (réseau ?) — vérifiez et réessayez', true);
+    throw err;
+  });
+}
+function fbUpdate(path, val) {
+  if (isLecteur()) { showToast('🔒 Compte en lecture seule — modification refusée', true); return Promise.resolve(); }
+  return update(ref(db, path), val).catch(err => {
+    console.error('Écriture Firebase échouée:', path, err);
+    showToast('❌ Enregistrement échoué (réseau ?) — vérifiez et réessayez', true);
+    throw err;
+  });
+}
 function fbListen(path, cb)  { onValue(ref(db, path), snap => cb(snap.val())); }
 
 // ===== SAUVEGARDE / RESTAURATION COMPLÈTE DES DONNÉES =====
@@ -3361,7 +3402,25 @@ function saveProduitModal() {
 }
 
 function deleteProduit(id) {
+  const p = produitsData[id];
+  if (!p) return;
   if (!confirm('Supprimer cette entrée ?')) return;
+
+  // Si c'est un stock de fûts Inox/KK/KKTP : remettre les fûts vides correspondants au parc
+  // (les fûts physiques redeviennent disponibles, ex. correction d'un enfûtage saisi en trop)
+  const qty = p.qty || 0;
+  const futFieldByFormat = { fut30inox: 'stockVide', fut30kk: 'stockVideKK', fut30kktp: 'stockVideKKTP' };
+  const futField = futFieldByFormat[p.format];
+  if (futField && qty > 0) {
+    const labels = { fut30inox: '30L Inox', fut30kk: '30L KK', fut30kktp: '30L KKTP' };
+    futsData[futField] = (futsData[futField] || 0) + qty;
+    if (!futsData.mouvements) futsData.mouvements = [];
+    futsData.mouvements.push({ type: 'suppr_stock', ts: Date.now(), qty: qty, biere: p.biere || '', client: labels[p.format] });
+    saveFutsData();
+    renderFutsPage();
+    showToast(`Stock supprimé — ${qty} fût${qty>1?'s':''} ${labels[p.format]} remis au parc (vides)`);
+  }
+
   delete produitsData[id];
   fbSet('produits/' + id, null);
   renderProduits();
@@ -3487,6 +3546,86 @@ function calcStockEngageParBiere() {
     });
   });
   return engage;
+}
+
+// Échappe le HTML dans les textes saisis librement (noms clients, notes…)
+function esc(s) {
+  return (s ?? '').toString()
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ===== RECHERCHE GLOBALE =====
+function openGlobalSearch() {
+  document.getElementById('global-search-modal').classList.add('open');
+  document.getElementById('global-search-results').innerHTML =
+    '<div style="font-size:12px;color:var(--muted);text-align:center;padding:14px 0">Tapez au moins 2 caractères…</div>';
+  const inp = document.getElementById('global-search-input');
+  inp.value = '';
+  setTimeout(() => inp.focus(), 100);
+}
+
+function closeGlobalSearch() {
+  document.getElementById('global-search-modal').classList.remove('open');
+}
+
+function gsGoTo(page) {
+  closeGlobalSearch();
+  const navBtns = document.querySelectorAll('#main-nav button');
+  let targetBtn = null;
+  navBtns.forEach(b => { if ((b.getAttribute('onclick')||'').includes(`'${page}'`)) targetBtn = b; });
+  switchPage(page, targetBtn);
+  if (typeof closeMenu === 'function') closeMenu();
+}
+
+function runGlobalSearch(q) {
+  const el = document.getElementById('global-search-results');
+  const norm = normBeerName(q);
+  if (!norm || norm.length < 2) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:14px 0">Tapez au moins 2 caractères…</div>';
+    return;
+  }
+  const hit = s => normBeerName(s).includes(norm);
+  const results = [];
+
+  // Clients
+  Object.values(clientsData || {}).forEach(c => {
+    if (hit(c.nom) || hit(c.email) || hit(c.ville)) {
+      results.push({ icon:'👤', cat:'Client', title: c.nom, sub: [c.ville, c.email].filter(Boolean).join(' · '), page:'clients' });
+    }
+  });
+  // Brassins (historique)
+  Object.values(historiqueData || {}).forEach(b => {
+    if (hit(b.lot) || hit(b.recette) || hit(b.brewNum)) {
+      results.push({ icon:'🍺', cat:'Brassin', title: `${b.lot||b.brewNum||'—'} · ${b.recette||''}`, sub: `${b.date||''} · ${b.volume||''}L · ${b.statut||''}`, page:'historique' });
+    }
+  });
+  // Recettes
+  Object.values(recipesData || {}).forEach(r => {
+    if (hit(r.name)) {
+      results.push({ icon:'📖', cat:'Recette', title: r.name, sub: r.abv ? r.abv+'% ABV' : '', page:'recettes' });
+    }
+  });
+  // Factures / devis
+  Object.values(facturesData || {}).forEach(f => {
+    if (hit(f.num) || hit(f.client)) {
+      results.push({ icon:'🧾', cat: f.type==='devis'?'Devis':'Facture', title: `${f.num||'—'} · ${f.client||''}`, sub: `${f.date||''} · ${(f.ttc||0).toFixed(2)} € · ${f.statut||''}`, page:'factures' });
+    }
+  });
+
+  if (!results.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:14px 0">Aucun résultat</div>';
+    return;
+  }
+  el.innerHTML = results.slice(0, 30).map(r => `
+    <div onclick="gsGoTo('${r.page}')" style="padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:10px">
+      <span style="font-size:16px">${r.icon}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--foam);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.title)}</div>
+        ${r.sub ? `<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.sub)}</div>` : ''}
+      </div>
+      <span style="font-size:10px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 6px;flex-shrink:0">${r.cat}</span>
+    </div>`).join('') + (results.length > 30 ? `<div style="font-size:11px;color:var(--muted);text-align:center;padding:6px 0">${results.length - 30} autres résultats — précisez la recherche</div>` : '');
 }
 
 // Normalise un nom de bière pour comparaison tolérante (accents, apostrophes, casse, espaces)
@@ -4627,7 +4766,50 @@ function renderDashboard() {
       }).join('')
     : `<div style="font-size:13px;color:var(--muted);padding:8px 0">Aucun produit en stock</div>`;
 
+  // --- Rappel échéance accises (déclaration trimestrielle DRM/CIEL, sous ~10 j après fin de trimestre) ---
+  const now = new Date();
+  const currentQ = Math.floor(now.getMonth() / 3); // 0-3
+  // Échéance = 10e jour du mois suivant la fin du trimestre en cours
+  const echeance = new Date(now.getFullYear(), currentQ * 3 + 3, 10);
+  const joursRestants = Math.ceil((echeance - now) / 86400000);
+  const acciseBanner = (joursRestants <= 15)
+    ? `<div style="background:rgba(239,159,39,.12);border:1px solid #EF9F27;border-radius:var(--radius-sm);padding:10px 12px">
+        <div style="font-size:12px;font-weight:700;color:#EF9F27">🏛️ Échéance accises</div>
+        <div style="font-size:12px;color:var(--foam);margin-top:2px">Déclaration du trimestre T${currentQ+1} à faire avant le ${echeance.toLocaleDateString('fr-FR',{day:'numeric',month:'long'})} — dans ${joursRestants} jour${joursRestants>1?'s':''}.</div>
+      </div>`
+    : '';
+
+  // --- Bilan annuel (année en cours) ---
+  const year = now.getFullYear();
+  let volumeAnnee = 0, nbBrassinsAnnee = 0;
+  Object.values(historiqueData || {}).forEach(b => {
+    const d = b.date ? new Date(b.date) : null;
+    if (d && d.getFullYear() === year) { nbBrassinsAnnee++; volumeAnnee += (b.volume || 0); }
+  });
+  let caAnnee = 0, nbFacturesAnnee = 0;
+  Object.values(facturesData || {}).forEach(f => {
+    if (f.type !== 'facture' || f.statut === 'annulee') return;
+    const d = f.date ? new Date(f.date) : null;
+    if (d && d.getFullYear() === year) { nbFacturesAnnee++; caAnnee += (parseFloat(f.ttc) || 0); }
+  });
+  const statCell = (label, val) =>
+    `<div style="flex:1;text-align:center">
+      <div style="font-size:17px;font-weight:800;color:var(--amber-lt)">${val}</div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">${label}</div>
+    </div>`;
+  const bilanHtml = `
+    <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Bilan ${year}</div>
+      <div style="display:flex;gap:8px">
+        ${statCell('Brassins', nbBrassinsAnnee)}
+        ${statCell('Litres produits', volumeAnnee.toLocaleString('fr-FR'))}
+        ${statCell('Factures', nbFacturesAnnee)}
+        ${statCell('CA facturé', caAnnee.toLocaleString('fr-FR', {maximumFractionDigits:0}) + ' €')}
+      </div>
+    </div>`;
+
   el.innerHTML = `
+    ${acciseBanner}
     <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:2px">État des cuves</div>
       ${fermRows}
@@ -4645,6 +4827,8 @@ function renderDashboard() {
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:2px">Stock produits finis</div>
       ${stockBiereHtml}
     </div>
+
+    ${bilanHtml}
   `;
 }
 
@@ -5048,6 +5232,15 @@ function saveFutsData() {
   setTimeout(() => { _futsDataLocalWrite = false; }, 3000);
 }
 
+// Supprime une ligne du journal des mouvements du parc fûts (n'affecte pas les compteurs)
+function deleteFutMouv(idx) {
+  if (!futsData.mouvements || !futsData.mouvements[idx]) return;
+  if (!confirm('Supprimer cette ligne du journal ? (les compteurs de fûts ne seront pas modifiés)')) return;
+  futsData.mouvements.splice(idx, 1);
+  saveFutsData();
+  renderFutsPage();
+}
+
 function getFutsPleins30Inox() {
   return Object.values(produitsData||{})
     .filter(p => p.format === 'fut30inox')
@@ -5091,16 +5284,19 @@ function renderFutsPage() {
         </button>
       </div>`).join('');
 
-  const mvts = [...(futsData.mouvements||[])].reverse().slice(0,15);
-  const mvtHtml = mvts.length ? mvts.map(m => {
+  const mvtsAll = futsData.mouvements || [];
+  const mvts = [...mvtsAll].reverse().slice(0,15);
+  const mvtHtml = mvts.length ? mvts.map((m, i) => {
+    const realIdx = mvtsAll.length - 1 - i; // index réel dans le tableau d'origine
     const d = new Date(m.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-    const icons  = { init:'⚙', livraison:'🚚', retour_client:'↩', retour_nettoyage:'🧼', enfutage:'🛢', ajustement:'✏️' };
-    const labels = { init:'Stock initial', livraison:'Livraison', retour_client:'Retour client', retour_nettoyage:'Retour nettoyage', enfutage:'Enfûtage', ajustement:'Ajustement' };
+    const icons  = { init:'⚙', livraison:'🚚', retour_client:'↩', retour_nettoyage:'🧼', enfutage:'🛢', ajustement:'✏️', suppr_stock:'🗑' };
+    const labels = { init:'Stock initial', livraison:'Livraison', retour_client:'Retour client', retour_nettoyage:'Retour nettoyage', enfutage:'Enfûtage', ajustement:'Ajustement', suppr_stock:'Suppression stock' };
     const sign = m.type==='livraison' ? '' : '+';
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
       <span style="color:var(--amber-lt);font-weight:600;flex:1">${icons[m.type]||''} ${labels[m.type]||m.type}${m.client?' · '+m.client:''}</span>
       <span style="font-weight:700;color:var(--foam)">${m.qty>0?sign:''}${m.qty} fût${Math.abs(m.qty)>1?'s':''}</span>
       <span style="color:var(--muted);font-size:11px;margin-left:8px;white-space:nowrap">${d}</span>
+      <button onclick="deleteFutMouv(${realIdx})" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:1px 3px;flex-shrink:0" title="Supprimer cette ligne du journal">✕</button>
     </div>`;
   }).join('') : '<div style="font-size:12px;color:var(--muted);padding:8px 0">Aucun mouvement</div>';
 
@@ -5562,23 +5758,38 @@ function updateEnfutageLine(idx, field, val) {
   enfutageLines[idx][field] = field === 'qty' ? (parseInt(val) || 0) : val;
 }
 
+let _enfutageSaving = false; // anti double-clic
+
 function saveEnfutage() {
   if (!enfutageSourceFermId) return;
+  if (_enfutageSaving) return; // déjà en cours — ignorer les clics supplémentaires
   const ferm = FERMENTERS.find(x => x.id === enfutageSourceFermId);
   const beerName = document.getElementById('enfutage-beer-select')?.value || (ferm ? ferm.beer : '') || '';
   const liberer = document.getElementById('enfutage-liberer').checked;
 
+  // Validation AVANT toute écriture : au moins une ligne avec quantité
+  const validLines = enfutageLines.filter(l => l.qty && l.qty > 0);
+  if (!validLines.length) {
+    showToast('⚠️ Aucune quantité saisie', true);
+    return; // le modal reste ouvert pour corriger
+  }
+
+  _enfutageSaving = true;
+  const fermIdSaved = enfutageSourceFermId; // capturer avant fermeture
+
+  // Fermer le modal IMMÉDIATEMENT pour empêcher tout double-clic
+  closeEnfutageModal();
+
   let saved = 0;
   let inoxUsed = 0, kkUsed = 0, kktpUsed = 0;
-  enfutageLines.forEach(line => {
-    if (!line.qty || line.qty <= 0) return;
+  validLines.forEach(line => {
     const id = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,5);
     const entry = {
       id,
       biere: beerName,
       format: line.format,
       qty: line.qty,
-      ferm: enfutageSourceFermId,
+      ferm: fermIdSaved,
       lot: line.lot || todayLot(),
       ts: Date.now()
     };
@@ -5612,21 +5823,20 @@ function saveEnfutage() {
   }
 
   if (liberer && ferm) {
-    setPhase(enfutageSourceFermId, 'idle');
+    setPhase(fermIdSaved, 'idle');
   }
 
-  closeEnfutageModal();
   renderProduits();
 
-  // Enregistrer dans le suivi du brassin
-  const brassin = Object.values(historiqueData).find(b => b.recette === beerName);
+  // Enregistrer dans le suivi du brassin (correspondance tolérante sur le nom)
+  const brassin = Object.values(historiqueData).find(b => normBeerName(b.recette) === normBeerName(beerName) && ['fermentation','garde','dh'].includes(b.statut))
+    || Object.values(historiqueData).find(b => normBeerName(b.recette) === normBeerName(beerName));
   if (brassin && saved > 0) {
     const s = getSuivi(brassin.id);
     if (!s.enfutageLog) s.enfutageLog = [];
     const today = new Date().toISOString().split('T')[0];
     // Détail par contenant
-    const details = enfutageLines
-      .filter(l => l.qty > 0)
+    const details = validLines
       .map(l => ({ format: l.format, label: FORMAT_LABELS[l.format]||l.format, qty: l.qty, lot: l.lot||'' }));
     const lignes = details.map(d => `${d.qty} × ${d.label}${d.lot?' ('+d.lot+')':''}`).join(', ');
     s.enfutageLog.push({ date: today, lignes, details, liberer });
@@ -5636,8 +5846,8 @@ function saveEnfutage() {
     if (suiviPanel && suiviPanel.style.display !== 'none') renderSuiviEnfutageLog(brassin.id);
   }
 
-  if (saved > 0) showToast('Conditionnement enregistré' + (liberer ? ' · Cuve libérée' : ''));
-  else showToast('Aucune quantité saisie', true);
+  showToast('✅ Conditionnement enregistré' + (liberer ? ' · Cuve libérée' : ''));
+  _enfutageSaving = false;
 }
 
 function renderFermenters() {
@@ -5919,7 +6129,7 @@ function renderClients() {
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div style="min-width:0;flex:1">
           <div style="display:flex;align-items:center;gap:8px">
-            <div style="font-size:14px;font-weight:700;color:var(--foam)">${c.nom||'—'}</div>
+            <div style="font-size:14px;font-weight:700;color:var(--foam)">${esc(c.nom)||'—'}</div>
             ${typeLabel ? `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(200,128,10,.15);color:var(--amber-lt)">${typeLabel}</span>` : ''}
           </div>
           ${c.contact ? `<div style="font-size:12px;color:var(--text-dim);margin-top:2px">👤 ${c.contact}</div>` : ''}
@@ -6056,7 +6266,7 @@ function openClientDetailModal(id) {
     return `<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;opacity:${o._cloture?'.55':'1'}">
       <div style="display:flex;justify-content:space-between;align-items:baseline">
         <span style="color:var(--muted)">${d}</span>${clot}
-        ${o.note ? `<span style="color:var(--text-dim);font-style:italic;font-size:11px">${o.note}</span>` : ''}
+        ${o.note ? `<span style="color:var(--text-dim);font-style:italic;font-size:11px">${esc(o.note)}</span>` : ''}
       </div>
       <div style="color:var(--foam);margin-top:2px">${lines||'—'}</div>
     </div>`;
@@ -6415,10 +6625,32 @@ function updateBrewStatut(id, statut) {
   saveBrewEntry(id, historiqueData[id]);
 }
 
+let _lastDeletedBrew = null; // { id, data } pour l'annulation
+
 function deleteHistorique(id) {
+  const b = historiqueData[id];
+  if (!b) return;
+  if (!confirm(`Supprimer définitivement le brassin ${b.lot || ''} (${b.recette || '?'}) de l'historique ?`)) return;
+  _lastDeletedBrew = { id, data: JSON.parse(JSON.stringify(b)) };
   fbSet('historique/' + id, null); // supprime le nœud Firebase
   delete historiqueData[id];
   renderHistorique();
+  // Toast avec bouton Annuler (10 s)
+  const t = document.getElementById('toast');
+  t.innerHTML = `Brassin supprimé — <span onclick="undoDeleteHistorique()" style="text-decoration:underline;font-weight:700;cursor:pointer">Annuler</span>`;
+  t.classList.add('show');
+  setTimeout(() => { t.classList.remove('show'); t.innerHTML = ''; _lastDeletedBrew = null; }, 10000);
+}
+
+function undoDeleteHistorique() {
+  if (!_lastDeletedBrew) return;
+  const { id, data } = _lastDeletedBrew;
+  historiqueData[id] = data;
+  fbSet('historique/' + id, data);
+  _lastDeletedBrew = null;
+  document.getElementById('toast').classList.remove('show');
+  renderHistorique();
+  showToast('✅ Brassin restauré');
 }
 
 function annulerBrassin(id) {
@@ -7106,9 +7338,9 @@ function openPastOrdersModal(key) {
     const cloture = o._cloture ? '<span style="font-size:10px;color:var(--ok);margin-left:6px">✓ BL créé</span>' : '';
     return `
     <div style="padding:8px 0;border-bottom:1px solid var(--border)">
-      <div style="font-size:13px;font-weight:600;color:var(--foam)">${o.client||'—'}${cloture}</div>
+      <div style="font-size:13px;font-weight:600;color:var(--foam)">${esc(o.client)||'—'}${cloture}</div>
       ${lines}
-      ${o.note?`<div style="font-size:11px;color:var(--muted);font-style:italic;margin-top:2px">📝 ${o.note}</div>`:''}
+      ${o.note?`<div style="font-size:11px;color:var(--muted);font-style:italic;margin-top:2px">📝 ${esc(o.note)}</div>`:''}
     </div>`;
   }).join('');
   document.getElementById('past-orders-modal').style.display = 'flex';
@@ -7251,7 +7483,7 @@ function renderOrdersList() {
         onclick="openOrderModal('${k}')">
         <div style="font-size:11px;color:var(--muted);min-width:70px;flex-shrink:0">${dateStr}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;color:var(--foam);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.client||'—'}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--foam);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.client)||'—'}</div>
           <div style="font-size:11px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${beers}</div>
         </div>
         <div style="font-size:12px;color:var(--amber-lt);font-weight:700;flex-shrink:0;text-align:right">${qtys}</div>
@@ -7521,7 +7753,7 @@ function renderOrderList(key) {
          onclick="${clicAction}" title="${o._cloture?'Commande clôturée':'Cliquer pour modifier'}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <div style="display:flex;align-items:center;gap:6px">
-          <span style="font-size:13px;font-weight:700;color:var(--foam)">${o.client||'Client'}</span>
+          <span style="font-size:13px;font-weight:700;color:var(--foam)">${esc(o.client)||'Client'}</span>
           ${o._cloture ? '<span style="font-size:10px;color:var(--ok);background:rgba(100,200,100,.12);border:1px solid rgba(100,200,100,.3);border-radius:3px;padding:1px 6px">✓ BL créé</span>' : ''}
         </div>
         <div style="display:flex;align-items:center;gap:6px">
@@ -7533,7 +7765,7 @@ function renderOrderList(key) {
         </div>
       </div>
       ${linesHtml}
-      ${o.note ? `<div style="font-size:12px;color:var(--text-dim);font-style:italic;margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">📝 ${o.note}</div>` : ''}
+      ${o.note ? `<div style="font-size:12px;color:var(--text-dim);font-style:italic;margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">📝 ${esc(o.note)}</div>` : ''}
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
         <button onclick="event.stopPropagation();creerBlDepuisCommande('${key}','${o.id}')"
           style="background:rgba(200,128,10,.15);border:1px solid rgba(200,128,10,.4);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:11px;font-weight:700;padding:5px 10px;cursor:pointer">
@@ -8437,11 +8669,12 @@ function confirmBrew(skipDestock = false) {
 }
 
 
-function showToast(msg) {
+function showToast(msg, isError = false) {
   const t = document.getElementById('toast');
   t.textContent = msg;
+  t.style.background = isError ? '#c0391b' : '';
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2200);
+  setTimeout(() => { t.classList.remove('show'); t.style.background = ''; }, isError ? 3500 : 2200);
 }
 
 // Re-render prévisions quand on arrive dessus
@@ -10114,7 +10347,7 @@ Object.assign(window, {
   toggleMenu, closeMenu,
   adjustMP, setMP, setMpPrice,
   openProduitModal, closeProduitModal, selectProduitFormat, saveProduitModal, deleteProduit, adjustProduitQty, setProduitQty, selectFermBtn,
-  toggleProduitHisto, renderProduitHisto, deleteProduitMouv, tracerMouvProduit,
+  toggleProduitHisto, renderProduitHisto, deleteProduitMouv, tracerMouvProduit, deleteFutMouv,
   openDhModal, closeDhModal, saveDhModal,
   openEnfutageModal, closeEnfutageModal, saveEnfutage, addEnfutageLine, removeEnfutageLine, updateEnfutageLine,
   toggleSuivi, addDensite, deleteDensite, updateSuiviDate, renderSuiviDensites,
@@ -10159,6 +10392,7 @@ Object.assign(window, {
   openLotPicker, selectLotOverride, closeLotPicker,
   openIngredientRecipes, closeIngredientRecipesModal,
   exportToutesLesDonnees, importerSauvegarde,
+  undoDeleteHistorique, openGlobalSearch, closeGlobalSearch, runGlobalSearch, gsGoTo,
 });
 
 // ── Listeners modal MP ──────────────────────────────────────────
