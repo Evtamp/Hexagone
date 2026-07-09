@@ -752,10 +752,12 @@
       opacity: 0;
       pointer-events: none;
       transition: opacity .2s;
-      white-space: nowrap;
+      white-space: normal;
+      text-align: center;
+      max-width: 92vw;
       z-index: 200;
     }
-    .toast.show { opacity: 1; }
+    .toast.show { opacity: 1; pointer-events: auto; }
     /* ========================================
        RESPONSIVE — PC (≥ 768px)
        Sidebar gauche + contenu large
