@@ -17,11 +17,12 @@
       const base = location.pathname.replace(/\/[^/]*$/, '') || '';
       const link = document.querySelector('link[rel="manifest"]');
       if (link && base) link.href = base + '/manifest.json';
-      // Service worker : mode hors-ligne
-      if ('serviceWorker' in navigator) {
+      // Service worker : mode hors-ligne (uniquement sur le vrai site déployé)
+      if ('serviceWorker' in navigator && !location.hostname.includes('claudeusercontent')) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register((base || '.') + '/sw.js').catch(err =>
-            console.warn('Service worker non enregistré:', err));
+          navigator.serviceWorker.register((base || '.') + '/sw.js').catch(() => {
+            /* sw.js absent (environnement de test) — ignoré */
+          });
         });
       }
     })();
@@ -1212,6 +1213,7 @@
             <button onclick="switchMpCat('houblon',this)">🌿 Houblons</button>
             <button onclick="switchMpCat('levure',this)">🧫 Levures</button>
             <button onclick="switchMpCat('sel',this)">🧂 Minéraux</button>
+            <button onclick="switchMpCat('autre',this)">📦 Autres</button>
           </div>
           <button onclick="openMpModal()" style="background:var(--amber);color:var(--bg);border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer;margin-left:10px;flex-shrink:0">+ Ajouter</button>
         </div>
@@ -1672,6 +1674,7 @@
         <button id="mp-cat-houblon" class="mp-cat-btn" onclick="selectMpCatModal('houblon')">🌿 Houblon</button>
         <button id="mp-cat-levure"  class="mp-cat-btn" onclick="selectMpCatModal('levure')">🧫 Levure</button>
         <button id="mp-cat-sel"     class="mp-cat-btn" onclick="selectMpCatModal('sel')">🧂 Minéral</button>
+        <button id="mp-cat-autre"   class="mp-cat-btn" onclick="selectMpCatModal('autre')">📦 Autre</button>
       </div>
     </div>
 
@@ -2761,6 +2764,7 @@ const MP_SCHEMA = {
     { id:'nottingham',   name:'Nottingham',         unit:'pqt', max:5,    low:1,   mid:2,  step:0.5, price:0 },
     { id:'k97',          name:'K-97',              unit:'pqt', max:5,    low:1,   mid:2,  step:0.5, price:0 },
   ],
+  autre: [], // épices, sucres, fruits, adjuvants… ajoutés dynamiquement
 };
 
 // Nouvelle structure : phases = { fermentation: {active, debut}, garde: {active, debut}, dh: {active, debut} }
@@ -4106,7 +4110,7 @@ function switchMpCat(cat, btn) {
 let mpModalCat     = 'malt';
 let mpModalEditId  = null;
 
-const MP_UNITS = { malt: 'kg', houblon: 'kg', levure: 'pqt', sel: 'g' };
+const MP_UNITS = { malt: 'kg', houblon: 'kg', levure: 'pqt', sel: 'g', autre: 'kg' };
 
 function openMpModal(editId) {
   mpModalEditId = editId || null;
@@ -4167,7 +4171,7 @@ function closeMpModal() {
 
 function selectMpCatModal(cat) {
   mpModalCat = cat;
-  ['malt','houblon','levure','sel'].forEach(c => {
+  ['malt','houblon','levure','sel','autre'].forEach(c => {
     document.getElementById('mp-cat-' + c)?.classList.toggle('active-cat', c === cat);
   });
   const unit = MP_UNITS[cat] || 'kg';
@@ -4326,7 +4330,7 @@ function saveMpModal() {
     if (humidite)    fbSet('mp/humidite_'    + newId, humidite);
     if (attenuation) fbSet('mp/attenuation_' + newId, attenuation);
     // Switcher sur la catégorie ajoutée
-    const tabBtn = document.querySelector(`#mp-tabs button:nth-child(${['malt','houblon','levure','sel'].indexOf(mpModalCat)+1})`);
+    const tabBtn = document.querySelector(`#mp-tabs button:nth-child(${['malt','houblon','levure','sel','autre'].indexOf(mpModalCat)+1})`);
     switchMpCat(mpModalCat, tabBtn);
   }
 
@@ -5548,7 +5552,7 @@ function openDhModal(fermId, today) {
     linesEl.innerHTML = dhHops.map((h, i) => {
       // Chercher le stock disponible
       const grouped = {};
-      (MP_DATA.houblon||[]).filter(m => m.name === h.name && m.val > 0).forEach(m => {
+      [...(MP_DATA.houblon||[]), ...(MP_DATA.autre||[])].filter(m => m.name === h.name && m.val > 0).forEach(m => {
         grouped[m.name] = (grouped[m.name]||0) + m.val;
       });
       const dispo = grouped[h.name] || 0;
@@ -5569,7 +5573,7 @@ function openDhModal(fermId, today) {
             <div class="field-label" style="margin-bottom:3px">Lot à utiliser</div>
             <select id="dh-hop-lot-${i}"
               style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;padding:7px 6px;box-sizing:border-box">
-              ${(MP_DATA.houblon||[]).filter(m => m.name === h.name && m.val > 0)
+              ${[...(MP_DATA.houblon||[]), ...(MP_DATA.autre||[])].filter(m => m.name === h.name && m.val > 0)
                 .map(m => `<option value="${m.id}">${m.lot||'Sans lot'} (${m.val.toFixed(2)} kg)</option>`)
                 .join('') || '<option value="">Aucun stock</option>'}
             </select>
@@ -5589,7 +5593,7 @@ function openDhModal(fermId, today) {
           <select id="dh-hop-lot-0"
             style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;padding:7px 6px;box-sizing:border-box">
             <option value="">— Choisir —</option>
-            ${(MP_DATA.houblon||[]).filter(m=>m.val>0)
+            ${[...(MP_DATA.houblon||[]), ...(MP_DATA.autre||[])].filter(m=>m.val>0)
               .map(m=>`<option value="${m.id}">${m.name}${m.lot?' · '+m.lot:''} (${m.val.toFixed(2)} kg)</option>`)
               .join('')}
           </select>
@@ -8321,7 +8325,9 @@ function renderRecipeDraftLines() {
     const elId = { malt:'recipe-malts', houblon:'recipe-houblons', levure:'recipe-levures', sel:'recipe-sels' }[cat];
     const el = document.getElementById(elId);
     if (!el) return;
-    const items = MP_DATA[cat] || [];
+    // Les ingrédients "autre" (épices, sucres, fruits…) sont proposés dans toutes les catégories,
+    // car ils peuvent être ajoutés avec le malt, à l'ébullition, en fermentation ou en DH.
+    const items = [...(MP_DATA[cat] || []), ...(MP_DATA.autre || [])];
     const unit  = cat === 'levure' ? 'pqt' : cat === 'sel' ? 'g/ml' : 'kg';
     const step  = cat === 'houblon' ? '0.1' : cat === 'levure' ? '0.5' : cat === 'sel' ? '1' : '1';
 
@@ -10403,6 +10409,7 @@ setTimeout(() => {
   document.getElementById('mp-cat-houblon')?.addEventListener('click', () => selectMpCatModal('houblon'));
   document.getElementById('mp-cat-levure') ?.addEventListener('click', () => selectMpCatModal('levure'));
   document.getElementById('mp-cat-sel')    ?.addEventListener('click', () => selectMpCatModal('sel'));
+  document.getElementById('mp-cat-autre')  ?.addEventListener('click', () => selectMpCatModal('autre'));
   document.getElementById('btn-close-mp-modal')?.addEventListener('click', closeMpModal);
   document.getElementById('btn-save-mp-modal') ?.addEventListener('click', saveMpModal);
   console.log('MP listeners attachés:', !!document.getElementById('btn-save-mp-modal'));
