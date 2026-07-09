@@ -6662,6 +6662,10 @@ function undoDeleteHistorique() {
 function annulerBrassin(id) {
   const b = historiqueData[id];
   if (!b) return;
+  const msg = b.fermSnapshotAvant
+    ? `Annuler ce brassin (${b.recette}) ? Les MP seront remises en stock et la cuve ${b.cuve} reprendra l'état qu'elle avait avant ce lancement.`
+    : `Annuler ce brassin (${b.recette}) ? Les MP seront remises en stock et la cuve ${b.cuve} sera vidée.`;
+  if (!confirm(msg)) return;
   // Remettre les MP en stock si le brassin avait déstocké
   if (b.destocke && b.mpQty && b.mpQty.length) {
     const allItems = Object.values(MP_DATA).flat();
@@ -6677,15 +6681,24 @@ function annulerBrassin(id) {
   } else {
     showToast(`Brassin annulé (pas de déstockage à reverser)`);
   }
-  // Libérer la cuve si elle correspond
-  const ferm = FERMENTERS.find(f => f.id === b.cuve && f.beer === b.recette);
+  // Restaurer la cuve dans l'état où elle était AVANT le lancement de ce brassin
+  // (utile si le brassin a été lancé par erreur dans le mauvais fermenteur)
+  const ferm = FERMENTERS.find(f => f.id === b.cuve);
   if (ferm) {
-    ferm.beer = '';
-    ferm.brewNum = '';
-    if (ferm.phases) {
-      ferm.phases.fermentation = { active:false, debut:null };
-      ferm.phases.garde        = { active:false, debut:null };
-      ferm.phases.dh           = { active:false, debut:null };
+    if (b.fermSnapshotAvant) {
+      // Restaurer l'état exact d'avant (bière, phases, volumes, températures, durées…)
+      Object.assign(ferm, JSON.parse(JSON.stringify(b.fermSnapshotAvant)));
+    } else {
+      // Anciens brassins sans snapshot : repli sur l'ancien comportement (vider la cuve)
+      if (ferm.beer === b.recette) {
+        ferm.beer = '';
+        ferm.brewNum = '';
+        if (ferm.phases) {
+          ferm.phases.fermentation = { active:false, debut:null };
+          ferm.phases.garde        = { active:false, debut:null };
+          ferm.phases.dh           = { active:false, debut:null };
+        }
+      }
     }
     saveFermenters();
     renderFermenters();
@@ -8596,6 +8609,9 @@ function confirmBrew(skipDestock = false) {
   const fermId = document.getElementById('brew-ferm').value;
   const ferm = FERMENTERS.find(f => f.id === fermId);
 
+  // Snapshot de l'état du fermenteur AVANT affectation, pour pouvoir le restaurer si le brassin est annulé
+  const fermSnapshotAvant = ferm ? JSON.parse(JSON.stringify(ferm)) : null;
+
   // Affecter la bière à la cuve
   if (ferm) {
     if (!ferm.phases) ferm.phases = { fermentation:{active:false,debut:null}, garde:{active:false,debut:null}, dh:{active:false,debut:null} };
@@ -8666,6 +8682,7 @@ function confirmBrew(skipDestock = false) {
     mpLots: mpLotsUsed,
     destocke: !skipDestock,
     mpQty: mpQtySnapshot,
+    fermSnapshotAvant,
   };
   historiqueData[id] = entry;
   saveBrewEntry(id, entry);
