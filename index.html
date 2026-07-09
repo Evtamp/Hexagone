@@ -6382,7 +6382,7 @@ function renderHistorique() {
     const statColor = statutColors[b.statut] || 'var(--ok)';
 
     return `
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden">
+    <div id="brew-card-${b.id}" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden">
 
       <!-- BANDEAU CLIQUABLE -->
       <div onclick="toggleHistoriqueBrassin('${b.id}')" style="padding:12px 14px;cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -6589,6 +6589,23 @@ function toggleHistoriqueBrassin(id) {
   const open = body.style.display !== 'none';
   body.style.display = open ? 'none' : 'block';
   if (arrow) arrow.textContent = open ? '▼' : '▲';
+}
+
+// Navigue vers l'historique et met en évidence le brassin qui vient d'être lancé
+function goToBrewInHistorique(brewId) {
+  const navBtns = document.querySelectorAll('#main-nav button');
+  let targetBtn = null;
+  navBtns.forEach(b => { if ((b.getAttribute('onclick')||'').includes(`'historique'`)) targetBtn = b; });
+  switchPage('historique', targetBtn);
+  if (typeof closeMenu === 'function') closeMenu();
+  setTimeout(() => {
+    const card = document.getElementById('brew-card-' + brewId);
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.style.transition = 'box-shadow .3s ease';
+    card.style.boxShadow = '0 0 0 2px var(--amber-lt)';
+    setTimeout(() => { card.style.boxShadow = ''; }, 2500);
+  }, 250);
 }
 
 function updateBrewVolume(id, val) {
@@ -8609,6 +8626,20 @@ function confirmBrew(skipDestock = false) {
   const fermId = document.getElementById('brew-ferm').value;
   const ferm = FERMENTERS.find(f => f.id === fermId);
 
+  // ⚠️ Alerte si le fermenteur sélectionné n'est pas libre
+  if (ferm && ferm.beer) {
+    const phaseLabel = ferm.phases?.dh?.active ? 'Dry Hopping'
+      : ferm.phases?.garde?.active ? 'garde'
+      : ferm.phases?.fermentation?.active ? 'fermentation'
+      : 'occupé';
+    const ok = confirm(
+      `⚠️ Le fermenteur ${fermId} n'est pas libre — il contient actuellement "${ferm.beer}" (${phaseLabel}).\n\n` +
+      `Lancer ce nouveau brassin dedans écrasera son état actuel (récupérable en annulant ce brassin depuis l'historique).\n\n` +
+      `Continuer quand même ?`
+    );
+    if (!ok) return;
+  }
+
   // Snapshot de l'état du fermenteur AVANT affectation, pour pouvoir le restaurer si le brassin est annulé
   const fermSnapshotAvant = ferm ? JSON.parse(JSON.stringify(ferm)) : null;
 
@@ -8690,7 +8721,13 @@ function confirmBrew(skipDestock = false) {
 
   closeBrewModal();
   renderFermenters();
-  showToast(`${brewNum} · ${lot} · ${r.name} — ${skipDestock ? 'Affectée à ' + fermId : 'MP déstockées · ' + fermId + ' en fermentation'}`);
+
+  // Message de confirmation avec proposition d'aller directement voir le brassin dans l'historique
+  const t = document.getElementById('toast');
+  t.innerHTML = `🍺 Brassin lancé — ${lot} · ${r.name} — <span onclick="document.getElementById('toast').classList.remove('show');goToBrewInHistorique('${id}')" style="text-decoration:underline;font-weight:700;cursor:pointer">Voir l'historique</span>`;
+  t.style.background = '';
+  t.classList.add('show');
+  setTimeout(() => { t.classList.remove('show'); t.innerHTML = ''; }, 6000);
 }
 
 
@@ -10417,7 +10454,7 @@ Object.assign(window, {
   openLotPicker, selectLotOverride, closeLotPicker,
   openIngredientRecipes, closeIngredientRecipesModal,
   exportToutesLesDonnees, importerSauvegarde,
-  undoDeleteHistorique, openGlobalSearch, closeGlobalSearch, runGlobalSearch, gsGoTo,
+  undoDeleteHistorique, openGlobalSearch, closeGlobalSearch, runGlobalSearch, gsGoTo, goToBrewInHistorique,
 });
 
 // ── Listeners modal MP ──────────────────────────────────────────
