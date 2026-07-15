@@ -4854,6 +4854,55 @@ function renderDashboard() {
       </div>
     </div>`;
 
+  // --- Graphique mensuel : volume (hL) en barres + nb de brassins dans la barre ---
+  const moisNoms = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+  const volParMois = new Array(12).fill(0);
+  const nbParMois  = new Array(12).fill(0);
+  Object.values(historiqueData || {}).forEach(b => {
+    const d = b.ts ? new Date(b.ts) : (b.date ? new Date(b.date) : null);
+    if (d && !isNaN(d) && d.getFullYear() === year) {
+      const m = d.getMonth();
+      volParMois[m] += (b.volume || 0) / 100; // en hL
+      nbParMois[m]  += 1;
+    }
+  });
+  const maxHL = Math.max(...volParMois, 1);
+  const chartH = 130, chartW = 340, padL = 30, padB = 22, padT = 8;
+  const usableH = chartH - padB - padT;
+  const barGap = 4;
+  const barW = (chartW - padL) / 12 - barGap;
+  // Lignes de graduation Y (0, moitié, max)
+  const yTicks = [0, maxHL/2, maxHL];
+  const gridLines = yTicks.map(v => {
+    const y = padT + usableH - (v / maxHL) * usableH;
+    return `<line x1="${padL}" y1="${y}" x2="${chartW}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>
+            <text x="${padL-4}" y="${y+3}" text-anchor="end" font-size="8" fill="var(--muted)">${v.toFixed(v<10?1:0)}</text>`;
+  }).join('');
+  const bars = volParMois.map((hl, m) => {
+    const x = padL + m * (barW + barGap) + barGap/2;
+    const h = maxHL > 0 ? (hl / maxHL) * usableH : 0;
+    const y = padT + usableH - h;
+    const isCurrentMonth = (m === now.getMonth() && year === now.getFullYear());
+    const barColor = isCurrentMonth ? 'var(--amber-lt)' : (hl > 0 ? 'var(--amber)' : 'var(--border)');
+    const nbLabel = nbParMois[m] > 0 && h > 14
+      ? `<text x="${x+barW/2}" y="${y+12}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--bg)">${nbParMois[m]}</text>`
+      : (nbParMois[m] > 0 ? `<text x="${x+barW/2}" y="${y-3}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--amber-lt)">${nbParMois[m]}</text>` : '');
+    return `
+      <rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="2" fill="${barColor}">
+        <title>${moisNoms[m]} : ${hl.toFixed(1)} hL · ${nbParMois[m]} brassin${nbParMois[m]>1?'s':''}</title>
+      </rect>
+      ${nbLabel}
+      <text x="${x+barW/2}" y="${chartH-8}" text-anchor="middle" font-size="8" fill="var(--muted)">${moisNoms[m]}</text>`;
+  }).join('');
+  const chartHtml = `
+    <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Production mensuelle ${year} <span style="text-transform:none;font-weight:400">— hL (barres) · nb brassins (chiffre)</span></div>
+      <svg viewBox="0 0 ${chartW} ${chartH}" style="width:100%;height:auto;overflow:visible">
+        ${gridLines}
+        ${bars}
+      </svg>
+    </div>`;
+
   el.innerHTML = `
     ${acciseBanner}
     <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
@@ -4875,6 +4924,8 @@ function renderDashboard() {
     </div>
 
     ${bilanHtml}
+
+    ${chartHtml}
   `;
 }
 
