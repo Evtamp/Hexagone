@@ -6161,6 +6161,9 @@ function setPhase(id, phase) {
   normalizeFerm(f);
   const today = new Date().toISOString().split('T')[0];
 
+  // Capturer la bière AVANT toute modification (elle est vidée en phase idle)
+  const beerAvant = f.beer;
+
   if (phase === 'idle') {
     // Tout désactiver
     f.phases.fermentation = { active:false, debut:null };
@@ -6193,16 +6196,19 @@ function setPhase(id, phase) {
       }
     }
   }
+
   // Synchroniser le statut dans l'historique des brassins
   const phaseToStatut = { fermentation:'fermentation', garde:'garde', dh:'dh', idle:'conditionne' };
   const newStatut = phaseToStatut[phase] || phase;
-  const brassin = Object.values(historiqueData).find(b =>
-    b.recette === f.beer && ['fermentation','garde','dh'].includes(b.statut)
-  );
+
+  // Retrouver le brassin actif : par cuve en priorité (plus fiable), sinon par bière (tolérant)
+  const actifs = ['fermentation','garde','dh'];
+  let brassin = Object.values(historiqueData).find(b => b.cuve === id && actifs.includes(b.statut))
+    || (beerAvant ? Object.values(historiqueData).find(b => normBeerName(b.recette) === normBeerName(beerAvant) && actifs.includes(b.statut)) : null);
+
   if (brassin) {
-    // Mettre à jour le statut
-    const ancienStatut = brassin.statut;
     if (phase !== 'idle') brassin.statut = newStatut;
+    else brassin.statut = 'conditionne'; // cuve libérée → brassin conditionné
     saveBrewEntry(brassin.id, brassin);
 
     // Enregistrer le changement dans le suivi
