@@ -4848,7 +4848,7 @@ function renderDashboard() {
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Bilan ${year}</div>
       <div style="display:flex;gap:8px">
         ${statCell('Brassins', nbBrassinsAnnee)}
-        ${statCell('Litres produits', volumeAnnee.toLocaleString('fr-FR'))}
+        ${statCell('Volume produit', (volumeAnnee/100).toLocaleString('fr-FR', {maximumFractionDigits:1}) + ' hL')}
         ${statCell('Factures', nbFacturesAnnee)}
         ${statCell('CA facturé', caAnnee.toLocaleString('fr-FR', {maximumFractionDigits:0}) + ' €')}
       </div>
