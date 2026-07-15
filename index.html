@@ -4881,7 +4881,7 @@ function renderDashboard() {
     if (d && !isNaN(d) && d.getFullYear() === year) nbParMois[d.getMonth()] += 1;
   });
   const maxHL = Math.max(...volParMois, 1);
-  const chartH = 130, chartW = 340, padL = 30, padB = 22, padT = 8;
+  const chartH = 200, chartW = 620, padL = 44, padB = 34, padT = 12;
   const usableH = chartH - padB - padT;
   const barGap = 4;
   const barW = (chartW - padL) / 12 - barGap;
@@ -4890,7 +4890,7 @@ function renderDashboard() {
   const gridLines = yTicks.map(v => {
     const y = padT + usableH - (v / maxHL) * usableH;
     return `<line x1="${padL}" y1="${y}" x2="${chartW}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>
-            <text x="${padL-4}" y="${y+3}" text-anchor="end" font-size="6" fill="var(--muted)">${v.toFixed(v<10?1:0)}</text>`;
+            <text x="${padL-4}" y="${y+3}" text-anchor="end" font-size="11" fill="var(--muted)">${v.toFixed(v<10?1:0)}</text>`;
   }).join('');
   const bars = volParMois.map((hl, m) => {
     const x = padL + m * (barW + barGap) + barGap/2;
@@ -4898,15 +4898,15 @@ function renderDashboard() {
     const y = padT + usableH - h;
     const isCurrentMonth = (m === now.getMonth() && year === now.getFullYear());
     const barColor = isCurrentMonth ? 'var(--amber-lt)' : (hl > 0 ? 'var(--amber)' : 'var(--border)');
-    const nbLabel = nbParMois[m] > 0 && h > 11
-      ? `<text x="${x+barW/2}" y="${y+10}" text-anchor="middle" font-size="7" font-weight="700" fill="var(--bg)">${nbParMois[m]}</text>`
-      : (nbParMois[m] > 0 ? `<text x="${x+barW/2}" y="${y-2}" text-anchor="middle" font-size="7" font-weight="700" fill="var(--amber-lt)">${nbParMois[m]}</text>` : '');
+    const nbLabel = nbParMois[m] > 0 && h > 18
+      ? `<text x="${x+barW/2}" y="${y+15}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--bg)">${nbParMois[m]}</text>`
+      : (nbParMois[m] > 0 ? `<text x="${x+barW/2}" y="${y-4}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--amber-lt)">${nbParMois[m]}</text>` : '');
     return `
       <rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="2" fill="${barColor}">
         <title>${moisNoms[m]} : ${hl.toFixed(1)} hL · ${nbParMois[m]} brassin${nbParMois[m]>1?'s':''}</title>
       </rect>
       ${nbLabel}
-      <text x="${x+barW/2}" y="${chartH-8}" text-anchor="middle" font-size="6" fill="var(--muted)">${moisNoms[m]}</text>`;
+      <text x="${x+barW/2}" y="${chartH-12}" text-anchor="middle" font-size="11" fill="var(--muted)">${moisNoms[m]}</text>`;
   }).join('');
   const chartHtml = `
     <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
@@ -6500,17 +6500,17 @@ function renderHistorique() {
   });
   const bieresTriees = Object.entries(parBiere).sort((a, b) => b[1] - a[1]);
   const maxNb = Math.max(...bieresTriees.map(e => e[1]), 1);
-  const rowH = 22, gap = 5, labelW = 110, chartRight = 24, chartWtot = 340;
+  const rowH = 34, gap = 8, labelW = 190, chartRight = 40, chartWtot = 620;
   const barZoneW = chartWtot - labelW - chartRight;
   const chartHtot = bieresTriees.length * (rowH + gap) + 6;
   const rowsSvg = bieresTriees.map(([nom, nb], i) => {
     const y = i * (rowH + gap) + 3;
     const w = (nb / maxNb) * barZoneW;
-    const nomCourt = nom.length > 17 ? nom.slice(0, 16) + '…' : nom;
+    const nomCourt = nom.length > 22 ? nom.slice(0, 21) + '…' : nom;
     return `
-      <text x="${labelW-6}" y="${y + rowH/2 + 3}" text-anchor="end" font-size="9" fill="var(--foam)">${esc(nomCourt)}</text>
+      <text x="${labelW-6}" y="${y + rowH/2 + 3}" text-anchor="end" font-size="12" fill="var(--foam)">${esc(nomCourt)}</text>
       <rect x="${labelW}" y="${y}" width="${Math.max(w,1)}" height="${rowH}" rx="3" fill="var(--amber)"/>
-      <text x="${labelW + Math.max(w,1) + 5}" y="${y + rowH/2 + 3}" font-size="9" font-weight="700" fill="var(--amber-lt)">${nb}</text>`;
+      <text x="${labelW + Math.max(w,1) + 5}" y="${y + rowH/2 + 3}" font-size="12" font-weight="700" fill="var(--amber-lt)">${nb}</text>`;
   }).join('');
   const chartBieresHtml = `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:12px">
