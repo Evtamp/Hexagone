@@ -1209,15 +1209,18 @@
 
       <!-- MP -->
       <div class="sub-page" id="stocks-mp">
-        <div style="padding:12px 16px 0;display:flex;align-items:center;justify-content:space-between">
-          <div class="sub-tabs sub-tabs-nested" id="mp-tabs" style="margin:0;flex:1">
+        <div style="padding:12px 16px 0">
+          <div class="sub-tabs sub-tabs-nested" id="mp-tabs" style="margin:0 0 8px">
             <button class="active" onclick="switchMpCat('malt',this)">🌾 Malt</button>
             <button onclick="switchMpCat('houblon',this)">🌿 Houblons</button>
             <button onclick="switchMpCat('levure',this)">🧫 Levures</button>
             <button onclick="switchMpCat('sel',this)">🧂 Minéraux</button>
             <button onclick="switchMpCat('autre',this)">📦 Autres</button>
           </div>
-          <button onclick="openMpModal()" style="background:var(--amber);color:var(--bg);border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer;margin-left:10px;flex-shrink:0">+ Ajouter</button>
+          <div style="display:flex;gap:8px">
+            <button onclick="openMpModal(null,'reception')" style="flex:1;background:var(--amber);color:var(--bg);border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:700;padding:9px 12px;cursor:pointer">📥 Réception de stock</button>
+            <button onclick="openMpModal()" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;font-weight:600;padding:9px 12px;cursor:pointer;white-space:nowrap">+ Nouvel ingrédient</button>
+          </div>
         </div>
         <div style="padding:0 16px 4px" id="list-mp"></div>
 
@@ -4114,7 +4117,7 @@ let mpModalEditId  = null;
 
 const MP_UNITS = { malt: 'kg', houblon: 'kg', levure: 'pqt', sel: 'g', autre: 'kg' };
 
-function openMpModal(editId) {
+function openMpModal(editId, mode) {
   mpModalEditId = editId || null;
   const modal = document.getElementById('mp-modal');
 
@@ -4141,7 +4144,7 @@ function openMpModal(editId) {
     document.getElementById('mp-modal-known-hint').style.display = 'none';
   } else {
     selectMpCatModal(currentMpCat || 'malt');
-    document.getElementById('mp-modal-title').textContent = 'Ajouter une MP';
+    document.getElementById('mp-modal-title').textContent = mode === 'reception' ? '📥 Réception de stock' : 'Nouvel ingrédient';
     document.getElementById('mp-modal-select').value = '';
     document.getElementById('mp-modal-select').style.display = 'block';
     document.getElementById('mp-modal-name').value  = '';
@@ -4161,6 +4164,10 @@ function openMpModal(editId) {
     // Brancher l'événement onchange du select
     const sel = document.getElementById('mp-modal-select');
     sel.onchange = onMpSelectChange;
+    if (mode === 'reception') {
+      // En réception, on part quasi toujours d'un produit déjà connu : focus direct sur le choix
+      setTimeout(() => sel.focus(), 50);
+    }
   }
   const errEl = document.getElementById('mp-modal-error');
   if (errEl) errEl.style.display = 'none';
