@@ -4894,16 +4894,21 @@ function renderDashboard() {
   }).join('');
   const bars = volParMois.map((hl, m) => {
     const x = padL + m * (barW + barGap) + barGap/2;
-    const h = maxHL > 0 ? (hl / maxHL) * usableH : 0;
+    let h = maxHL > 0 ? (hl / maxHL) * usableH : 0;
+    // Socle minimal visible si des brassins ont été lancés ce mois-ci (même sans volume conditionné)
+    const hasBrews = nbParMois[m] > 0;
+    if (hasBrews && h < 4) h = 4;
     const y = padT + usableH - h;
     const isCurrentMonth = (m === now.getMonth() && year === now.getFullYear());
-    const barColor = isCurrentMonth ? 'var(--amber-lt)' : (hl > 0 ? 'var(--amber)' : 'var(--border)');
-    const nbLabel = nbParMois[m] > 0 && h > 18
-      ? `<text x="${x+barW/2}" y="${y+15}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--bg)">${nbParMois[m]}</text>`
-      : (nbParMois[m] > 0 ? `<text x="${x+barW/2}" y="${y-4}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--amber-lt)">${nbParMois[m]}</text>` : '');
+    const barColor = isCurrentMonth ? 'var(--amber-lt)' : (hl > 0 ? 'var(--amber)' : (hasBrews ? 'rgba(200,128,10,.35)' : 'var(--border)'));
+    const nbLabel = hasBrews
+      ? (h > 22
+          ? `<text x="${x+barW/2}" y="${y+15}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--bg)">${nbParMois[m]}</text>`
+          : `<text x="${x+barW/2}" y="${y-5}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--amber-lt)">${nbParMois[m]}</text>`)
+      : '';
     return `
       <rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="2" fill="${barColor}">
-        <title>${moisNoms[m]} : ${hl.toFixed(1)} hL · ${nbParMois[m]} brassin${nbParMois[m]>1?'s':''}</title>
+        <title>${moisNoms[m]} : ${hl.toFixed(1)} hL conditionnés · ${nbParMois[m]} brassin${nbParMois[m]>1?'s':''} lancé${nbParMois[m]>1?'s':''}</title>
       </rect>
       ${nbLabel}
       <text x="${x+barW/2}" y="${chartH-12}" text-anchor="middle" font-size="11" fill="var(--muted)">${moisNoms[m]}</text>`;
@@ -4911,7 +4916,7 @@ function renderDashboard() {
   const chartHtml = `
     <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Production mensuelle ${year} <span style="text-transform:none;font-weight:400">— hL conditionnés (barres) · brassins lancés (chiffre)</span></div>
-      <svg viewBox="0 0 ${chartW} ${chartH}" style="width:100%;height:auto;overflow:visible">
+      <svg viewBox="0 0 ${chartW} ${chartH}" style="width:100%;max-width:520px;height:auto;overflow:visible;display:block;margin:0 auto">
         ${gridLines}
         ${bars}
       </svg>
@@ -6515,7 +6520,7 @@ function renderHistorique() {
   const chartBieresHtml = `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:12px">
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Brassins par bière</div>
-      <svg viewBox="0 0 ${chartWtot} ${chartHtot}" style="width:100%;height:auto;overflow:visible">
+      <svg viewBox="0 0 ${chartWtot} ${chartHtot}" style="width:100%;max-width:520px;height:auto;overflow:visible;display:block">
         ${rowsSvg}
       </svg>
     </div>`;
