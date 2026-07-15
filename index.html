@@ -4951,7 +4951,15 @@ function renderDashboard() {
 // ===== SUIVI BRASSIN (densités, DH, enfûtage) =====
 function getSuivi(brassinId) {
   if (!fermSuiviData[brassinId]) fermSuiviData[brassinId] = { densites:[], dateDH:'', dateEnfutage:'' };
-  return fermSuiviData[brassinId];
+  const s = fermSuiviData[brassinId];
+  // Garantir que toutes les sous-structures existent (entrées créées par d'autres flux : enfûtage, phases…)
+  if (!Array.isArray(s.densites))    s.densites    = [];
+  if (!Array.isArray(s.phaseLog))    s.phaseLog    = [];
+  if (!Array.isArray(s.enfutageLog)) s.enfutageLog = [];
+  if (!Array.isArray(s.dhLog))       s.dhLog       = [];
+  if (s.dateDH === undefined)        s.dateDH      = '';
+  if (s.dateEnfutage === undefined)  s.dateEnfutage = '';
+  return s;
 }
 
 function saveSuivi(brassinId) {
@@ -5001,7 +5009,7 @@ function renderSuiviDensites(brassinId) {
     <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
       <span style="font-size:12px;color:var(--muted);min-width:82px">${d.date}</span>
       <span style="font-size:13px;font-weight:700;color:var(--foam)">${d.sg ? d.sg.toFixed(3) : '—'}</span>
-      <span style="font-size:11px;color:var(--amber-lt);background:rgba(200,128,10,.12);border:1px solid rgba(200,128,10,.25);border-radius:3px;padding:1px 6px;font-family:monospace;flex:1">${d.val.toFixed(1)} °P</span>
+      <span style="font-size:11px;color:var(--amber-lt);background:rgba(200,128,10,.12);border:1px solid rgba(200,128,10,.25);border-radius:3px;padding:1px 6px;font-family:monospace;flex:1">${typeof d.val === 'number' ? d.val.toFixed(1) + ' °P' : '—'}</span>
       <button onclick="deleteDensite('${brassinId}',${i})" style="background:none;border:none;color:var(--danger);font-size:13px;cursor:pointer;padding:2px 6px">✕</button>
     </div>`).join('');
 }
