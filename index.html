@@ -8368,7 +8368,8 @@ function renderRecipes() {
             </div>
           </div>
         </div>
-        <div style="padding:6px 14px 10px;display:flex;justify-content:flex-end">
+        <div style="padding:6px 14px 10px;display:flex;justify-content:space-between;gap:8px">
+          <button onclick="duplicateRecipe('${r.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer">⧉ Dupliquer</button>
           <button onclick="deleteRecipe('${r.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:4px 10px;cursor:pointer">Supprimer</button>
         </div>
       </div>
@@ -8540,9 +8541,32 @@ function saveRecipe() {
 }
 
 function deleteRecipe(id) {
+  const r = recipesData[id];
+  if (r && !confirm(`Supprimer la recette "${r.name}" ?`)) return;
   delete recipesData[id];
   saveRecipes();
   renderRecipes();
+}
+
+// Duplique une recette (variante) — copie profonde avec un nouveau nom et un nouvel ID
+function duplicateRecipe(id) {
+  const src = recipesData[id];
+  if (!src) return;
+  const copy = JSON.parse(JSON.stringify(src));
+  const newId = 'r_' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+  copy.id = newId;
+  // Nom unique : "… (copie)", puis "(copie 2)", etc. si déjà pris
+  const baseName = (src.name || 'Sans nom') + ' (copie)';
+  let name = baseName, n = 2;
+  const existing = Object.values(recipesData).map(r => r.name);
+  while (existing.includes(name)) { name = (src.name || 'Sans nom') + ` (copie ${n})`; n++; }
+  copy.name = name;
+  recipesData[newId] = copy;
+  saveRecipes();
+  renderRecipes();
+  showToast(`✅ Recette dupliquée : "${name}"`);
+  // Ouvrir directement la copie pour la modifier
+  setTimeout(() => openRecipeModal(newId), 150);
 }
 
 function genBrewNum() {
@@ -10513,7 +10537,7 @@ Object.assign(window, {
   showConfirmCreation, closeConfirmCreation,
   openNoteModal, closeNoteModal, saveNote, deleteNote,
   openRecipeModal, closeRecipeModal, addRecipeLine, removeRecipeLine,
-  updateRecipeLine, saveRecipe, deleteRecipe,
+  updateRecipeLine, saveRecipe, deleteRecipe, duplicateRecipe,
   openBrewModal, closeBrewModal, confirmBrew,
   openClientModal, closeClientModal, saveClient, deleteClient,
   openClientDetailModal, closeClientDetailModal, addClientSuivi,
