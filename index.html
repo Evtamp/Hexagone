@@ -7236,6 +7236,7 @@ function updateModalFields() {
 
 function saveTask() {
   if (!modalDateKey) return;
+  let _linkedUpdatedCount = 0;
   const type = document.getElementById('modal-type').value;
   const tt = TASK_TYPES[type] || {};
   let beer = '', fermId = '', eventName = '', brewNum = '';
@@ -7277,10 +7278,12 @@ function saveTask() {
       };
 
       let linked = getLinkedTasks(editingTaskId);
+      console.log('[saveTask] éd. brassin', editingTaskId, '— tâches liées trouvées par brassinId:', linked.length, '| nouveau beer=', beer, 'brewNum=', brewNum);
       // Repli : anciens brassins sans brassinId sur leurs tâches liées → retrouver par ancien n° de brassin ou ancienne bière
       if (!linked.length) {
         const oldBrewNum = oldTask?.brewNum || '';
         const oldBeer    = oldTask?.beer || '';
+        console.log('[saveTask] repli — recherche par oldBrewNum=', oldBrewNum, 'oldBeer=', oldBeer);
         Object.entries(planningData).forEach(([key, tasks]) => {
           (tasks||[]).forEach(t => {
             if (t.id === editingTaskId) return; // pas le brassin lui-même
@@ -7293,6 +7296,7 @@ function saveTask() {
             }
           });
         });
+        console.log('[saveTask] repli — tâches liées trouvées:', linked.length);
       }
       linked.forEach(({ key: linkedKey, task: linkedTask }) => {
         // Mettre à jour la bière / cuve / n° de brassin sur chaque tâche liée (garde, DH, enfûtage)
@@ -7318,11 +7322,17 @@ function saveTask() {
           planningData[newLinkedKey].push(linkedTask);
         }
       });
+      _linkedUpdatedCount = linked.length;
     }
   } else {
     planningData[modalDateKey].push(task);
   }
   savePlanning();
+  if (editingTaskId && type === 'brassin') {
+    showToast(_linkedUpdatedCount > 0
+      ? `✅ Brassin modifié · ${_linkedUpdatedCount} tâche(s) liée(s) mise(s) à jour`
+      : `Brassin modifié · aucune tâche liée trouvée`);
+  }
 
   // Si c'est un brassin (création), créer automatiquement les tâches liées
   if (type === 'brassin' && !editingTaskId) {
