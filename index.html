@@ -7276,12 +7276,29 @@ function saveTask() {
         enfutage: dureeFerm + dureeGarde,
       };
 
-      const linked = getLinkedTasks(editingTaskId);
+      let linked = getLinkedTasks(editingTaskId);
+      // Repli : anciens brassins sans brassinId sur leurs tâches liées → retrouver par ancien n° de brassin ou ancienne bière
+      if (!linked.length) {
+        const oldBrewNum = oldTask?.brewNum || '';
+        const oldBeer    = oldTask?.beer || '';
+        Object.entries(planningData).forEach(([key, tasks]) => {
+          (tasks||[]).forEach(t => {
+            if (t.id === editingTaskId) return; // pas le brassin lui-même
+            if (!['garde','dh','enfutage'].includes(t.type)) return;
+            const matchBrew = oldBrewNum && t.brewNum === oldBrewNum;
+            const matchBeer = !oldBrewNum && oldBeer && normBeerName(t.beer) === normBeerName(oldBeer);
+            if (matchBrew || matchBeer) {
+              t.brassinId = editingTaskId; // réparer le lien pour les prochaines fois
+              linked.push({ key, task: t });
+            }
+          });
+        });
+      }
       linked.forEach(({ key: linkedKey, task: linkedTask }) => {
-        // Mettre à jour la bière / cuve / n° de brassin
-        linkedTask.beer = beer;
+        // Mettre à jour la bière / cuve / n° de brassin sur chaque tâche liée (garde, DH, enfûtage)
+        linkedTask.beer    = beer;
         linkedTask.brewNum = brewNum;
-        linkedTask.fermId = fermId;
+        linkedTask.fermId  = fermId;
 
         let offsetDays;
         if (dureesChanged && newOffsetByType[linkedTask.type] !== undefined) {
