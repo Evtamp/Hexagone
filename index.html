@@ -4890,7 +4890,7 @@ function renderDashboard() {
   const gridLines = yTicks.map(v => {
     const y = padT + usableH - (v / maxHL) * usableH;
     return `<line x1="${padL}" y1="${y}" x2="${chartW}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>
-            <text x="${padL-4}" y="${y+3}" text-anchor="end" font-size="8" fill="var(--muted)">${v.toFixed(v<10?1:0)}</text>`;
+            <text x="${padL-4}" y="${y+3}" text-anchor="end" font-size="6" fill="var(--muted)">${v.toFixed(v<10?1:0)}</text>`;
   }).join('');
   const bars = volParMois.map((hl, m) => {
     const x = padL + m * (barW + barGap) + barGap/2;
@@ -4898,15 +4898,15 @@ function renderDashboard() {
     const y = padT + usableH - h;
     const isCurrentMonth = (m === now.getMonth() && year === now.getFullYear());
     const barColor = isCurrentMonth ? 'var(--amber-lt)' : (hl > 0 ? 'var(--amber)' : 'var(--border)');
-    const nbLabel = nbParMois[m] > 0 && h > 14
-      ? `<text x="${x+barW/2}" y="${y+12}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--bg)">${nbParMois[m]}</text>`
-      : (nbParMois[m] > 0 ? `<text x="${x+barW/2}" y="${y-3}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--amber-lt)">${nbParMois[m]}</text>` : '');
+    const nbLabel = nbParMois[m] > 0 && h > 11
+      ? `<text x="${x+barW/2}" y="${y+10}" text-anchor="middle" font-size="7" font-weight="700" fill="var(--bg)">${nbParMois[m]}</text>`
+      : (nbParMois[m] > 0 ? `<text x="${x+barW/2}" y="${y-2}" text-anchor="middle" font-size="7" font-weight="700" fill="var(--amber-lt)">${nbParMois[m]}</text>` : '');
     return `
       <rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="2" fill="${barColor}">
         <title>${moisNoms[m]} : ${hl.toFixed(1)} hL · ${nbParMois[m]} brassin${nbParMois[m]>1?'s':''}</title>
       </rect>
       ${nbLabel}
-      <text x="${x+barW/2}" y="${chartH-8}" text-anchor="middle" font-size="8" fill="var(--muted)">${moisNoms[m]}</text>`;
+      <text x="${x+barW/2}" y="${chartH-8}" text-anchor="middle" font-size="6" fill="var(--muted)">${moisNoms[m]}</text>`;
   }).join('');
   const chartHtml = `
     <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
@@ -6492,7 +6492,35 @@ function renderHistorique() {
     return;
   }
 
-  el.innerHTML = brassins.map(b => {
+  // --- Graphique : nombre de brassins par bière (barres horizontales) ---
+  const parBiere = {};
+  brassins.forEach(b => {
+    const nom = b.recette || '—';
+    parBiere[nom] = (parBiere[nom] || 0) + 1;
+  });
+  const bieresTriees = Object.entries(parBiere).sort((a, b) => b[1] - a[1]);
+  const maxNb = Math.max(...bieresTriees.map(e => e[1]), 1);
+  const rowH = 22, gap = 5, labelW = 110, chartRight = 24, chartWtot = 340;
+  const barZoneW = chartWtot - labelW - chartRight;
+  const chartHtot = bieresTriees.length * (rowH + gap) + 6;
+  const rowsSvg = bieresTriees.map(([nom, nb], i) => {
+    const y = i * (rowH + gap) + 3;
+    const w = (nb / maxNb) * barZoneW;
+    const nomCourt = nom.length > 17 ? nom.slice(0, 16) + '…' : nom;
+    return `
+      <text x="${labelW-6}" y="${y + rowH/2 + 3}" text-anchor="end" font-size="9" fill="var(--foam)">${esc(nomCourt)}</text>
+      <rect x="${labelW}" y="${y}" width="${Math.max(w,1)}" height="${rowH}" rx="3" fill="var(--amber)"/>
+      <text x="${labelW + Math.max(w,1) + 5}" y="${y + rowH/2 + 3}" font-size="9" font-weight="700" fill="var(--amber-lt)">${nb}</text>`;
+  }).join('');
+  const chartBieresHtml = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Brassins par bière</div>
+      <svg viewBox="0 0 ${chartWtot} ${chartHtot}" style="width:100%;height:auto;overflow:visible">
+        ${rowsSvg}
+      </svg>
+    </div>`;
+
+  el.innerHTML = chartBieresHtml + brassins.map(b => {
     const date = b.ts ? new Date(b.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}) : '—';
     const mpLotsHtml = b.mpLots && Object.keys(b.mpLots).length
       ? Object.entries(b.mpLots).map(([name, lot]) =>
