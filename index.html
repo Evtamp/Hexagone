@@ -3190,6 +3190,7 @@ function initApp() {
     }
     historiqueData = incoming;
     renderHistorique();
+    renderDashboard();
     onLoaded();
   });
 
@@ -4821,12 +4822,13 @@ function renderDashboard() {
       </div>`
     : '';
 
-  // --- Bilan annuel (année en cours) ---
+  // --- Bilan annuel (année en cours) — tous les brassins de l'année, quel que soit leur statut ---
   const year = now.getFullYear();
   let volumeAnnee = 0, nbBrassinsAnnee = 0;
   Object.values(historiqueData || {}).forEach(b => {
-    const d = b.date ? new Date(b.date) : null;
-    if (d && d.getFullYear() === year) { nbBrassinsAnnee++; volumeAnnee += (b.volume || 0); }
+    // Les entrées d'historique portent un timestamp `ts` ; `date` est un repli éventuel
+    const d = b.ts ? new Date(b.ts) : (b.date ? new Date(b.date) : null);
+    if (d && !isNaN(d) && d.getFullYear() === year) { nbBrassinsAnnee++; volumeAnnee += (b.volume || 0); }
   });
   let caAnnee = 0, nbFacturesAnnee = 0;
   Object.values(facturesData || {}).forEach(f => {
