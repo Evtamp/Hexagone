@@ -4547,11 +4547,10 @@ function renderMpSorties() {
   el.innerHTML = sorties.map(s => {
     const date = new Date(s.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const isOut = s.delta < 0;
-    const deltaStr = (isOut ? '' : '+') + s.delta.toFixed(s.mpUnit==='kg'?1:0) + ' ' + (s.mpUnit||'');
     const isBrassin = s.raison && (s.raison.toLowerCase().includes('brassin') || s.raison.toLowerCase().includes('dh brassin'));
     const raisonColor = isBrassin ? '#7ab4e8' : 'var(--muted)';
     const raisonIcon  = isBrassin ? '🍺' : isOut ? '↓' : '↑';
-    const decimals = (s.mpUnit === 'kg') ? 3 : 0;
+    const decimals = s.mpUnit === 'kg' ? 3 : s.mpUnit === 'pqt' ? 2 : 0;
     const deltaStrFmt = (isOut ? '' : '+') + s.delta.toFixed(decimals) + ' ' + (s.mpUnit||'');
     return `
     <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
@@ -4938,12 +4937,25 @@ function renderSuiviPhaseLog(brassinId) {
     return;
   }
   const phaseColors = { fermentation:'var(--ok)', garde:'#7ab4e8', dh:'#c47ae8', idle:'var(--muted)' };
-  el.innerHTML = s.phaseLog.map((e, i) => `
+  const phaseNoms   = { fermentation:'Fermentation', garde:'Garde', dh:'Dry Hopping', idle:'Conditionné / Libéré' };
+  el.innerHTML = s.phaseLog.map((e, i) => {
+    const next = s.phaseLog[i + 1];
+    const finTxt = e.phase === 'idle' ? '' : next ? ` → ${next.date}` : ' → en cours';
+    let dureeTxt = '';
+    if (e.phase !== 'idle') {
+      const debut = new Date(e.date + 'T12:00:00');
+      const fin = next ? new Date(next.date + 'T12:00:00') : new Date();
+      const jours = Math.round((fin - debut) / 86400000);
+      dureeTxt = `${jours} j`;
+    }
+    return `
     <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border)">
-      <span style="font-size:11px;color:var(--muted);min-width:82px">${e.date}</span>
-      <span style="font-size:12px;font-weight:600;color:${phaseColors[e.phase]||'var(--foam)'};flex:1">${e.label}</span>
+      <span style="font-size:11px;color:var(--muted);min-width:150px">${e.date}${finTxt}</span>
+      <span style="font-size:12px;font-weight:600;color:${phaseColors[e.phase]||'var(--foam)'};flex:1">${phaseNoms[e.phase] || e.label}</span>
+      ${dureeTxt ? `<span style="font-size:11px;font-weight:700;color:var(--amber-lt);min-width:36px;text-align:right">${dureeTxt}</span>` : ''}
       <button onclick="deleteSuiviPhaseLog('${brassinId}',${i})" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:2px 4px">✕</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function deleteSuiviPhaseLog(brassinId, idx) {
@@ -5849,12 +5861,16 @@ function saveEnfutage() {
     const lignes = details.map(d => `${d.qty} × ${d.label}${d.lot?' ('+d.lot+')':''}`).join(', ');
     s.enfutageLog.push({ date: today, lignes, details, liberer });
     saveSuivi(brassin.id);
+    // Le brassin est conditionné : passer automatiquement son statut à "Terminé"
+    if (brassin.statut !== 'termine') updateBrewStatut(brassin.id, 'termine');
+    renderHistorique();
     refreshEnfutageRecap(brassin.id);
     const suiviPanel = document.getElementById('suivi-panel-' + brassin.id);
     if (suiviPanel && suiviPanel.style.display !== 'none') renderSuiviEnfutageLog(brassin.id);
   }
 
-  showToast('✅ Conditionnement enregistré' + (liberer ? ' · Cuve libérée' : ''));
+  const statutMsg = (brassin && saved > 0 && brassin.statut === 'termine') ? ' · Brassin marqué Terminé' : '';
+  showToast('✅ Conditionnement enregistré' + statutMsg + (liberer ? ' · Cuve libérée' : ''));
   _enfutageSaving = false;
 }
 
@@ -6580,6 +6596,9 @@ function renderHistorique() {
       panel.style.display = 'block';
       renderSuiviDensites(id);
       renderSuiviDhLog(id);
+      renderSuiviPhaseLog(id);
+      renderSuiviEnfutageLog(id);
+      refreshEnfutageRecap(id);
     }
   });
 }
