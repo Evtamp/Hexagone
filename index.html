@@ -3134,6 +3134,7 @@ function initApp() {
   fbListen('fermSuivi', data => {
     fermSuiviData = data || {};
     renderFermenters();
+    renderDashboard();
     onLoaded();
   });
 
@@ -3316,6 +3317,7 @@ function switchSub(group, id) {
 // PRODUITS FINIS
 // =========================================================
 const FORMAT_LABELS = { fut30inox:'🛢 30L Inox', fut30kk:'🛢 30L KK', fut30kktp:'🛢 30L KKTP', fut20:'🛢 Fût 20L', btl33:'🍺 33cL', btl75:'🍾 75cL' };
+const FORMAT_VOL_L  = { fut30inox:30, fut30kk:30, fut30kktp:30, fut20:20, btl33:0.33, btl75:0.75 };
 const FORMAT_UNITS  = { fut30inox:'fûts', fut30kk:'fûts', fut30kktp:'fûts', fut20:'fûts', btl33:'bouteilles', btl75:'bouteilles' };
 let produitFormat = 'fut30inox';
 let produitEditId = null;
@@ -4826,12 +4828,29 @@ function renderDashboard() {
 
   // --- Bilan annuel (année en cours) — tous les brassins de l'année, quel que soit leur statut ---
   const year = now.getFullYear();
-  let volumeAnnee = 0, nbBrassinsAnnee = 0;
+  let nbBrassinsAnnee = 0;
   Object.values(historiqueData || {}).forEach(b => {
     // Les entrées d'historique portent un timestamp `ts` ; `date` est un repli éventuel
     const d = b.ts ? new Date(b.ts) : (b.date ? new Date(b.date) : null);
-    if (d && !isNaN(d) && d.getFullYear() === year) { nbBrassinsAnnee++; volumeAnnee += (b.volume || 0); }
+    if (d && !isNaN(d) && d.getFullYear() === year) { nbBrassinsAnnee++; }
   });
+
+  // Volume réellement conditionné, calculé depuis les enfûtages/embouteillages (onglet Fermenteurs)
+  // volParMois en hL, indexé par mois ; volumeAnnee = total hL de l'année
+  const volParMois = new Array(12).fill(0);
+  let volumeAnnee = 0;
+  Object.values(fermSuiviData || {}).forEach(s => {
+    (s.enfutageLog || []).forEach(log => {
+      const d = log.date ? new Date(log.date + 'T12:00:00') : null;
+      if (!d || isNaN(d) || d.getFullYear() !== year) return;
+      const litres = (log.details || []).reduce((sum, det) =>
+        sum + (FORMAT_VOL_L[det.format] || 0) * (det.qty || 0), 0);
+      const hl = litres / 100;
+      volParMois[d.getMonth()] += hl;
+      volumeAnnee += hl;
+    });
+  });
+
   let caAnnee = 0, nbFacturesAnnee = 0;
   Object.values(facturesData || {}).forEach(f => {
     if (f.type !== 'facture' || f.statut === 'annulee') return;
@@ -4854,17 +4873,12 @@ function renderDashboard() {
       </div>
     </div>`;
 
-  // --- Graphique mensuel : volume (hL) en barres + nb de brassins dans la barre ---
+  // --- Graphique mensuel : volume conditionné (hL) en barres + nb de brassins dans la barre ---
   const moisNoms = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
-  const volParMois = new Array(12).fill(0);
   const nbParMois  = new Array(12).fill(0);
   Object.values(historiqueData || {}).forEach(b => {
     const d = b.ts ? new Date(b.ts) : (b.date ? new Date(b.date) : null);
-    if (d && !isNaN(d) && d.getFullYear() === year) {
-      const m = d.getMonth();
-      volParMois[m] += (b.volume || 0) / 100; // en hL
-      nbParMois[m]  += 1;
-    }
+    if (d && !isNaN(d) && d.getFullYear() === year) nbParMois[d.getMonth()] += 1;
   });
   const maxHL = Math.max(...volParMois, 1);
   const chartH = 130, chartW = 340, padL = 30, padB = 22, padT = 8;
@@ -4896,7 +4910,7 @@ function renderDashboard() {
   }).join('');
   const chartHtml = `
     <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
-      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Production mensuelle ${year} <span style="text-transform:none;font-weight:400">— hL (barres) · nb brassins (chiffre)</span></div>
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Production mensuelle ${year} <span style="text-transform:none;font-weight:400">— hL conditionnés (barres) · brassins lancés (chiffre)</span></div>
       <svg viewBox="0 0 ${chartW} ${chartH}" style="width:100%;height:auto;overflow:visible">
         ${gridLines}
         ${bars}
