@@ -4322,6 +4322,34 @@ function saveMpModal() {
   } else {
     const errEl = document.getElementById('mp-modal-error');
     if (errEl) errEl.style.display = 'none';
+
+    // Si un lot identique existe déjà (même nom + même n° de lot, non vide), proposer de le compléter
+    const existingSameLot = lot
+      ? (MP_DATA[mpModalCat] || []).find(i => normBeerName(i.name) === normBeerName(name) && (i.lot||'').trim() === lot)
+      : null;
+    if (existingSameLot) {
+      const ok = confirm(
+        `Un lot "${lot}" de "${name}" existe déjà en stock (${existingSameLot.val} ${existingSameLot.unit||''}).\n\n` +
+        `Ajouter les ${qty} ${existingSameLot.unit||''} reçus à ce lot existant (total : ${parseFloat((existingSameLot.val + qty).toFixed(3))}) ?\n\n` +
+        `OK = compléter le lot · Annuler = créer une entrée séparée`
+      );
+      if (ok) {
+        const valAvant = existingSameLot.val;
+        existingSameLot.val = parseFloat((existingSameLot.val + qty).toFixed(3));
+        // Mettre à jour aussi le prix si un prix a été saisi
+        if (price) existingSameLot.price = price;
+        saveMp(existingSameLot.id, existingSameLot.val);
+        if (price) fbSet('mp/price_' + existingSameLot.id, price);
+        tracerSortieMP(existingSameLot, valAvant, existingSameLot.val, '📥 Réception (complément de lot)');
+        closeMpModal();
+        renderMP();
+        renderRecipes();
+        showToast(`✅ Lot ${lot} complété : +${qty} ${existingSameLot.unit||''}`);
+        return;
+      }
+      // sinon : on continue et on crée une entrée séparée
+    }
+
     // Créer ID unique
     const newId = name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
     const unit  = MP_UNITS[mpModalCat] || 'kg';
@@ -4338,6 +4366,8 @@ function saveMpModal() {
     if (rendement)   fbSet('mp/rendement_'   + newId, rendement);
     if (humidite)    fbSet('mp/humidite_'    + newId, humidite);
     if (attenuation) fbSet('mp/attenuation_' + newId, attenuation);
+    // Tracer l'entrée en stock
+    tracerSortieMP(newItem, 0, qty, '📥 Réception (nouveau lot)');
     // Switcher sur la catégorie ajoutée
     const tabBtn = document.querySelector(`#mp-tabs button:nth-child(${['malt','houblon','levure','sel','autre'].indexOf(mpModalCat)+1})`);
     switchMpCat(mpModalCat, tabBtn);
