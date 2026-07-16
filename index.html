@@ -7632,6 +7632,18 @@ function renderOrdersList() {
   // Collecter toutes les commandes futures, groupées par semaine
   const weeks = {}; // weekLabel -> { monDate, orders: [{dateKey, date, o}] }
 
+  // Commandes EN RETARD : date dépassée mais BL non créé (non clôturées)
+  const overdue = [];
+  Object.entries(ordersData).forEach(([k, raw]) => {
+    const d = new Date(k + 'T12:00:00');
+    if (isNaN(d) || d >= today) return; // uniquement le passé
+    const list = Array.isArray(raw) ? raw : Object.values(raw || {});
+    list.map(migrateOrder).filter(o => !o._cloture).forEach(o => {
+      overdue.push({ k, date: new Date(k + 'T00:00:00'), o });
+    });
+  });
+  overdue.sort((a, b) => a.date - b.date);
+
   // Parcourir 12 semaines à venir
   for (let w = 0; w < 12; w++) {
     const monDate = new Date(today);
@@ -7658,12 +7670,46 @@ function renderOrdersList() {
     }
   }
 
-  if (!Object.keys(weeks).length) {
+  if (!Object.keys(weeks).length && !overdue.length) {
     el.innerHTML = '<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:13px">Aucune commande à venir</div>';
     return;
   }
 
-  el.innerHTML = Object.values(weeks).map(({ wLabel, range, orders }, weekIdx) => {
+  // Bloc "En retard" : commandes passées sans BL créé
+  let overdueHtml = '';
+  if (overdue.length) {
+    const rows = overdue.map(({ k, date, o }) => {
+      const dateStr = date.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});
+      const nbJours = Math.round((today - date) / 86400000);
+      const totalF = o.lines.reduce((a,l)=>(a+(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0)),0);
+      const totalC = o.lines.reduce((a,l)=>a+(parseInt(l.cartons)||0),0);
+      const totalT = o.lines.reduce((a,l)=>a+(parseInt(l.tireuse)||0),0);
+      const qtys = [totalF?`🛢 ${totalF}`:'', totalC?`📦 ${totalC}`:'', totalT?`🍺 ${totalT}`:''].filter(Boolean).join('  ');
+      const beers = [...new Set(o.lines.map(l=>l.beer).filter(Boolean))].join(', ');
+      return `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="openOrderModal('${k}')">
+        <div style="min-width:70px;flex-shrink:0">
+          <div style="font-size:11px;color:var(--danger);font-weight:600">${dateStr}</div>
+          <div style="font-size:10px;color:var(--danger)">+${nbJours} j</div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--foam);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.client)||'—'}</div>
+          <div style="font-size:11px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${beers}</div>
+        </div>
+        <div style="font-size:12px;color:var(--amber-lt);font-weight:700;flex-shrink:0;text-align:right">${qtys}</div>
+      </div>`;
+    }).join('');
+    overdueHtml = `
+    <div style="background:var(--surface);border:1px solid var(--danger);border-radius:var(--radius);margin-bottom:10px;overflow:hidden">
+      <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;font-weight:700;color:var(--danger)">⚠️ En retard — BL non créé</span>
+        <span style="font-size:11px;color:var(--muted)">${overdue.length} commande${overdue.length>1?'s':''}</span>
+      </div>
+      <div style="padding:0 14px">${rows}</div>
+    </div>`;
+  }
+
+  el.innerHTML = overdueHtml + Object.values(weeks).map(({ wLabel, range, orders }, weekIdx) => {
     // Total par bière pour la semaine (fûts + cartons uniquement, PAS les tireuses) + détail des clients
     const totalByBeer = {};      // { beer: qty }
     const clientsByBeer = {};    // { beer: [{client, date, qty}] }
