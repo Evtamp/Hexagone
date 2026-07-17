@@ -857,8 +857,12 @@
       #prev-calendar { max-width: 700px; }
       #prev-weeks    { max-width: 700px; }
 
-      /* Planning plus large */
-      .planning-week { max-width: 700px; margin: 0 auto; }
+      /* Planning : utiliser toute la largeur disponible sur PC (3 semaines lisibles) */
+      .planning-week { max-width: 1600px; margin: 0 auto; padding: 20px 24px; }
+      #planning-weeks-grid { gap: 14px; }
+      /* Éviter que le texte des tâches se casse lettre par lettre */
+      .day-task-cat { white-space: nowrap; }
+      .day-tasks .day-task span { word-break: normal; overflow-wrap: anywhere; }
 
       /* Modals centrées (pas en bas) */
       .modal-overlay { align-items: center; }
@@ -7391,7 +7395,7 @@ function renderPlanning() {
               <span style="font-size:14px;color:var(--border);flex-shrink:0;cursor:grab">⠿</span>
               <div onclick="openEditTask('${key}','${t.id}')" style="display:flex;align-items:center;gap:4px;min-width:0;flex:1;cursor:pointer">
                 <span class="day-task-cat" style="background:${tt.color}22;color:${tt.color};flex-shrink:0;font-size:10px;padding:1px 4px">${tt.icon} ${tt.label}</span>
-                <span style="font-size:11px;color:var(--text-dim);word-break:break-word;overflow-wrap:break-word">${taskDetail(t)}</span>
+                <span style="font-size:11px;color:var(--text-dim);overflow-wrap:anywhere;word-break:normal">${taskDetail(t)}</span>
               </div>
               <button onclick="deleteTask('${key}','${t.id}')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1;flex-shrink:0">×</button>
             </div>`;
