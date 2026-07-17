@@ -766,6 +766,10 @@
 
       html, body { overflow: hidden; }
 
+      /* Planning : 3 semaines côte à côte sur PC */
+      #planning-weeks-grid { grid-template-columns: 1fr 1fr 1fr !important; }
+      #week-col-3 { display: block !important; }
+
       #app {
         max-width: 100%;
         flex-direction: row;
@@ -1261,7 +1265,7 @@
           </div>
           <button onclick="changeWeek(1)" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);width:32px;height:32px;cursor:pointer;font-size:16px">›</button>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:100%;width:100%;box-sizing:border-box">
+        <div id="planning-weeks-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:100%;width:100%;box-sizing:border-box">
           <div style="min-width:0">
             <div id="week-label-1" style="font-size:11px;font-weight:700;color:var(--amber-lt);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;text-align:center"></div>
             <div id="week-grid-1"></div>
@@ -1269,6 +1273,10 @@
           <div style="min-width:0">
             <div id="week-label-2" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;text-align:center"></div>
             <div id="week-grid-2"></div>
+          </div>
+          <div id="week-col-3" style="min-width:0;display:none">
+            <div id="week-label-3" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;text-align:center"></div>
+            <div id="week-grid-3"></div>
           </div>
         </div>
       </div>
@@ -7438,8 +7446,10 @@ function renderPlanning() {
 
   // Semaine 1 (courante) + Semaine 2 (suivante)
   const monday2 = new Date(monday); monday2.setDate(monday2.getDate() + 7);
+  const monday3 = new Date(monday); monday3.setDate(monday3.getDate() + 14);
   renderWeek(monday,  'week-grid-1', 'week-label-1', true);
   renderWeek(monday2, 'week-grid-2', 'week-label-2', false);
+  renderWeek(monday3, 'week-grid-3', 'week-label-3', false);
 }
 
 function moveTask(fromKey, toKey, taskId) {
