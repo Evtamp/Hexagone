@@ -5106,6 +5106,145 @@ function plato(sg) {
   return 135.997 * Math.pow(sg,3) - 630.272 * Math.pow(sg,2) + 1111.14 * sg - 616.868;
 }
 
+// ===== FICHE DE SUIVI IMPRIMABLE (PDF via impression navigateur) =====
+function printFicheSuivi(brassinId) {
+  const b = historiqueData[brassinId];
+  if (!b) return;
+  const s = getSuivi(brassinId);
+  const rec = findRecipeByName(b.recette);
+
+  const di = parseFloat(s.di);
+  const df = parseFloat(s.df);
+  const hasDi = di && !isNaN(di) && di > 1;
+  const hasDf = df && !isNaN(df) && df > 1 && df < di;
+  const V = parseFloat(b.volume || 500);
+
+  // ABV réel si Di et Df connues
+  let abv = b.abv ? b.abv.toFixed(1) : '—';
+  let attenuation = '—';
+  if (hasDi && hasDf) {
+    abv = (133 * (di - df) / di).toFixed(1);
+    attenuation = (((di - df) / (di - 1)) * 100).toFixed(0) + ' %';
+  }
+
+  const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('fr-FR') : '—';
+  const dateBrassin = b.ts ? new Date(b.ts).toLocaleDateString('fr-FR') : '—';
+
+  // Recette
+  const recRows = (arr, unitDefault) => (arr||[]).map(l =>
+    `<tr><td>${esc(l.name)}</td><td style="text-align:right">${l.qty||0} ${l.unite||unitDefault}</td><td>${esc(l.moment||l.type||'')}</td></tr>`
+  ).join('');
+  let recetteHtml = '<p style="color:#888;font-style:italic">Recette introuvable</p>';
+  if (rec) {
+    recetteHtml = `
+      <table class="tbl">
+        <thead><tr><th>Ingrédient</th><th style="text-align:right">Quantité</th><th>Moment / type</th></tr></thead>
+        <tbody>
+          ${recRows(rec.malts, 'kg')}
+          ${recRows(rec.houblons, 'kg')}
+          ${recRows(rec.levures, 'pqt')}
+          ${recRows(rec.sels, 'g')}
+        </tbody>
+      </table>`;
+  }
+
+  // Suivi des états (phaseLog)
+  const phaseNoms = { fermentation:'Fermentation', garde:'Garde', dh:'Dry Hopping', idle:'Conditionné / Libéré' };
+  let phasesHtml = '<p style="color:#888;font-style:italic">Aucun changement d\'état enregistré</p>';
+  if (s.phaseLog && s.phaseLog.length) {
+    phasesHtml = `<table class="tbl"><thead><tr><th>Date début</th><th>Date fin</th><th>Phase</th><th style="text-align:right">Durée</th></tr></thead><tbody>`
+      + s.phaseLog.map((e, i) => {
+        const next = s.phaseLog[i+1];
+        const finStr = e.phase === 'idle' ? '—' : (next ? fmtDate(next.date) : 'en cours');
+        let duree = '—';
+        if (e.phase !== 'idle') {
+          const fin = next ? new Date(next.date+'T12:00:00') : new Date();
+          duree = Math.round((fin - new Date(e.date+'T12:00:00')) / 86400000) + ' j';
+        }
+        return `<tr><td>${fmtDate(e.date)}</td><td>${finStr}</td><td>${phaseNoms[e.phase]||e.label}</td><td style="text-align:right">${duree}</td></tr>`;
+      }).join('') + '</tbody></table>';
+  }
+
+  // Prises de densité
+  let densHtml = '<p style="color:#888;font-style:italic">Aucune mesure enregistrée</p>';
+  if (s.densites && s.densites.length) {
+    densHtml = `<table class="tbl"><thead><tr><th>Date</th><th style="text-align:right">Densité (SG)</th><th style="text-align:right">°Plato</th></tr></thead><tbody>`
+      + s.densites.map(d => `<tr><td>${fmtDate(d.date)}</td><td style="text-align:right">${d.sg?d.sg.toFixed(3):'—'}</td><td style="text-align:right">${typeof d.val==='number'?d.val.toFixed(1):'—'}</td></tr>`).join('')
+      + '</tbody></table>';
+  }
+
+  // Conditionnement (enfutageLog)
+  let condHtml = '<p style="color:#888;font-style:italic">Aucun conditionnement enregistré</p>';
+  if (s.enfutageLog && s.enfutageLog.length) {
+    condHtml = `<table class="tbl"><thead><tr><th>Date</th><th>Contenants</th></tr></thead><tbody>`
+      + s.enfutageLog.map(e => `<tr><td>${fmtDate(e.date)}</td><td>${esc(e.lignes||'')}</td></tr>`).join('')
+      + '</tbody></table>';
+  }
+
+  const kv = (label, val) => `<div class="kv"><span class="k">${label}</span><span class="v">${val}</span></div>`;
+
+  const html = `
+    <div class="sheet">
+      <div class="header">
+        <div>
+          <h1>Fiche de suivi de brassin</h1>
+          <div class="sub">${esc(b.recette||'')} · Lot ${esc(b.lot||'—')}</div>
+        </div>
+        <div class="brewnum">${esc(b.brewNum||'')}</div>
+      </div>
+
+      <div class="grid">
+        ${kv('Bière', esc(b.recette||'—'))}
+        ${kv('N° de brassin', esc(b.brewNum||'—'))}
+        ${kv('Lot', esc(b.lot||'—'))}
+        ${kv('Cuve', esc(b.cuve||'—'))}
+        ${kv('Date de brassage', dateBrassin)}
+        ${kv('Volume', V + ' L')}
+        ${kv('Densité initiale (Di)', hasDi ? di.toFixed(3) : '—')}
+        ${kv('Densité finale (Df)', hasDf ? df.toFixed(3) : '—')}
+        ${kv('Atténuation', attenuation)}
+        ${kv('Alcool (ABV)', abv + ' %')}
+      </div>
+
+      <h2>Recette</h2>
+      ${recetteHtml}
+
+      <h2>Suivi des états</h2>
+      ${phasesHtml}
+
+      <h2>Prises de densité</h2>
+      ${densHtml}
+
+      <h2>Conditionnement</h2>
+      ${condHtml}
+
+      <div class="footer">Fiche éditée le ${new Date().toLocaleDateString('fr-FR')} · Microbrasserie</div>
+    </div>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fiche brassin ${esc(b.lot||'')}</title>
+  <style>
+    * { box-sizing:border-box; }
+    body { margin:24px; font-family:Arial,Helvetica,sans-serif; color:#1a1a1a; font-size:13px; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #c8800a; padding-bottom:10px; margin-bottom:16px; }
+    h1 { font-size:20px; margin:0 0 2px; color:#c8800a; }
+    .sub { font-size:13px; color:#555; }
+    .brewnum { font-family:monospace; font-weight:bold; font-size:15px; color:#c8800a; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:2px 24px; margin-bottom:18px; }
+    .kv { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #eee; }
+    .kv .k { color:#666; }
+    .kv .v { font-weight:bold; }
+    h2 { font-size:14px; color:#c8800a; border-bottom:1px solid #ddd; padding-bottom:3px; margin:18px 0 8px; }
+    .tbl { width:100%; border-collapse:collapse; margin-bottom:6px; }
+    .tbl th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#888; border-bottom:1px solid #ccc; padding:4px 6px; }
+    .tbl td { padding:4px 6px; border-bottom:1px solid #f0f0f0; }
+    .footer { margin-top:24px; padding-top:10px; border-top:1px solid #ddd; font-size:11px; color:#999; text-align:center; }
+    @media print { body { margin:0; padding:16px; } h2 { page-break-after:avoid; } .tbl { page-break-inside:avoid; } }
+  </style>
+  </head><body>${html}<script>window.onload=()=>{window.print();}<\/script></body></html>`);
+  win.document.close();
+}
+
 function buildCalculs(brassinId, s) {
   const di = parseFloat(s.di);
   const df = parseFloat(s.df);
@@ -5757,10 +5896,13 @@ function saveDhModal() {
   const hopsNames = JSON.parse(linesEl.dataset.hops || '[]');
   const today     = _dhDate || new Date().toISOString().split('T')[0];
 
-  // Trouver le brassin associé pour mettre à jour le suivi
-  const brassin = Object.values(historiqueData).find(b =>
-    b.recette === f.beer && (b.statut === 'fermentation' || b.statut === 'garde' || b.statut === 'dh')
-  );
+  // Trouver le brassin associé pour mettre à jour le suivi.
+  // Priorité à la CUVE (fiable) ; le nom de bière n'est qu'un repli.
+  const actifsDh = ['fermentation','garde','dh'];
+  const brassin =
+       Object.values(historiqueData).find(b => b.cuve === _dhFermId && actifsDh.includes(b.statut))
+    || Object.values(historiqueData).find(b => b.cuve === _dhFermId)
+    || Object.values(historiqueData).find(b => normBeerName(b.recette) === normBeerName(f.beer) && actifsDh.includes(b.statut));
 
   const dhLogs = [];
   const count  = hopsNames.length || 1;
@@ -5967,8 +6109,13 @@ function saveEnfutage() {
 
   renderProduits();
 
-  // Enregistrer dans le suivi du brassin (correspondance tolérante sur le nom)
-  const brassin = Object.values(historiqueData).find(b => normBeerName(b.recette) === normBeerName(beerName) && ['fermentation','garde','dh'].includes(b.statut))
+  // Enregistrer dans le suivi du brassin.
+  // Priorité absolue à la CUVE enfûtée (fiable) ; le nom de bière n'est qu'un repli.
+  const actifs = ['fermentation','garde','dh'];
+  const brassin =
+       Object.values(historiqueData).find(b => b.cuve === fermIdSaved && actifs.includes(b.statut))
+    || Object.values(historiqueData).find(b => b.cuve === fermIdSaved)
+    || Object.values(historiqueData).find(b => normBeerName(b.recette) === normBeerName(beerName) && actifs.includes(b.statut))
     || Object.values(historiqueData).find(b => normBeerName(b.recette) === normBeerName(beerName));
   if (brassin && saved > 0) {
     const s = getSuivi(brassin.id);
@@ -6614,6 +6761,10 @@ function renderHistorique() {
             <button onclick="toggleSuivi('${b.id}')"
               style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;padding:5px 10px;cursor:pointer">
               📋 Suivi
+            </button>
+            <button onclick="printFicheSuivi('${b.id}')"
+              style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;padding:5px 10px;cursor:pointer">
+              🖨️ Fiche PDF
             </button>
           </div>
           <div style="display:flex;gap:6px">
@@ -10683,7 +10834,7 @@ Object.assign(window, {
   toggleProduitHisto, renderProduitHisto, deleteProduitMouv, tracerMouvProduit, deleteFutMouv,
   openDhModal, closeDhModal, saveDhModal,
   openEnfutageModal, closeEnfutageModal, saveEnfutage, addEnfutageLine, removeEnfutageLine, updateEnfutageLine,
-  toggleSuivi, addDensite, deleteDensite, updateSuiviDate, renderSuiviDensites,
+  toggleSuivi, addDensite, deleteDensite, updateSuiviDate, renderSuiviDensites, printFicheSuivi,
   renderSuiviPhaseLog, deleteSuiviPhaseLog,
   renderSuiviEnfutageLog, deleteSuiviEnfutageLog,
   updateSuiviDens, buildCalculs, plato,
