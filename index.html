@@ -7451,9 +7451,45 @@ function moveTask(fromKey, toKey, taskId) {
   else planningData[fromKey] = tasks;
   if (!planningData[toKey]) planningData[toKey] = [];
   planningData[toKey].push(task);
+
+  // Si c'est un brassin, décaler aussi les tâches liées (garde, DH, enfûtage) du même nombre de jours
+  let movedLinked = 0;
+  if (task.type === 'brassin') {
+    const deltaDays = Math.round((new Date(toKey+'T12:00:00') - new Date(fromKey+'T12:00:00')) / 86400000);
+    if (deltaDays !== 0) {
+      // Récupérer les tâches liées AVANT de les déplacer (repli par n° de brassin si brassinId absent)
+      let linked = getLinkedTasks(taskId);
+      if (!linked.length && (task.brewNum || task.beer)) {
+        Object.entries(planningData).forEach(([key, arr]) => {
+          (arr||[]).forEach(t => {
+            if (t.id === taskId) return;
+            if (!['garde','dh','enfutage'].includes(t.type)) return;
+            const matchBrew = task.brewNum && t.brewNum === task.brewNum;
+            const matchBeer = !task.brewNum && task.beer && normBeerName(t.beer) === normBeerName(task.beer);
+            if (matchBrew || matchBeer) { t.brassinId = taskId; linked.push({ key, task: t }); }
+          });
+        });
+      }
+      // Déplacer chaque tâche liée du même delta
+      linked.forEach(({ key: linkedKey, task: linkedTask }) => {
+        const newDate = new Date(linkedKey+'T12:00:00');
+        newDate.setDate(newDate.getDate() + deltaDays);
+        const newKey = dateKey(newDate);
+        if (newKey !== linkedKey) {
+          removeTaskFromDay(linkedKey, linkedTask.id);
+          if (!planningData[newKey]) planningData[newKey] = [];
+          planningData[newKey].push(linkedTask);
+          movedLinked++;
+        }
+      });
+    }
+  }
+
   savePlanning();
   renderPlanning();
-  showToast('Tâche déplacée ✓');
+  showToast(movedLinked > 0
+    ? `Brassin déplacé + ${movedLinked} tâche${movedLinked>1?'s':''} liée${movedLinked>1?'s':''} ✓`
+    : 'Tâche déplacée ✓');
 }
 
 function deleteTask(key, taskId) {
