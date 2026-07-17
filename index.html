@@ -1573,6 +1573,29 @@
 
     <button onclick="addEnfutageLine()" style="margin-top:10px;width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:8px;cursor:pointer">+ Ajouter un format</button>
 
+    <!-- Resucrage -->
+    <div style="margin-top:14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:13px;color:var(--foam);font-weight:600">🍬 Resucrage</span>
+        <span id="enfutage-vol-total" style="font-size:11px;color:var(--muted)">0 L conditionnés</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1">
+          <div class="field-label" style="margin-bottom:3px">Grammage</div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" id="enfutage-resucrage-gl" value="7" min="0" step="0.5"
+              oninput="updateResucrage()"
+              style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:8px;box-sizing:border-box" />
+            <span style="font-size:12px;color:var(--muted);white-space:nowrap">g/L</span>
+          </div>
+        </div>
+        <div style="flex:1">
+          <div class="field-label" style="margin-bottom:3px">Sucre nécessaire</div>
+          <div id="enfutage-resucrage-total" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:14px;font-weight:700;padding:8px;text-align:center">0 g</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Libérer le fermenteur -->
     <div style="margin-top:14px;display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px">
       <input type="checkbox" id="enfutage-liberer" style="width:16px;height:16px;accent-color:var(--amber);cursor:pointer" />
@@ -5035,6 +5058,7 @@ function renderSuiviEnfutageLog(brassinId) {
         <button onclick="deleteSuiviEnfutageLog('${brassinId}',${i})" style="background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:2px 4px;margin-left:auto">✕</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px">${badgesHtml}</div>
+      ${e.resucrage && e.resucrage.sucreG > 0 ? `<div style="font-size:11px;color:var(--amber-lt);margin-top:4px">🍬 Resucrage : ${e.resucrage.sucreG >= 1000 ? (e.resucrage.sucreG/1000).toFixed(2)+' kg' : e.resucrage.sucreG+' g'} (${e.resucrage.gramGL} g/L)</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -5176,8 +5200,13 @@ function printFicheSuivi(brassinId) {
   // Conditionnement (enfutageLog)
   let condHtml = '<p style="color:#888;font-style:italic">Aucun conditionnement enregistré</p>';
   if (s.enfutageLog && s.enfutageLog.length) {
-    condHtml = `<table class="tbl"><thead><tr><th>Date</th><th>Contenants</th></tr></thead><tbody>`
-      + s.enfutageLog.map(e => `<tr><td>${fmtDate(e.date)}</td><td>${esc(e.lignes||'')}</td></tr>`).join('')
+    condHtml = `<table class="tbl"><thead><tr><th>Date</th><th>Contenants</th><th>Resucrage</th></tr></thead><tbody>`
+      + s.enfutageLog.map(e => {
+        const res = e.resucrage && e.resucrage.sucreG > 0
+          ? `${e.resucrage.sucreG >= 1000 ? (e.resucrage.sucreG/1000).toFixed(2)+' kg' : e.resucrage.sucreG+' g'} (${e.resucrage.gramGL} g/L)`
+          : '—';
+        return `<tr><td>${fmtDate(e.date)}</td><td>${esc(e.lignes||'')}</td><td>${res}</td></tr>`;
+      }).join('')
       + '</tbody></table>';
   }
 
@@ -5984,6 +6013,9 @@ function openEnfutageModal(fermId) {
   document.getElementById('enfutage-liberer').checked = true;
   enfutageLines = [{ format: 'fut30inox', qty: 0, lot: todayLot() }];
   renderEnfutageLines();
+  const glEl = document.getElementById('enfutage-resucrage-gl');
+  if (glEl) glEl.value = 7;
+  updateResucrage();
   document.getElementById('enfutage-modal').style.display = 'flex';
 }
 
@@ -6027,16 +6059,35 @@ function renderEnfutageLines() {
 function addEnfutageLine() {
   enfutageLines.push({ format: 'btl33', qty: 0, lot: todayLot() });
   renderEnfutageLines();
+  updateResucrage();
 }
 
 function removeEnfutageLine(idx) {
   enfutageLines.splice(idx, 1);
   renderEnfutageLines();
+  updateResucrage();
 }
 
 function updateEnfutageLine(idx, field, val) {
   if (!enfutageLines[idx]) return;
   enfutageLines[idx][field] = field === 'qty' ? (parseInt(val) || 0) : val;
+  if (field === 'qty' || field === 'format') updateResucrage();
+}
+
+// Calcule le volume total conditionné et la quantité de sucre de resucrage
+function updateResucrage() {
+  const volL = enfutageLines.reduce((sum, l) =>
+    sum + (FORMAT_VOL_L[l.format] || 0) * (l.qty || 0), 0);
+  const gl = parseFloat(document.getElementById('enfutage-resucrage-gl')?.value) || 0;
+  const totalG = volL * gl;
+  const volEl = document.getElementById('enfutage-vol-total');
+  const totEl = document.getElementById('enfutage-resucrage-total');
+  if (volEl) volEl.textContent = `${volL % 1 === 0 ? volL : volL.toFixed(1)} L conditionnés`;
+  if (totEl) {
+    totEl.textContent = totalG >= 1000
+      ? `${(totalG/1000).toFixed(2)} kg`
+      : `${Math.round(totalG)} g`;
+  }
 }
 
 let _enfutageSaving = false; // anti double-clic
@@ -6125,7 +6176,12 @@ function saveEnfutage() {
     const details = validLines
       .map(l => ({ format: l.format, label: FORMAT_LABELS[l.format]||l.format, qty: l.qty, lot: l.lot||'' }));
     const lignes = details.map(d => `${d.qty} × ${d.label}${d.lot?' ('+d.lot+')':''}`).join(', ');
-    s.enfutageLog.push({ date: today, lignes, details, liberer });
+    // Resucrage (volume total × grammage g/L)
+    const volTotL = validLines.reduce((sum, l) => sum + (FORMAT_VOL_L[l.format]||0) * (l.qty||0), 0);
+    const gramGL = parseFloat(document.getElementById('enfutage-resucrage-gl')?.value) || 0;
+    const sucreG = Math.round(volTotL * gramGL);
+    const resucrage = { gramGL, sucreG, volL: volTotL };
+    s.enfutageLog.push({ date: today, lignes, details, liberer, resucrage });
     saveSuivi(brassin.id);
     // Le brassin est conditionné : passer automatiquement son statut à "Terminé"
     if (brassin.statut !== 'termine') updateBrewStatut(brassin.id, 'termine');
@@ -10833,7 +10889,7 @@ Object.assign(window, {
   openProduitModal, closeProduitModal, selectProduitFormat, saveProduitModal, deleteProduit, adjustProduitQty, setProduitQty, selectFermBtn,
   toggleProduitHisto, renderProduitHisto, deleteProduitMouv, tracerMouvProduit, deleteFutMouv,
   openDhModal, closeDhModal, saveDhModal,
-  openEnfutageModal, closeEnfutageModal, saveEnfutage, addEnfutageLine, removeEnfutageLine, updateEnfutageLine,
+  openEnfutageModal, closeEnfutageModal, saveEnfutage, addEnfutageLine, removeEnfutageLine, updateEnfutageLine, updateResucrage,
   toggleSuivi, addDensite, deleteDensite, updateSuiviDate, renderSuiviDensites, printFicheSuivi,
   renderSuiviPhaseLog, deleteSuiviPhaseLog,
   renderSuiviEnfutageLog, deleteSuiviEnfutageLog,
