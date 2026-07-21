@@ -2786,11 +2786,14 @@ const BEERS = [
 const BOTTLE_CONFIG = { "J'Peux pas j'ai Tour": { cl: 44, cartonSize: 24 } };
 function beerConfig(beer) { return BOTTLE_CONFIG[beer] || { cl: 33, cartonSize: 12 }; }
 
-// Noms de bières issus des recettes (source de vérité), pour garantir la cohérence des noms
-// entre le planning, les brassins et les autres écrans. Repli sur BEERS si aucune recette n'existe.
+// Noms de bières issus des recettes ET du stock produits (source de vérité élargie),
+// pour que toute bière vendue apparaisse dans les listes même sans recette créée.
 function getRecipeBeerNames() {
-  const names = Object.values(recipesData).map(r => r.name).filter(Boolean);
-  return names.length ? [...new Set(names)].sort((a, b) => a.localeCompare(b)) : BEERS;
+  const set = new Set();
+  Object.values(recipesData).forEach(r => { if (r.name) set.add(r.name); });
+  Object.values(produitsData).forEach(p => { if (p.biere) set.add(p.biere); });
+  const names = [...set];
+  return names.length ? names.sort((a, b) => a.localeCompare(b)) : BEERS;
 }
 
 const MP_SCHEMA = {
