@@ -2386,6 +2386,21 @@
   </div>
 </div>
 
+<!-- ===== MODAL SUBSTITUTION D'INGRÉDIENT (lancement brassin) ===== -->
+<div id="sub-picker-modal" class="modal-overlay" onclick="if(event.target===this)closeSubPicker()">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-header">
+      <div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Remplacer l'ingrédient</div>
+        <div id="sub-picker-title" style="font-size:15px;font-weight:700;color:var(--foam);margin-top:2px"></div>
+      </div>
+      <button onclick="closeSubPicker()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Substitution ponctuelle pour ce brassin — la recette d'origine n'est pas modifiée.</div>
+    <div id="sub-picker-list" style="max-height:50vh;overflow-y:auto"></div>
+  </div>
+</div>
+
 <!-- ===== MODAL RECETTES UTILISANT UN INGRÉDIENT ===== -->
 <div id="ingredient-recipes-modal" class="modal-overlay" onclick="if(event.target===this)closeIngredientRecipesModal()">
   <div class="modal-box" style="max-width:420px">
@@ -2880,6 +2895,8 @@ let editingRecipeId = null;
 let brewRecipeId    = null;
 let brewLotOverrides = {}; // nom ingrédient -> id de l'item/lot choisi manuellement
 let lotPickerIngredient = null;
+let brewEffectiveLines = null; // lignes effectives du brassin en cours (copie modifiable de la recette)
+let subPickerIndex = null;     // index de la ligne en cours de substitution
 let recipeDraftLines = { malt:[], houblon:[], levure:[], sel:[] };
 
 // =========================================================
@@ -9002,6 +9019,12 @@ function openBrewModal(id) {
   brewLotOverrides = {};
   const r = recipesData[id];
   if (!r) return;
+  // Construire la liste des lignes effectives (modifiable pour ce brassin, sans toucher la recette)
+  brewEffectiveLines = [
+    ...(r.malts   ||[]).map(l=>({ name:l.name, qty:parseFloat(l.qty)||0, unit:'kg',  cat:'malt',    moment:l.moment||'', orig:l.name })),
+    ...(r.houblons||[]).map(l=>({ name:l.name, qty:parseFloat(l.qty)||0, unit:'kg',  cat:'houblon', moment:l.moment||'', orig:l.name })),
+    ...(r.levures ||[]).map(l=>({ name:l.name, qty:parseFloat(l.qty)||0, unit:'pqt', cat:'levure',  moment:l.moment||'', orig:l.name })),
+  ];
   document.getElementById('brew-recipe-name').textContent = r.name;
   // Laisser le champ vide — l'utilisateur saisit son propre numéro
   // Sélect fermenteurs
@@ -9042,18 +9065,15 @@ function getSortedMatchingItems(name) {
 function renderBrewPreview(r) {
   let html = '';
   let warnings = [];
-  const allLines = [
-    ...(r.malts||[]).map(l=>({...l, unit:'kg'})),
-    ...(r.houblons||[]).map(l=>({...l, unit:'kg'})),
-    ...(r.levures||[]).map(l=>({...l, unit:'pqt'})),
-  ];
+  const allLines = brewEffectiveLines || [];
 
-  allLines.forEach(l => {
+  allLines.forEach((l, idx) => {
     const needed = parseFloat(l.qty) || 0;
 
     // Récupérer tous les items de même nom (lot forcé en tête si choisi, sinon FIFO)
     const matchingItems = getSortedMatchingItems(l.name);
     const hasOverride = !!brewLotOverrides[l.name];
+    const substitué = l.orig && l.name !== l.orig;
 
     const totalStock = matchingItems.reduce((s, i) => s + (i.val||0), 0);
     const ok = totalStock >= needed;
@@ -9074,10 +9094,21 @@ function renderBrewPreview(r) {
     });
 
     const nameAttr = l.name.replace(/'/g, "\\'");
-    html += `<div style="padding:5px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="openLotPicker('${nameAttr}','${l.unit}')">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:13px;color:var(--foam)">${l.name} <span style="font-size:10px;color:var(--muted)">🏷 ${hasOverride?'lot choisi ›':'auto ›'}</span></span>
-        <span style="font-size:12px">
+    html += `<div style="padding:6px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+        <span style="font-size:13px;color:var(--foam);flex:1;min-width:0">
+          ${esc(l.name)}
+          ${substitué ? `<span style="font-size:9px;color:#7ec87e;background:rgba(126,200,126,.12);border-radius:3px;padding:1px 4px;margin-left:4px">substitué</span>` : ''}
+          ${l.moment==='DH' ? `<span style="font-size:9px;color:#c47ae8;margin-left:2px">DH</span>` : ''}
+        </span>
+        <input type="number" value="${needed}" min="0" step="0.1" onchange="updateBrewLineQty(${idx}, this.value)"
+          style="width:56px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;font-weight:600;padding:3px 5px;text-align:right" />
+        <span style="font-size:11px;color:var(--muted);width:24px">${l.unit}</span>
+        <button onclick="openSubPicker(${idx})" title="Remplacer cet ingrédient" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:11px;padding:3px 6px;cursor:pointer;flex-shrink:0">⇄</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
+        <span onclick="openLotPicker('${nameAttr}','${l.unit}')" style="font-size:10px;color:var(--muted);cursor:pointer">🏷 ${hasOverride?'lot choisi ›':'auto (FIFO) ›'}</span>
+        <span style="font-size:11px">
           <span style="color:${ok?'var(--ok)':'var(--danger)'}">−${needed} ${l.unit}</span>
           <span style="color:var(--muted);margin-left:6px">stock: ${totalStock.toFixed(totalStock % 1 === 0 ? 0 : 1)}</span>
         </span>
@@ -9094,6 +9125,58 @@ function renderBrewPreview(r) {
   } else {
     warnEl.style.display = 'none';
   }
+}
+
+function updateBrewLineQty(idx, val) {
+  if (!brewEffectiveLines || !brewEffectiveLines[idx]) return;
+  brewEffectiveLines[idx].qty = parseFloat(val) || 0;
+  renderBrewPreview(recipesData[brewRecipeId]);
+}
+
+// Ouvre le sélecteur de substitution d'ingrédient
+function openSubPicker(idx) {
+  subPickerIndex = idx;
+  const line = brewEffectiveLines[idx];
+  document.getElementById('sub-picker-title').textContent = line.orig || line.name;
+
+  // Proposer tous les ingrédients du stock (toutes catégories, car un "autre" peut remplacer un houblon, etc.)
+  const allItems = Object.values(MP_DATA).flat();
+  // Dédupliquer par nom, garder le stock total
+  const byName = {};
+  allItems.forEach(i => {
+    if (!byName[i.name]) byName[i.name] = { name:i.name, unit:i.unit||'kg', val:0 };
+    byName[i.name].val += (i.val||0);
+  });
+  const names = Object.values(byName).sort((a,b) => a.name.localeCompare(b.name));
+
+  const listEl = document.getElementById('sub-picker-list');
+  let h = `<div onclick="applySub(null)" style="padding:9px 11px;border:1px solid ${line.name===line.orig?'var(--amber-lt)':'var(--border)'};border-radius:var(--radius-sm);margin-bottom:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:13px;color:var(--foam);font-weight:600">↩ Ingrédient d'origine : ${esc(line.orig||line.name)}</span>
+    ${line.name===line.orig?'<span style="color:var(--amber-lt)">✓</span>':''}
+  </div>`;
+  h += names.map(n => {
+    const sel = n.name === line.name && line.name !== line.orig;
+    const nAttr = n.name.replace(/'/g, "\\'");
+    return `<div onclick="applySub('${nAttr}')" style="padding:9px 11px;border:1px solid ${sel?'var(--amber-lt)':'var(--border)'};border-radius:var(--radius-sm);margin-bottom:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:13px;color:var(--foam)">${esc(n.name)}</span>
+      <span style="font-size:11px;color:var(--muted)">stock: ${(n.val%1===0?n.val:n.val.toFixed(1))} ${n.unit} ${sel?' ✓':''}</span>
+    </div>`;
+  }).join('');
+  listEl.innerHTML = h;
+  document.getElementById('sub-picker-modal').classList.add('open');
+}
+
+function applySub(newName) {
+  if (subPickerIndex === null || !brewEffectiveLines[subPickerIndex]) { closeSubPicker(); return; }
+  const line = brewEffectiveLines[subPickerIndex];
+  line.name = newName || line.orig; // null = revenir à l'origine
+  closeSubPicker();
+  renderBrewPreview(recipesData[brewRecipeId]);
+}
+
+function closeSubPicker() {
+  document.getElementById('sub-picker-modal').classList.remove('open');
+  subPickerIndex = null;
 }
 
 // ===== SÉLECTION MANUELLE DU LOT =====
@@ -9182,17 +9265,14 @@ function confirmBrew(skipDestock = false) {
     saveFermenters();
   }
 
-  // Snapshot pour annulation
-  const mpQtySnapshot = [...(r.malts||[]),...(r.houblons||[]).filter(l=>l.moment!=='DH'),...(r.levures||[])].map(l=>({name:l.name, qty:parseFloat(l.qty)||0}));
+  // Snapshot pour annulation (basé sur les lignes effectives, substitutions incluses)
+  const effLines = brewEffectiveLines || [];
+  const mpQtySnapshot = effLines.filter(l => l.moment !== 'DH').map(l => ({ name:l.name, qty:parseFloat(l.qty)||0 }));
   const mpLotsUsed = {}; // nom -> lot utilisé (pour l'historique)
 
   // Déstocker les MP en priorité FIFO (lot le plus ancien en premier)
   if (!skipDestock) {
-    const allLines = [
-      ...(r.malts||[]).map(l=>({...l,unit:'kg'})),
-      ...(r.houblons||[]).filter(l=>l.moment!=='DH').map(l=>({...l,unit:'kg'})),
-      ...(r.levures||[]).map(l=>({...l,unit:'pqt'})),
-    ];
+    const allLines = effLines.filter(l => l.moment !== 'DH');
 
     allLines.forEach(l => {
       let remaining = parseFloat(l.qty) || 0;
@@ -9220,7 +9300,7 @@ function confirmBrew(skipDestock = false) {
     renderMP();
   } else {
     // Sans déstock : récupérer les lots existants pour l'historique
-    [...(r.malts||[]),...(r.houblons||[]).filter(l=>l.moment!=='DH'),...(r.levures||[])].forEach(l => {
+    effLines.filter(l => l.moment !== 'DH').forEach(l => {
       const item = Object.values(MP_DATA).flat().find(i => i.name === l.name);
       mpLotsUsed[l.name] = item?.lot || '';
     });
@@ -10980,6 +11060,7 @@ Object.assign(window, {
   showToast, toggleRecipeAccordion,
   openMpModal, closeMpModal, selectMpCatModal, saveMpModal, deleteMpItem,
   openLotPicker, selectLotOverride, closeLotPicker,
+  updateBrewLineQty, openSubPicker, applySub, closeSubPicker,
   openIngredientRecipes, closeIngredientRecipesModal,
   exportToutesLesDonnees, importerSauvegarde,
   undoDeleteHistorique, openGlobalSearch, closeGlobalSearch, runGlobalSearch, gsGoTo, goToBrewInHistorique,
