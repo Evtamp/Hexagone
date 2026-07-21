@@ -3470,19 +3470,16 @@ function deleteProduit(id) {
   if (!p) return;
   if (!confirm('Supprimer cette entrée ?')) return;
 
-  // Si c'est un stock de fûts Inox/KK/KKTP : remettre les fûts vides correspondants au parc
-  // (les fûts physiques redeviennent disponibles, ex. correction d'un enfûtage saisi en trop)
+  // Seuls les fûts INOX (réutilisables) sont remis au parc à la suppression.
+  // Les KK et KKTP ne sont pas remis en stock (fûts à usage unique / non réintégrés au parc).
   const qty = p.qty || 0;
-  const futFieldByFormat = { fut30inox: 'stockVide', fut30kk: 'stockVideKK', fut30kktp: 'stockVideKKTP' };
-  const futField = futFieldByFormat[p.format];
-  if (futField && qty > 0) {
-    const labels = { fut30inox: '30L Inox', fut30kk: '30L KK', fut30kktp: '30L KKTP' };
-    futsData[futField] = (futsData[futField] || 0) + qty;
+  if (p.format === 'fut30inox' && qty > 0) {
+    futsData.stockVide = (futsData.stockVide || 0) + qty;
     if (!futsData.mouvements) futsData.mouvements = [];
-    futsData.mouvements.push({ type: 'suppr_stock', ts: Date.now(), qty: qty, biere: p.biere || '', client: labels[p.format] });
+    futsData.mouvements.push({ type: 'suppr_stock', ts: Date.now(), qty: qty, biere: p.biere || '', client: '30L Inox' });
     saveFutsData();
     renderFutsPage();
-    showToast(`Stock supprimé — ${qty} fût${qty>1?'s':''} ${labels[p.format]} remis au parc (vides)`);
+    showToast(`Stock supprimé — ${qty} fût${qty>1?'s':''} 30L Inox remis au parc (vides)`);
   }
 
   delete produitsData[id];
@@ -5981,6 +5978,7 @@ function saveDhModal() {
     const valAvant = item.val;
     item.val = Math.max(0, parseFloat((item.val - qty).toFixed(3)));
     saveMp(item.id, item.val);
+    tracerSortieMP(item, valAvant, item.val, `🌿 Dry Hopping ${f.beer || ''}${brassin?.brewNum ? ' ('+brassin.brewNum+')' : ''}`.trim());
 
     dhLogs.push({ date: today, hop: item.name, lot: item.lot||'', qty, unit: item.unit||'kg' });
   }
