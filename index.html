@@ -7036,9 +7036,30 @@ function updateBrewField(id, field, val) {
 }
 
 function updateBrewStatut(id, statut) {
-  if (!historiqueData[id]) return;
-  historiqueData[id].statut = statut;
-  saveBrewEntry(id, historiqueData[id]);
+  const b = historiqueData[id];
+  if (!b) return;
+  const ancien = b.statut;
+  b.statut = statut;
+  saveBrewEntry(id, b);
+
+  // Enregistrer le changement d'état dans le suivi (comme depuis l'onglet Fermenteurs)
+  if (statut !== ancien) {
+    const phaseFromStatut = { fermentation:'fermentation', garde:'garde', dh:'dh', conditionne:'idle', termine:'idle' };
+    const phase = phaseFromStatut[statut];
+    if (phase) {
+      const s = getSuivi(id);
+      const today = new Date().toISOString().split('T')[0];
+      const phaseLabels = { fermentation:'Fermentation', garde:'Garde', dh:'Dry Hopping', idle:'Conditionné / Libéré' };
+      // Éviter un doublon si la dernière entrée est déjà la même phase le même jour
+      const last = s.phaseLog[s.phaseLog.length-1];
+      if (!last || last.phase !== phase || last.date !== today) {
+        s.phaseLog.push({ date: today, phase, label: phaseLabels[phase] || phase });
+        saveSuivi(id);
+        const panel = document.getElementById('suivi-panel-' + id);
+        if (panel && panel.style.display !== 'none') renderSuiviPhaseLog(id);
+      }
+    }
+  }
 }
 
 let _lastDeletedBrew = null; // { id, data } pour l'annulation
