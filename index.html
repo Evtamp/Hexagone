@@ -250,7 +250,7 @@
       }
 
       #list-produits { max-width: 700px; }
-      #list-ferm { display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; padding: 16px; }
+      #list-ferm { display: grid; grid-template-columns: repeat(5,1fr); gap: 8px; padding: 16px; }
       .planning-week { max-width: 700px; margin: 0 auto; }
       #prev-calendar, #prev-weeks { max-width: 700px; }
       .modal-overlay { align-items: center; }
@@ -419,6 +419,8 @@
     }
 
     /* ===== FERMENTEURS ===== */
+    #list-ferm { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    #list-ferm .ferm-card.expanded { grid-column: 1 / -1; }
     .ferm-card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -881,9 +883,12 @@
 
       /* Fermenteurs : 2 colonnes */
       #list-ferm {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(5, 1fr);
         padding: 20px 24px;
       }
+
+      /* La cuve dépliée s'étale sur toute la largeur pour laisser la place aux détails */
+      #list-ferm .ferm-card.expanded { grid-column: 1 / -1; }
 
       /* Semaine planning */
       #week-grid .day-row { padding: 10px 16px; }
@@ -892,7 +897,7 @@
     @media (min-width: 1100px) {
       nav#main-nav { width: 240px; }
       #list-ferm {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(5, 1fr);
       }
     }
 
@@ -6233,140 +6238,117 @@ function renderFermenters() {
     const anyActive = ph.fermentation.active || ph.garde.active || ph.dh.active;
     const isIdle = !anyActive;
 
-    // Badge principal
-    const badges = [];
-    if (ph.fermentation.active) badges.push('<span class="badge ferm">Fermentation</span>');
-    if (ph.garde.active)        badges.push('<span class="badge garde">Garde</span>');
-    if (ph.dh.active)           badges.push('<span class="badge dh">DH</span>');
-    if (isIdle)                 badges.push('<span class="badge idle">Libre</span>');
-    const badgesHtml = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${badges.join('')}</div>`;
+    // Couleur & libellé selon la phase active
+    let phaseKey = 'idle', phaseLabel = 'Libre';
+    if (ph.fermentation.active) { phaseKey='fermentation'; phaseLabel='Fermentation'; }
+    else if (ph.garde.active)   { phaseKey='garde';        phaseLabel='Garde'; }
+    else if (ph.dh.active)      { phaseKey='dh';           phaseLabel='Dry Hopping'; }
+    const phaseColors = { fermentation:'#4caf72', garde:'#7ab4e8', dh:'#c47ae8', idle:'#555' };
+    const col = phaseColors[phaseKey];
 
-    // Barres de progression par phase active
-    let progressHtml = '';
-    const phaseConfig = [
-      { key:'fermentation', label:'Fermentation', duree: f.dureeFerm  },
-      { key:'garde',        label:'Garde',         duree: f.dureeGarde },
-      { key:'dh',           label:'Dry Hopping',   duree: f.dureeDH    },
-    ];
-    phaseConfig.forEach(pc => {
-      if (!ph[pc.key].active) return;
-      const j = joursEcoules(ph[pc.key].debut);
-      const pct = pc.duree > 0 ? Math.min(100, Math.round((j / pc.duree) * 100)) : 0;
-      const colors = { fermentation:'var(--ok)', garde:'#7ab4e8', dh:'#c47ae8' };
-      progressHtml += `
-      <div class="progress-wrap" style="margin-top:8px">
-        <div class="progress-label">
-          <span style="color:${colors[pc.key]}">${pc.label}</span>
-          <span>J${j} / J${pc.duree}</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill" style="width:${pct}%;background:${colors[pc.key]}"></div>
-        </div>
-      </div>`;
-    });
+    // Avancement de la phase active (pour le remplissage du dessin)
+    let jours = 0, dureePhase = 0, pct = 0;
+    if (anyActive) {
+      const dureeByKey = { fermentation:f.dureeFerm, garde:f.dureeGarde, dh:f.dureeDH };
+      dureePhase = dureeByKey[phaseKey] || 0;
+      jours = joursEcoules(ph[phaseKey].debut);
+      pct = dureePhase > 0 ? Math.min(100, Math.round((jours / dureePhase) * 100)) : 0;
+    }
 
-    // Température affichée
+    // Dessin SVG d'une cuve conique (style fermenteur inox)
+    // Le liquide monte selon l'avancement de la phase.
+    const liquidTop = anyActive ? (58 - (pct/100)*40) : 58; // vide si idle
+    const svg = `
+      <svg viewBox="0 0 80 110" style="width:64px;height:88px">
+        <defs>
+          <clipPath id="tank-${f.id}">
+            <path d="M18,10 L62,10 L62,60 L40,96 L18,60 Z"/>
+          </clipPath>
+        </defs>
+        <!-- liquide -->
+        ${anyActive ? `<rect x="10" y="${liquidTop}" width="60" height="90" fill="${col}" opacity="0.55" clip-path="url(#tank-${f.id})"/>` : ''}
+        <!-- corps de cuve -->
+        <path d="M18,10 L62,10 L62,60 L40,96 L18,60 Z" fill="none" stroke="${anyActive?col:'#666'}" stroke-width="2.5" stroke-linejoin="round"/>
+        <!-- couvercle -->
+        <ellipse cx="40" cy="10" rx="22" ry="4" fill="none" stroke="${anyActive?col:'#666'}" stroke-width="2.5"/>
+        <!-- pieds -->
+        <line x1="30" y1="94" x2="27" y2="104" stroke="#666" stroke-width="2"/>
+        <line x1="50" y1="94" x2="53" y2="104" stroke="#666" stroke-width="2"/>
+        <!-- petit robinet -->
+        <line x1="40" y1="96" x2="40" y2="102" stroke="#888" stroke-width="2"/>
+        ${anyActive ? `<text x="40" y="42" text-anchor="middle" font-size="13" font-weight="bold" fill="#fff">J${jours}</text>` : ''}
+      </svg>`;
+
+    // Panneau détails (déplié au clic) : temp, volume, boutons de phase, enfûtage, édition
     const tempAffichee = (ph.garde.active || ph.dh.active) ? f.tempGarde : f.tempFerm;
     const tempLabel    = (ph.garde.active || ph.dh.active) ? 'T° garde' : 'T° ferm.';
 
-    // Formulaire édition — dates de début par phase
+    const detailsHtml = `
+      <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px">
+        ${anyActive ? `
+        <div style="display:flex;justify-content:space-around;margin-bottom:8px">
+          <div style="text-align:center"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">${tempLabel}</div><div style="font-size:14px;font-weight:700;color:var(--foam)">${tempAffichee}°C</div></div>
+          <div style="text-align:center"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Volume</div><div style="font-size:14px;font-weight:700;color:var(--foam)">${f.vol} L</div></div>
+          <div style="text-align:center"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Avancement</div><div style="font-size:14px;font-weight:700;color:${col}">J${jours}/${dureePhase}</div></div>
+        </div>` : ''}
+        <div class="ferm-phases">
+          <button class="phase-btn ${isIdle?'active-idle':''}" onclick="event.stopPropagation();setPhase('${f.id}','idle')">Libre</button>
+          <button class="phase-btn ${ph.fermentation.active?'active-ferm':''}" onclick="event.stopPropagation();setPhase('${f.id}','fermentation')">Ferm.</button>
+          <button class="phase-btn ${ph.garde.active?'active-garde':''}" onclick="event.stopPropagation();setPhase('${f.id}','garde')">Garde</button>
+          <button class="phase-btn ${ph.dh.active?'active-dh':''}" onclick="event.stopPropagation();setPhase('${f.id}','dh')">DH</button>
+        </div>
+        ${anyActive ? `<button onclick="event.stopPropagation();openEnfutageModal('${f.id}')" style="margin-top:8px;width:100%;background:var(--surface2);border:1px solid var(--amber);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;font-weight:600;padding:8px;cursor:pointer">🛢 Enfûtage / Embouteillage</button>` : ''}
+        <button onclick="event.stopPropagation();toggleFermEdit('${f.id}')" style="margin-top:6px;width:100%;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:7px;cursor:pointer">${isEditing?'▲ Fermer l’édition':'✏️ Modifier'}</button>
+      </div>`;
+
+    // Formulaire d'édition (identique à avant)
     const editHtml = `
-    <div class="ferm-edit-panel ${isEditing ? 'open' : ''}" id="edit-${f.id}">
+    <div class="ferm-edit-panel ${isEditing ? 'open' : ''}" id="edit-${f.id}" onclick="event.stopPropagation()">
       <div class="ferm-edit-grid">
-        <div class="ferm-field full">
-          <label>Bière</label>
-          <input type="text" placeholder="Nom de la bière" value="${f.beer || ''}"
-            oninput="updateFerm('${f.id}','beer',this.value)" />
-        </div>
-        <div class="ferm-field">
-          <label>T° fermentation (°C)</label>
-          <input type="number" step="0.5" value="${f.tempFerm}"
-            oninput="updateFerm('${f.id}','tempFerm',this.value)" />
-        </div>
-        <div class="ferm-field">
-          <label>T° garde (°C)</label>
-          <input type="number" step="0.5" value="${f.tempGarde}"
-            oninput="updateFerm('${f.id}','tempGarde',this.value)" />
-        </div>
+        <div class="ferm-field full"><label>Bière</label>
+          <input type="text" placeholder="Nom de la bière" value="${f.beer || ''}" oninput="updateFerm('${f.id}','beer',this.value)" /></div>
+        <div class="ferm-field"><label>T° fermentation (°C)</label>
+          <input type="number" step="0.5" value="${f.tempFerm}" oninput="updateFerm('${f.id}','tempFerm',this.value)" /></div>
+        <div class="ferm-field"><label>T° garde (°C)</label>
+          <input type="number" step="0.5" value="${f.tempGarde}" oninput="updateFerm('${f.id}','tempGarde',this.value)" /></div>
         <div class="ferm-section-title" style="grid-column:1/-1">Durées prévues (jours)</div>
-        <div class="ferm-field">
-          <label>Fermentation</label>
-          <input type="number" min="1" value="${f.dureeFerm}"
-            oninput="updateFerm('${f.id}','dureeFerm',this.value)" />
-        </div>
-        <div class="ferm-field">
-          <label>Garde</label>
-          <input type="number" min="1" value="${f.dureeGarde}"
-            oninput="updateFerm('${f.id}','dureeGarde',this.value)" />
-        </div>
-        <div class="ferm-field">
-          <label>Dry Hopping</label>
-          <input type="number" min="0" value="${f.dureeDH}"
-            oninput="updateFerm('${f.id}','dureeDH',this.value)" />
-        </div>
+        <div class="ferm-field"><label>Fermentation</label>
+          <input type="number" min="1" value="${f.dureeFerm}" oninput="updateFerm('${f.id}','dureeFerm',this.value)" /></div>
+        <div class="ferm-field"><label>Garde</label>
+          <input type="number" min="1" value="${f.dureeGarde}" oninput="updateFerm('${f.id}','dureeGarde',this.value)" /></div>
+        <div class="ferm-field"><label>Dry Hopping</label>
+          <input type="number" min="0" value="${f.dureeDH}" oninput="updateFerm('${f.id}','dureeDH',this.value)" /></div>
         <div class="ferm-section-title" style="grid-column:1/-1">Dates de début</div>
-        <div class="ferm-field">
-          <label>Début fermentation</label>
-          <input type="date" value="${ph.fermentation.debut || ''}"
-            oninput="updateFermPhaseDebut('${f.id}','fermentation',this.value)" />
-        </div>
-        <div class="ferm-field">
-          <label>Début garde</label>
-          <input type="date" value="${ph.garde.debut || ''}"
-            oninput="updateFermPhaseDebut('${f.id}','garde',this.value)" />
-        </div>
-        <div class="ferm-field">
-          <label>Début DH</label>
-          <input type="date" value="${ph.dh.debut || ''}"
-            oninput="updateFermPhaseDebut('${f.id}','dh',this.value)" />
-        </div>
+        <div class="ferm-field"><label>Début fermentation</label>
+          <input type="date" value="${ph.fermentation.debut || ''}" oninput="updateFermPhaseDebut('${f.id}','fermentation',this.value)" /></div>
+        <div class="ferm-field"><label>Début garde</label>
+          <input type="date" value="${ph.garde.debut || ''}" oninput="updateFermPhaseDebut('${f.id}','garde',this.value)" /></div>
+        <div class="ferm-field"><label>Début DH</label>
+          <input type="date" value="${ph.dh.debut || ''}" oninput="updateFermPhaseDebut('${f.id}','dh',this.value)" /></div>
       </div>
-      <button class="ferm-save-btn" onclick="closeFermEdit('${f.id}')">✓ Valider</button>
+      <button class="ferm-save-btn" onclick="event.stopPropagation();closeFermEdit('${f.id}')">✓ Valider</button>
     </div>`;
 
+    const expanded = expandedFerm === f.id;
+
     el.insertAdjacentHTML('beforeend', `
-    <div class="ferm-card" id="card-${f.id}">
-      <div class="ferm-header" style="position:relative;align-items:center">
-        <div style="flex:0 0 auto">${badgesHtml}</div>
-        <div style="position:absolute;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none">
-          <div class="ferm-id">Cuve ${f.id}</div>
-          <div class="ferm-name">${f.beer || '— Disponible —'}</div>
-          ${f.brewNum ? `<div style="font-size:11px;font-family:monospace;color:var(--amber-lt);margin-top:2px">${f.brewNum}</div>` : ''}
-        </div>
-        <button class="ferm-toggle-btn" onclick="toggleFermEdit('${f.id}')" style="flex:0 0 auto;margin-left:auto">
-          ${isEditing ? '▲ fermer' : '✏️ modifier'}
-        </button>
-      </div>
-
-      ${anyActive ? `
-      <div class="ferm-grid" style="margin-top:10px">
-        <div class="ferm-stat">
-          <div class="ferm-stat-label">${tempLabel}</div>
-          <div class="ferm-stat-val">${tempAffichee}<span class="ferm-stat-unit">°C</span></div>
-        </div>
-        <div class="ferm-stat">
-          <div class="ferm-stat-label">Volume</div>
-          <div class="ferm-stat-val">${f.vol}<span class="ferm-stat-unit"> L</span></div>
-        </div>
-      </div>` : `<div style="font-size:12px;color:var(--muted);margin-top:8px">500 L · Prête à l'emploi</div>`}
-
-      ${progressHtml}
-
-      <div class="ferm-phases">
-        <button class="phase-btn ${isIdle?'active-idle':''}"
-          onclick="setPhase('${f.id}','idle')">Libre</button>
-        <button class="phase-btn ${ph.fermentation.active?'active-ferm':''}"
-          onclick="setPhase('${f.id}','fermentation')">Ferm.</button>
-        <button class="phase-btn ${ph.garde.active?'active-garde':''}"
-          onclick="setPhase('${f.id}','garde')">Garde</button>
-        <button class="phase-btn ${ph.dh.active?'active-dh':''}"
-          onclick="setPhase('${f.id}','dh')">DH</button>
-      </div>
-      ${anyActive ? `<button onclick="openEnfutageModal('${f.id}')" style="margin-top:10px;width:100%;background:var(--surface2);border:1px solid var(--amber);border-radius:var(--radius-sm);color:var(--amber);font-size:13px;font-weight:600;padding:9px;cursor:pointer">🛢 Enfûtage / Embouteillage</button>` : ''}
-
-      ${editHtml}
+    <div class="ferm-card ${expanded?'expanded':''}" id="card-${f.id}" onclick="toggleFermExpand('${f.id}')" style="cursor:pointer;text-align:center">
+      <div style="display:flex;justify-content:center">${svg}</div>
+      <div class="ferm-id" style="margin-top:2px">Cuve ${f.id}</div>
+      <div class="ferm-name" style="font-size:12px">${f.beer || '— Disponible —'}</div>
+      ${f.brewNum ? `<div style="font-size:10px;font-family:monospace;color:var(--amber-lt)">${f.brewNum}</div>` : ''}
+      <div style="margin-top:4px"><span class="badge ${phaseKey==='idle'?'idle':phaseKey}" style="font-size:10px">${phaseLabel}</span></div>
+      ${anyActive && dureePhase>0 ? `<div style="margin-top:6px;height:4px;background:var(--surface2);border-radius:2px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${col}"></div></div>` : ''}
+      ${expanded ? detailsHtml + editHtml : `<div style="font-size:10px;color:var(--muted);margin-top:6px">👆 détails</div>`}
     </div>`);
   });
+}
+
+let expandedFerm = null;
+function toggleFermExpand(id) {
+  expandedFerm = expandedFerm === id ? null : id;
+  if (expandedFerm !== id) editingFerm = null;
+  renderFermenters();
 }
 
 function toggleFermEdit(id) {
@@ -11045,7 +11027,7 @@ Object.assign(window, {
   renderSuiviEnfutageLog, deleteSuiviEnfutageLog,
   updateSuiviDens, buildCalculs, plato,
   destockerDH, deleteDhLog, renderSuiviDhLog, refreshEnfutageRecap, buildEnfutageRecap,
-  toggleFermEdit, closeFermEdit, updateFerm, updateFermPhaseDebut, setPhase,
+  toggleFermEdit, closeFermEdit, updateFerm, updateFermPhaseDebut, setPhase, toggleFermExpand,
   changeWeek, changePlanMonth, jumpToWeek, renderPlanningCalendar, openAddTask, openEditTask, closeModal, updateModalFields, saveTask,
   deleteTask,
   changePrevMonth, openOrderModal, closeOrderModal,
