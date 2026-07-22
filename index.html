@@ -772,8 +772,17 @@
       #planning-weeks-grid { grid-template-columns: 1fr 1fr 1fr !important; }
       #week-col-3 { display: block !important; }
 
-      /* Dashboard : cartes moins larges, centrées */
-      #dashboard-content { max-width: 720px; margin: 0 auto; }
+      /* Dashboard : deux cartes côte à côte sur PC */
+      #dashboard-content {
+        max-width: 1100px;
+        margin: 0 auto;
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        align-items: start;
+      }
+      /* Le bandeau d'alerte, le bilan et le graphique prennent toute la largeur */
+      #dashboard-content > .dash-full { grid-column: 1 / -1; }
 
       #app {
         max-width: 100%;
@@ -4925,7 +4934,7 @@ function renderDashboard() {
   const echeance = new Date(now.getFullYear(), currentQ * 3 + 3, 10);
   const joursRestants = Math.ceil((echeance - now) / 86400000);
   const acciseBanner = (joursRestants <= 15)
-    ? `<div style="background:rgba(239,159,39,.12);border:1px solid #EF9F27;border-radius:var(--radius-sm);padding:10px 12px">
+    ? `<div class="dash-full" style="background:rgba(239,159,39,.12);border:1px solid #EF9F27;border-radius:var(--radius-sm);padding:10px 12px">
         <div style="font-size:12px;font-weight:700;color:#EF9F27">🏛️ Échéance accises</div>
         <div style="font-size:12px;color:var(--foam);margin-top:2px">Déclaration du trimestre T${currentQ+1} à faire avant le ${echeance.toLocaleDateString('fr-FR',{day:'numeric',month:'long'})} — dans ${joursRestants} jour${joursRestants>1?'s':''}.</div>
       </div>`
@@ -4968,7 +4977,7 @@ function renderDashboard() {
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">${label}</div>
     </div>`;
   const bilanHtml = `
-    <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
+    <div class="dash-full" style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Bilan ${year}</div>
       <div style="display:flex;gap:8px">
         ${statCell('Brassins', nbBrassinsAnnee)}
@@ -5019,7 +5028,7 @@ function renderDashboard() {
       <text x="${x+barW/2}" y="${chartH-12}" text-anchor="middle" font-size="11" fill="var(--muted)">${moisNoms[m]}</text>`;
   }).join('');
   const chartHtml = `
-    <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
+    <div class="dash-full" style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Production mensuelle ${year} <span style="text-transform:none;font-weight:400">— hL conditionnés (barres) · brassins lancés (chiffre)</span></div>
       <svg viewBox="0 0 ${chartW} ${chartH}" style="width:100%;max-width:520px;height:auto;overflow:visible;display:block;margin:0 auto">
         ${gridLines}
