@@ -1175,6 +1175,9 @@
       <button onclick="switchPage('recettes',this);closeMenu()">
         <span class="nav-icon">📋</span>Recettes
       </button>
+      <button onclick="switchPage('projection',this);closeMenu()">
+        <span class="nav-icon">📊</span>Projection stocks
+      </button>
 
       <div class="nav-group-label">Commercial</div>
       <button onclick="switchPage('prev',this);closeMenu()">
@@ -1358,6 +1361,35 @@
         <button onclick="openRecipeModal(null)" style="background:var(--amber);color:var(--bg);border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">+ Recette</button>
       </div>
       <div style="padding:0 16px 100px" id="recipes-list"></div>
+    </div>
+
+    <!-- ===== PAGE PROJECTION STOCKS ===== -->
+    <div class="page" id="page-projection">
+      <div style="padding:14px 16px 4px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div class="section-title">Projection des stocks</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <label style="font-size:11px;color:var(--muted)">Format</label>
+          <select id="proj-format" onchange="renderProjection()"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;padding:5px 8px;cursor:pointer">
+            <option value="futs">Fûts</option>
+            <option value="cartons">Bouteilles (cartons)</option>
+          </select>
+          <label style="font-size:11px;color:var(--muted);margin-left:6px">Semaines</label>
+          <select id="proj-weeks" onchange="renderProjection()"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;padding:5px 8px;cursor:pointer">
+            <option value="4">4</option>
+            <option value="6" selected>6</option>
+            <option value="8">8</option>
+            <option value="12">12</option>
+          </select>
+        </div>
+      </div>
+      <div style="padding:0 16px 6px;font-size:11px;color:var(--muted)">
+        <span style="color:var(--ok)">■</span> stock projeté fin de semaine ·
+        <span style="color:#7ec87e">+n</span> production attendue (enfûtage planifié) ·
+        <span style="color:var(--amber-lt)">−n</span> besoins (commandes)
+      </div>
+      <div style="padding:0 16px 100px;overflow-x:auto" id="projection-table"></div>
     </div>
 
     <!-- ===== PAGE PARAMÈTRES ===== -->
@@ -3390,6 +3422,7 @@ function renderAll() {
 const PAGE_NAMES = {
   dashboard: 'Dashboard',
   stocks:    'Stocks',
+  projection:'Projection stocks',
   futs:      'Parc de fûts',
   ferm:      'Fermenteurs',
   planning:  'Planning',
@@ -3430,6 +3463,7 @@ function switchPage(page, btn) {
   if (btn) btn.classList.add('active');
   const nameEl = document.getElementById('header-page-name');
   if (nameEl) nameEl.textContent = PAGE_NAMES[page] || page;
+  if (page === 'projection') renderProjection();
 }
 
 function switchSub(group, id) {
@@ -3834,6 +3868,133 @@ function calcProductionEnCours() {
 }
 
 // ─── Détection des ruptures de stock prévues (commandes futures vs stock + production en cours) ───
+// ─── TABLEAU DE PROJECTION DES STOCKS (bière × semaine) ───
+function renderProjection() {
+  const el = document.getElementById('projection-table');
+  if (!el) return;
+
+  const mode    = document.getElementById('proj-format')?.value || 'futs';
+  const nbSem   = parseInt(document.getElementById('proj-weeks')?.value) || 6;
+  const isFuts  = mode === 'futs';
+
+  // Bornes des semaines (lundi → dimanche)
+  const today = new Date(); today.setHours(0,0,0,0);
+  const lundi0 = new Date(today);
+  lundi0.setDate(lundi0.getDate() - ((lundi0.getDay() + 6) % 7));
+  const semaines = [];
+  for (let i = 0; i < nbSem; i++) {
+    const debut = new Date(lundi0); debut.setDate(debut.getDate() + i*7);
+    const fin   = new Date(debut);  fin.setDate(fin.getDate() + 6); fin.setHours(23,59,59,999);
+    semaines.push({ i, debut, fin,
+      label: i === 0 ? 'Cette sem.' : `S+${i}`,
+      sub: `${debut.getDate()}/${debut.getMonth()+1}` });
+  }
+
+  // 1) Stock physique actuel par bière
+  const stock = {};
+  Object.values(produitsData).forEach(p => {
+    if (!p.biere) return;
+    if (!stock[p.biere]) stock[p.biere] = 0;
+    if (isFuts && ['fut30inox','fut30kk','fut30kktp','fut20'].includes(p.format)) stock[p.biere] += (p.qty||0);
+    if (!isFuts && (p.format === 'btl33' || p.format === 'btl75'))                stock[p.biere] += (p.qty||0);
+  });
+
+  // 2) Besoins par bière et par semaine (commandes futures non clôturées)
+  const besoins = {};
+  Object.entries(ordersData).forEach(([dk, raw]) => {
+    const d = new Date(dk + 'T12:00:00');
+    if (isNaN(d)) return;
+    const list = Array.isArray(raw) ? raw : Object.values(raw || {});
+    list.map(migrateOrder).filter(o => !o._cloture).forEach(o => {
+      o.lines.forEach(l => {
+        if (!l.beer) return;
+        const q = isFuts
+          ? (parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0)
+          : (parseInt(l.cartons)||0);
+        if (q <= 0) return;
+        const sem = semaines.find(s => d >= s.debut && d <= s.fin);
+        if (!sem) return; // hors de la fenêtre affichée
+        if (!besoins[l.beer]) besoins[l.beer] = {};
+        besoins[l.beer][sem.i] = (besoins[l.beer][sem.i] || 0) + q;
+      });
+    });
+  });
+
+  // 3) Production attendue : tâches "Enfûtage" du planning, converties en fûts/cartons
+  const prod = {};
+  if (isFuts) {
+    Object.entries(planningData).forEach(([dk, tasks]) => {
+      const d = new Date(dk + 'T12:00:00');
+      if (isNaN(d)) return;
+      const sem = semaines.find(s => d >= s.debut && d <= s.fin);
+      if (!sem) return;
+      (tasks||[]).forEach(t => {
+        if (t.type !== 'enfutage' || !t.beer) return;
+        // Volume du brassin lié si connu, sinon 500 L par défaut
+        let volume = 500;
+        const b = t.brewNum
+          ? Object.values(historiqueData).find(x => x.brewNum === t.brewNum)
+          : (t.fermId ? Object.values(historiqueData).find(x => x.cuve === t.fermId && ['fermentation','garde','dh'].includes(x.statut)) : null);
+        if (b && b.volume) volume = b.volume;
+        const futs = Math.floor(volume / 30);
+        if (!prod[t.beer]) prod[t.beer] = {};
+        prod[t.beer][sem.i] = (prod[t.beer][sem.i] || 0) + futs;
+      });
+    });
+  }
+
+  // Liste des bières à afficher (celles qui ont du stock, des besoins ou de la production)
+  const bieresSet = new Set([...Object.keys(stock), ...Object.keys(besoins), ...Object.keys(prod)]);
+  const ordrePrio = ['Super Nièvre', "Amarillo'Yo", 'Nouvelle Vague', 'Enfant Terrible'];
+  const rang = n => { const i = ordrePrio.findIndex(o => normBeerName(o) === normBeerName(n)); return i === -1 ? 999 : i; };
+  const bieres = [...bieresSet].sort((a,b) => (rang(a)-rang(b)) || a.localeCompare(b));
+
+  if (!bieres.length) {
+    el.innerHTML = '<div style="text-align:center;padding:30px 0;color:var(--muted);font-size:13px">Aucune donnée à projeter</div>';
+    return;
+  }
+
+  const unite = isFuts ? 'fûts' : 'cartons';
+  let html = `<table style="width:100%;border-collapse:collapse;min-width:${140 + nbSem*92}px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:8px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);border-bottom:2px solid var(--border);position:sticky;left:0;background:var(--bg);min-width:130px">Bière</th>
+        ${semaines.map(s => `<th style="padding:8px 4px;font-size:11px;color:${s.i===0?'var(--amber-lt)':'var(--muted)'};border-bottom:2px solid var(--border);text-align:center;min-width:88px">
+          ${s.label}<div style="font-size:9px;font-weight:400;color:var(--muted)">${s.sub}</div></th>`).join('')}
+      </tr>
+    </thead><tbody>`;
+
+  bieres.forEach(biere => {
+    let courant = stock[biere] || 0;
+    html += `<tr>
+      <td style="padding:8px 6px;font-size:13px;font-weight:600;color:#fff;border-bottom:1px solid var(--border);position:sticky;left:0;background:var(--bg)">
+        ${esc(biere)}
+        <div style="font-size:10px;color:var(--muted);font-weight:400">stock: ${stock[biere]||0} ${unite}</div>
+      </td>`;
+
+    semaines.forEach(s => {
+      const p = (prod[biere]?.[s.i]) || 0;
+      const b = (besoins[biere]?.[s.i]) || 0;
+      courant = courant + p - b;
+      const col = courant < 0 ? 'var(--danger)' : courant === 0 ? '#c08a20' : 'var(--ok)';
+      html += `<td style="padding:6px 4px;text-align:center;border-bottom:1px solid var(--border);${courant<0?'background:rgba(192,57,27,.08)':''}">
+        <div style="font-size:15px;font-weight:700;color:${col}">${courant}</div>
+        <div style="font-size:10px;line-height:1.35">
+          ${p ? `<span style="color:#7ec87e">+${p}</span>` : ''}${p&&b?' ':''}${b ? `<span style="color:var(--amber-lt)">−${b}</span>` : ''}
+          ${!p && !b ? '<span style="color:var(--muted)">—</span>' : ''}
+        </div>
+      </td>`;
+    });
+    html += `</tr>`;
+  });
+
+  html += `</tbody></table>`;
+  if (!isFuts) {
+    html += `<div style="font-size:11px;color:var(--muted);margin-top:10px">ℹ️ La production attendue n'est estimée que pour les fûts (le format d'embouteillage n'est pas connu avant le conditionnement).</div>`;
+  }
+  el.innerHTML = html;
+}
+
 function calcRupturesPrevues() {
   const today = new Date(); today.setHours(0,0,0,0);
   const production = calcProductionEnCours();
@@ -11238,7 +11399,7 @@ function closeConfirmCreation() {
 
 
 Object.assign(window, {
-  switchPage, switchSub, switchMpCat, renderDashboard, renderFutsPage,
+  switchPage, switchSub, switchMpCat, renderDashboard, renderFutsPage, renderProjection,
   openBeerClientsModal, closeBeerClientsModal, goToCommandesForBeer,
   openPastOrdersModal, closePastOrdersModal,
   toggleOrderStockPanel, renderOrderStockPanel,
