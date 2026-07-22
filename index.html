@@ -1893,6 +1893,28 @@
   </div>
 </div>
 
+<!-- ===== MODAL RETOUR DE FÛTS (consignation / reprise) ===== -->
+<div id="retour-bl-modal" class="modal-overlay" onclick="if(event.target===this)closeRetourBlModal()">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-header">
+      <div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Reprise — fûts non consommés</div>
+        <div id="retour-bl-ref" style="font-size:15px;font-weight:700;color:var(--foam);margin-top:2px"></div>
+      </div>
+      <button onclick="closeRetourBlModal()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">
+      Saisissez les quantités <b>retournées</b> par le client. Elles seront déduites du BL (ligne de retour),
+      remises en stock produits, et les fûts vides Inox réintégrés au parc.
+    </div>
+    <div id="retour-bl-lines"></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button onclick="closeRetourBlModal()" style="flex:1;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:13px;padding:10px;cursor:pointer">Annuler</button>
+      <button onclick="saveRetourBl()" style="flex:2;background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:13px;font-weight:700;padding:10px;cursor:pointer">✓ Enregistrer le retour</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MODAL SIGNATURE ===== -->
 <div id="signature-modal" style="display:none;position:fixed;inset:0;background:#0f0c07;z-index:500;flex-direction:column">
   <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
@@ -2475,11 +2497,19 @@
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px"
            id="order-form-title">Nouveau bon de commande</div>
 
-      <div class="modal-field">
-        <label>Date</label>
-        <input id="order-date" type="date"
-          onclick="this.showPicker&&this.showPicker()"
-          style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;width:100%;cursor:pointer"/>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="modal-field">
+          <label>Date de livraison</label>
+          <input id="order-date" type="date"
+            onclick="this.showPicker&&this.showPicker()"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;width:100%;cursor:pointer"/>
+        </div>
+        <div class="modal-field">
+          <label>Date de reprise <span style="font-weight:400;color:var(--muted)">(option.)</span></label>
+          <input id="order-date-reprise" type="date"
+            onclick="this.showPicker&&this.showPicker()"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;width:100%;cursor:pointer"/>
+        </div>
       </div>
 
       <div class="modal-field">
@@ -7900,6 +7930,7 @@ function openPastOrdersModal(key) {
     <div style="padding:8px 0;border-bottom:1px solid var(--border)">
       <div style="font-size:13px;font-weight:600;color:var(--foam)">${esc(o.client)||'—'}${cloture}</div>
       ${lines}
+      ${o.dateReprise?`<div style="font-size:11px;color:var(--amber-lt);margin-top:2px">↩ Reprise le ${new Date(o.dateReprise+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})}</div>`:''}
       ${o.note?`<div style="font-size:11px;color:var(--muted);font-style:italic;margin-top:2px">📝 ${esc(o.note)}</div>`:''}
     </div>`;
   }).join('');
@@ -8297,6 +8328,7 @@ function openOrderModal(key) {
   document.getElementById('order-modal-date').textContent =
     d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
   document.getElementById('order-date').value   = key;
+  document.getElementById('order-date-reprise').value = '';
   document.getElementById('order-client').value = '';
   document.getElementById('order-client').style.display = '';
   document.getElementById('order-note').value   = '';
@@ -8371,6 +8403,7 @@ function renderOrderList(key) {
         </div>
       </div>
       ${linesHtml}
+      ${o.dateReprise ? `<div style="font-size:12px;color:var(--amber-lt);margin-top:6px">↩ Reprise prévue le ${new Date(o.dateReprise+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'long'})}</div>` : ''}
       ${o.note ? `<div style="font-size:12px;color:var(--text-dim);font-style:italic;margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">📝 ${esc(o.note)}</div>` : ''}
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
         <button onclick="event.stopPropagation();creerBlDepuisCommande('${key}','${o.id}')"
@@ -8561,6 +8594,7 @@ function editOrderForm(key, id) {
   if (!o) return;
   editOrderId = id;
   document.getElementById('order-date').value   = key;
+  document.getElementById('order-date-reprise').value = o.dateReprise || '';
   document.getElementById('order-note').value   = o.note || '';
   document.getElementById('order-form-title').textContent = '✏️ Modifier — ' + (o.client||'');
   document.getElementById('order-save-btn').textContent = '✓ Mettre à jour';
@@ -8610,6 +8644,7 @@ function saveOrder() {
   const newKey = document.getElementById('order-date').value || oldKey;
   const client = document.getElementById('order-client').value.trim();
   const note   = document.getElementById('order-note').value.trim();
+  const dateReprise = document.getElementById('order-date-reprise').value || '';
   const lines  = draftLines.filter(l => l.beer && ((l.fut30inox||0)+(l.fut30kk||0)+(l.fut30kktp||0)+(l.fut20||0)+l.cartons||l.tireuse));
   if (!client) { showToast('Renseignez le nom du client'); return; }
 
@@ -8620,18 +8655,19 @@ function saveOrder() {
     if (!ordersData[oldKey].length) delete ordersData[oldKey];
     // Ajouter à la nouvelle date
     if (!ordersData[newKey]) ordersData[newKey] = [];
-    ordersData[newKey].push({ id: editOrderId, client, note, lines });
+    ordersData[newKey].push({ id: editOrderId, client, note, lines, dateReprise });
     // Si la date a changé, mettre à jour la modal
     if (newKey !== oldKey) orderModalKey = newKey;
   } else {
     if (!ordersData[newKey]) ordersData[newKey] = [];
-    ordersData[newKey].push({ id: Date.now().toString(36), client, note, lines });
+    ordersData[newKey].push({ id: Date.now().toString(36), client, note, lines, dateReprise });
   }
 
   saveOrders();
   editOrderId = null;
   draftLines  = [{ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, tireuse:0, prixFut30inox:0, prixFut30kk:0, prixFut30kktp:0, prixFut20:0, prixCarton:0, prixTireuse:0 }];
   document.getElementById('order-date').value   = newKey;
+  document.getElementById('order-date-reprise').value = '';
   document.getElementById('order-client').value = '';
   document.getElementById('order-note').value   = '';
   document.getElementById('order-form-title').textContent = 'Nouveau bon de commande';
@@ -10188,6 +10224,7 @@ function renderBl() {
           ✍️ Faire signer
         </button>` : ''}
         <button onclick="openBlView('${b.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:4px 10px;cursor:pointer">👁 Voir</button>
+        <button onclick="openRetourBlModal('${b.id}')" style="background:none;border:1px solid rgba(200,128,10,.4);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:11px;padding:4px 10px;cursor:pointer">↩ Retour fûts</button>
         ${!signe ? `<button onclick="openBlModal('${b.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:4px 10px;cursor:pointer">✏️</button>` : ''}
         ${signe ? `<button onclick="envoyerBlMail('${b.id}')" style="background:none;border:1px solid rgba(100,160,220,.4);border-radius:var(--radius-sm);color:#7ab4e8;font-size:11px;padding:4px 10px;cursor:pointer">📧 Email</button>` : ''}
         <button onclick="deleteBl('${b.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:4px 10px;cursor:pointer">×</button>
@@ -10374,6 +10411,106 @@ function updateStockFromBl(client, lines, delta) {
 // Alias pour compatibilité
 function updateFutsInoxFromBl(client, lines, delta) {
   updateStockFromBl(client, lines, delta);
+}
+
+// ===== RETOUR DE FÛTS (reprise / consignation) =====
+let retourBlId = null;
+let retourLines = []; // [{ designation, livre, retour, fmt }]
+
+function openRetourBlModal(id) {
+  const b = blData[id];
+  if (!b) return;
+  retourBlId = id;
+  document.getElementById('retour-bl-ref').textContent = `${b.ref || ''} · ${b.client || ''}`;
+
+  // Quantités déjà retournées (lignes négatives existantes)
+  const dejaRetourne = {};
+  (b.lines||[]).forEach(l => {
+    const q = parseInt(l.qte) || 0;
+    if (q < 0) {
+      const d = (l.designation||'').replace(/^Retour — /, '');
+      dejaRetourne[d] = (dejaRetourne[d] || 0) + Math.abs(q);
+    }
+  });
+
+  // Lignes livrées (positives) qu'on peut reprendre
+  retourLines = (b.lines||[])
+    .filter(l => (parseInt(l.qte)||0) > 0)
+    .map(l => ({
+      designation: l.designation || '',
+      livre: parseInt(l.qte) || 0,
+      dejaRendu: dejaRetourne[l.designation] || 0,
+      retour: 0,
+      unite: l.unite || 'fût',
+      lotRef: l.lotRef || '',
+    }));
+
+  renderRetourLines();
+  document.getElementById('retour-bl-modal').classList.add('open');
+}
+
+function renderRetourLines() {
+  const el = document.getElementById('retour-bl-lines');
+  if (!retourLines.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px 0;text-align:center">Aucun article à reprendre sur ce BL</div>';
+    return;
+  }
+  el.innerHTML = retourLines.map((l, i) => {
+    const dispo = l.livre - l.dejaRendu;
+    return `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;color:var(--foam);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.designation)}</div>
+        <div style="font-size:10px;color:var(--muted)">Livré : ${l.livre}${l.dejaRendu?` · déjà repris : ${l.dejaRendu}`:''} · reprenable : ${dispo}</div>
+      </div>
+      <input type="number" min="0" max="${dispo}" value="${l.retour||''}" placeholder="0"
+        onchange="updateRetourLine(${i}, this.value)"
+        style="width:58px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:700;padding:6px;text-align:center"/>
+      <span style="font-size:11px;color:var(--muted);width:26px">${l.unite}</span>
+    </div>`;
+  }).join('');
+}
+
+function updateRetourLine(i, val) {
+  if (!retourLines[i]) return;
+  const dispo = retourLines[i].livre - retourLines[i].dejaRendu;
+  retourLines[i].retour = Math.max(0, Math.min(dispo, parseInt(val) || 0));
+  renderRetourLines();
+}
+
+function saveRetourBl() {
+  const b = blData[retourBlId];
+  if (!b) { closeRetourBlModal(); return; }
+  const aRendre = retourLines.filter(l => l.retour > 0);
+  if (!aRendre.length) { showToast('Aucune quantité de retour saisie', true); return; }
+
+  const today = new Date().toISOString().split('T')[0];
+  // 1) Ajouter les lignes de retour (quantités négatives) au BL
+  const nouvellesLignes = aRendre.map(l => ({
+    designation: `Retour — ${l.designation}`,
+    qte: -l.retour,
+    unite: l.unite,
+    lotRef: l.lotRef || '',
+    retourDate: today,
+  }));
+  b.lines = [...(b.lines||[]), ...nouvellesLignes];
+  blData[retourBlId] = b;
+  saveBl1(retourBlId, b);
+
+  // 2) Remettre en stock produits (réutilise la logique d'annulation : delta < 0)
+  const lignesPourStock = aRendre.map(l => ({ designation: l.designation, qte: l.retour, unite: l.unite }));
+  updateStockFromBl(b.client, lignesPourStock, -1);
+
+  const totalRendu = aRendre.reduce((s,l) => s + l.retour, 0);
+  closeRetourBlModal();
+  renderBl();
+  showToast(`✅ Retour enregistré : ${totalRendu} article${totalRendu>1?'s':''} remis en stock`);
+}
+
+function closeRetourBlModal() {
+  document.getElementById('retour-bl-modal').classList.remove('open');
+  retourBlId = null;
+  retourLines = [];
 }
 
 function saveBl() {
@@ -11104,6 +11241,7 @@ Object.assign(window, {
   updateDaeLine, prefillDaeClient, setDaeFilter, clotureDae, deleteDae,
   openDaeView, closeDaeViewModal, printDae,
   openBlModal, closeBlModal, saveBl, addBlLine, removeBlLine, updateBlLine,
+  openRetourBlModal, closeRetourBlModal, saveRetourBl, updateRetourLine,
   prefillBlClient, setBlFilter, deleteBl, envoyerBlMail,
   openSignatureModal, closeSignatureModal, clearSignature, validerSignature,
   openBlView, closeBlViewModal, printBl, exportBlPdf, exportFacturePdf, exportHtmlToPdf,
