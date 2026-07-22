@@ -2310,6 +2310,21 @@
       </div>
     </div>
 
+    <!-- Fermentation -->
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#4caf72;margin:14px 0 8px">🧫 Fermentation</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="modal-field">
+        <label>T° mise en levure (°C)</label>
+        <input id="recipe-temp-levure" type="number" min="0" max="40" step="0.5" placeholder="ex: 20"
+          style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;width:100%"/>
+      </div>
+      <div class="modal-field">
+        <label>T° fermentation (°C)</label>
+        <input id="recipe-temp-fermentation" type="number" min="0" max="40" step="0.5" placeholder="ex: 19"
+          style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;width:100%"/>
+      </div>
+    </div>
+
     <!-- MALTS -->
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--amber-lt);margin:14px 0 8px">🌾 Malts</div>
     <div id="recipe-malts"></div>
@@ -5194,7 +5209,15 @@ function printFicheSuivi(brassinId) {
   ).join('');
   let recetteHtml = '<p style="color:#888;font-style:italic">Recette introuvable</p>';
   if (rec) {
+    const paramsRec = [
+      rec.tempEmpatage ? `Empâtage : ${rec.tempEmpatage}°C` : '',
+      rec.dureeEmpatage ? `${rec.dureeEmpatage} min` : '',
+      rec.ebullition ? `Ébullition : ${rec.ebullition} min` : '',
+      rec.tempLevure ? `Mise en levure : ${rec.tempLevure}°C` : '',
+      rec.tempFermentation ? `Fermentation : ${rec.tempFermentation}°C` : '',
+    ].filter(Boolean).join(' · ');
     recetteHtml = `
+      ${paramsRec ? `<p style="margin:0 0 8px;font-size:12px;color:#555">${paramsRec}</p>` : ''}
       <table class="tbl">
         <thead><tr><th>Ingrédient</th><th style="text-align:right">Quantité</th><th>Moment / type</th></tr></thead>
         <tbody>
@@ -8789,11 +8812,13 @@ function renderRecipes() {
           ${maltRows  ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--amber-lt);margin-bottom:4px">🌾 Malts</div>${maltRows}` : ''}
 
           <!-- Infos brassage -->
-          ${(r.tempEmpatage||r.dureeEmpatage||r.ebullition) ? `
+          ${(r.tempEmpatage||r.dureeEmpatage||r.ebullition||r.tempLevure||r.tempFermentation) ? `
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 4px">
             ${r.tempEmpatage ? `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#7ab4e8">🌡 ${r.tempEmpatage}°C</span>` : ''}
             ${r.dureeEmpatage ? `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#7ab4e8">⏱ ${r.dureeEmpatage} min empâtage</span>` : ''}
             ${r.ebullition ? `<span style="font-size:11px;background:rgba(200,128,10,.1);border:1px solid rgba(200,128,10,.25);border-radius:4px;padding:2px 8px;color:var(--amber-lt)">🔥 ${r.ebullition} min ébullition</span>` : ''}
+            ${r.tempLevure ? `<span style="font-size:11px;background:rgba(76,175,114,.1);border:1px solid rgba(76,175,114,.25);border-radius:4px;padding:2px 8px;color:#4caf72">🧫 Levurage ${r.tempLevure}°C</span>` : ''}
+            ${r.tempFermentation ? `<span style="font-size:11px;background:rgba(76,175,114,.1);border:1px solid rgba(76,175,114,.25);border-radius:4px;padding:2px 8px;color:#4caf72">🌡 Ferm. ${r.tempFermentation}°C</span>` : ''}
           </div>` : ''}
 
           ${r.notes ? `<div style="margin:8px 0 4px;font-size:12px;color:var(--muted);background:var(--surface2);border-left:2px solid var(--border);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:6px 10px;white-space:pre-wrap">📝 ${r.notes}</div>` : ''}
@@ -8865,6 +8890,8 @@ function openRecipeModal(id) {
   document.getElementById('recipe-ebullition').value    = r ? (r.ebullition||'')   : '';
   document.getElementById('recipe-temp-empatage').value = r ? (r.tempEmpatage||'') : '';
   document.getElementById('recipe-duree-empatage').value= r ? (r.dureeEmpatage||''): '';
+  document.getElementById('recipe-temp-levure').value       = r ? (r.tempLevure||'')       : '';
+  document.getElementById('recipe-temp-fermentation').value = r ? (r.tempFermentation||'') : '';
   document.getElementById('recipe-notes').value          = r ? (r.notes||'')        : '';
   recipeDraftLines = {
     malt:    r ? (r.malts   ||[]).map(l=>({...l})) : [],
@@ -8989,9 +9016,11 @@ function saveRecipe() {
   const ebullition  = parseFloat(document.getElementById('recipe-ebullition').value)     || 0;
   const tempEmpatage = parseFloat(document.getElementById('recipe-temp-empatage').value) || 0;
   const dureeEmpatage= parseFloat(document.getElementById('recipe-duree-empatage').value)|| 0;
+  const tempLevure       = parseFloat(document.getElementById('recipe-temp-levure').value)       || 0;
+  const tempFermentation = parseFloat(document.getElementById('recipe-temp-fermentation').value) || 0;
   const notes        = (document.getElementById('recipe-notes')?.value || '').trim();
   recipesData[id] = {
-    id, name, abv, ebullition, tempEmpatage, dureeEmpatage, notes,
+    id, name, abv, ebullition, tempEmpatage, dureeEmpatage, tempLevure, tempFermentation, notes,
     malts:    recipeDraftLines.malt.map(l=>({...l, qty:parseFloat(l.qty)||0})),
     houblons: recipeDraftLines.houblon.map(l=>({...l, qty:parseFloat(l.qty)||0, moment:l.moment||"75'"})),
     levures:  recipeDraftLines.levure.map(l=>({...l, qty:parseFloat(l.qty)||0})),
