@@ -398,8 +398,8 @@
     /* Stock produits : police agrandie et plus lisible */
     #list-produits .mp-name { font-size: 14px; color: #fff; }
     #list-produits .mp-lot { font-size: 11px; }
-    #list-produits .mp-unit-label { font-size: 12px; }
-    #list-produits .mp-row-qty span:first-child { font-size: 15px !important; }
+    #list-produits .mp-unit-label { font-size: 13px; color: #bbb; }
+    #list-produits .mp-input { font-size: 15px; }
     .mp-lot  { font-size: 10px; color: var(--muted); margin-top: 1px; }
     .mp-bar-wrap {
       height: 3px;
@@ -4011,19 +4011,19 @@ function renderProduits() {
       const libre    = Math.max(0, (p.qty||0) - engFmt);
       const dot = p.qty === 0 ? 'var(--danger)' : libre === 0 ? '#c08a20' : 'var(--ok)';
       const reservedBadge = reserved > 0
-        ? `<span style="font-size:10px;color:var(--muted);background:rgba(120,120,120,.12);border:1px solid rgba(120,120,120,.25);border-radius:3px;padding:1px 5px">🔒 ${reserved} réservé${reserved>1?'s':''}</span>`
+        ? `<span style="font-size:12px;color:var(--muted);background:rgba(120,120,120,.12);border:1px solid rgba(120,120,120,.25);border-radius:3px;padding:1px 6px">🔒 ${reserved} réservé${reserved>1?'s':''}</span>`
         : '';
       return `
       <div class="mp-row" style="${reserved > 0 ? 'background:rgba(120,120,120,.04)' : ''}">
         <div class="mp-row-left">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dot};flex-shrink:0"></span>
-            <span style="font-size:12px;color:var(--text-dim)">${FORMAT_LABELS[p.format]||p.format}</span>
-            <span style="font-size:10px;color:var(--amber-lt);background:rgba(200,128,10,.15);border:1px solid rgba(200,128,10,.25);border-radius:3px;padding:1px 5px;font-family:monospace">${p.lot}</span>
-            ${p.ferm?`<span style="font-size:10px;color:var(--muted)">← ${p.ferm}</span>`:''}
+            <span style="font-size:14px;color:#fff">${FORMAT_LABELS[p.format]||p.format}</span>
+            <span style="font-size:12px;color:var(--amber-lt);background:rgba(200,128,10,.15);border:1px solid rgba(200,128,10,.25);border-radius:3px;padding:1px 6px;font-family:monospace">${p.lot}</span>
+            ${p.ferm?`<span style="font-size:12px;color:var(--muted)">← ${p.ferm}</span>`:''}
             ${reservedBadge}
           </div>
-          ${reserved > 0 ? `<div style="font-size:10px;color:var(--muted);margin-top:3px">Libre : <strong style="color:${libre===0?'#c08a20':'var(--foam)'}">${libre}</strong> · Réservé : <span style="color:rgba(180,180,180,.7)">${reserved}</span></div>` : ''}
+          ${reserved > 0 ? `<div style="font-size:12px;color:var(--muted);margin-top:3px">Libre : <strong style="color:${libre===0?'#c08a20':'#fff'}">${libre}</strong> · Réservé : <span style="color:rgba(180,180,180,.7)">${reserved}</span></div>` : ''}
         </div>
         <div class="mp-row-qty">
           <button class="qty-btn" onclick="adjustProduitQty('${p.id}',-1)" style="width:26px;height:26px;font-size:14px">−</button>
@@ -4045,11 +4045,11 @@ function renderProduits() {
       ? `<span style="color:var(--danger);font-weight:700;margin-left:8px">⚠ stock insuffisant</span>` : '';
 
     const reservationsHtml = (eng.reservations||[]).map(r =>
-      `<div style="font-size:10px;color:rgba(180,180,180,.7);padding:1px 0">🔒 ${r.client} · ${r.date} · ${r.fmts.join(', ')}</div>`
+      `<div style="font-size:12px;color:rgba(200,200,200,.85);padding:2px 0">🔒 ${r.client} · ${r.date} · ${r.fmts.join(', ')}</div>`
     ).join('');
 
     const stockLine = hasEngagement ? `
-    <div style="padding:4px 2px 2px;font-size:11px;color:var(--text-dim)">
+    <div style="padding:4px 2px 2px;font-size:13px;color:#ddd">
       <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:${reservationsHtml?'4px':'0'}">
         ${totalFuts  ? `<span>📦 ${totalFuts} fût${totalFuts>1?'s':''}</span>` : ''}
         ${totalBtl   ? `<span>📦 ${totalBtl} btl</span>` : ''}
@@ -4069,7 +4069,7 @@ function renderProduits() {
       if ((p.qty||0) > 0) byFmt[p.format] = (byFmt[p.format]||0) + (p.qty||0);
     });
     const totalBadges = Object.entries(byFmt)
-      .map(([fmt, qty]) => `<span style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 6px">${qty}×${FORMAT_LABELS[fmt]||fmt}</span>`)
+      .map(([fmt, qty]) => `<span style="font-size:13px;color:#ddd;background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:2px 7px">${qty}×${FORMAT_LABELS[fmt]||fmt}</span>`)
       .join('');
 
     const totalReserve = (eng.futs||0) + (eng.cartons||0);
@@ -4082,7 +4082,7 @@ function renderProduits() {
       .sort(([a],[b]) => parseInt(a)-parseInt(b))
       .map(([wIdx, qty]) => {
         const label = weekLabels[wIdx] || `Sem. +${wIdx}`;
-        return `<span style="font-size:10px;color:rgba(180,180,180,.8)">${label} : <b style="color:rgba(220,180,100,.85)">${qty}</b></span>`;
+        return `<span style="font-size:12px;color:rgba(200,200,200,.85)">${label} : <b style="color:rgba(230,190,110,.95)">${qty}</b></span>`;
       }).join(' · ');
 
     // Production en cours (brassins pas encore enfûtés) pour cette bière
@@ -4095,7 +4095,7 @@ function renderProduits() {
       const tooltip = prod.entries.map(e =>
         `${e.brewNum} (cuve ${e.cuve}, ${e.statut}) — ${e.volume}L${e.dateEnfutage ? ', prêt vers le ' + fmtDateFr(e.dateEnfutage) : ', pas de date planifiée'}`
       ).join(' | ').replace(/"/g, "'");
-      prodHtml = `<div style="font-size:11px;color:#7ec87e;margin-top:2px" title="${tooltip}">🍺 +${prod.volumeTotal}L en cours (≈${Math.floor(prod.volumeTotal/30)} fûts)${readyTxt}</div>`;
+      prodHtml = `<div style="font-size:12px;color:#7ec87e;margin-top:2px" title="${tooltip}">🍺 +${prod.volumeTotal}L en cours (≈${Math.floor(prod.volumeTotal/30)} fûts)${readyTxt}</div>`;
       if (nbSansDate > 0) {
         prodHtml += `<div style="font-size:10px;color:#c08a20;margin-top:2px" title="${tooltip}">⚠️ ${nbSansDate} brassin${nbSansDate>1?'s':''} en cours sans date d'enfûtage planifiée</div>`;
       }
