@@ -1386,7 +1386,7 @@
       </div>
       <div style="padding:0 16px 6px;font-size:11px;color:var(--muted)">
         <span style="color:var(--ok)">■</span> stock projeté fin de semaine ·
-        <span style="color:#7ec87e">+n</span> production attendue (enfûtage planifié) ·
+        <span style="color:#7ec87e">+n</span> production disponible (enfûtage + 1 sem. de refermentation) ·
         <span style="color:var(--amber-lt)">−n</span> besoins (commandes)
       </div>
       <div style="padding:0 16px 100px;overflow-x:auto" id="projection-table"></div>
@@ -3210,6 +3210,7 @@ function initApp() {
     if (_produitsLocalWrite) return;
     produitsData = data || {};
     renderProduits();
+    renderProjection();
     onLoaded();
   });
 
@@ -3304,6 +3305,7 @@ function initApp() {
   fbListen('planning', data => {
     planningData = data || {};
     renderPlanning();
+    renderProjection();
     onLoaded();
   });
 
@@ -3389,6 +3391,7 @@ function initApp() {
     ordersData = data || {};
     renderPrev();
     renderProduits();
+    renderProjection();
     onLoaded();
   });
 }
@@ -3920,14 +3923,19 @@ function renderProjection() {
     });
   });
 
-  // 3) Production attendue : tâches "Enfûtage" du planning, converties en fûts/cartons
+  // 3) Production attendue : tâches "Enfûtage" du planning, converties en fûts.
+  //    Les fûts ne sont disponibles à la vente qu'APRÈS la refermentation en fût (+1 semaine).
   const prod = {};
+  const DELAI_REFERM_JOURS = 7;
   if (isFuts) {
     Object.entries(planningData).forEach(([dk, tasks]) => {
-      const d = new Date(dk + 'T12:00:00');
-      if (isNaN(d)) return;
-      const sem = semaines.find(s => d >= s.debut && d <= s.fin);
-      if (!sem) return;
+      const dEnf = new Date(dk + 'T12:00:00');
+      if (isNaN(dEnf)) return;
+      // Date de disponibilité réelle = enfûtage + 7 jours (refermentation)
+      const dDispo = new Date(dEnf);
+      dDispo.setDate(dDispo.getDate() + DELAI_REFERM_JOURS);
+      const sem = semaines.find(s => dDispo >= s.debut && dDispo <= s.fin);
+      if (!sem) return; // disponibilité hors de la fenêtre affichée
       (tasks||[]).forEach(t => {
         if (t.type !== 'enfutage' || !t.beer) return;
         // Volume du brassin lié si connu, sinon 500 L par défaut
