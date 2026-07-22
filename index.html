@@ -772,6 +772,9 @@
       #planning-weeks-grid { grid-template-columns: 1fr 1fr 1fr !important; }
       #week-col-3 { display: block !important; }
 
+      /* Dashboard : cartes moins larges, centrées */
+      #dashboard-content { max-width: 720px; margin: 0 auto; }
+
       #app {
         max-width: 100%;
         flex-direction: row;
@@ -4909,8 +4912,8 @@ function renderDashboard() {
         if (s.btl75) parts.push(s.btl75 + ' × 75cL');
         const vide = parts.length === 0;
         return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:0.5px solid var(--border)">
-          <span style="font-size:13px;color:var(--foam)">${biere}</span>
-          <span style="font-size:12px;color:${vide?'#E24B4A':'var(--muted)'}">${vide ? 'Stock vide' : parts.join(' · ')}</span>
+          <span style="font-size:13px;color:#fff">${biere}</span>
+          <span style="font-size:12px;color:${vide?'#E24B4A':'#fff'}">${vide ? 'Stock vide' : parts.join(' · ')}</span>
         </div>`;
       }).join('')
     : `<div style="font-size:13px;color:var(--muted);padding:8px 0">Aucun produit en stock</div>`;
