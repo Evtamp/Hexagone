@@ -394,6 +394,12 @@
     .mp-row:last-child { border-bottom: none; }
     .mp-row-left { flex: 1; min-width: 0; }
     .mp-name { font-size: 13px; font-weight: 600; color: var(--foam); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Stock produits : police agrandie et plus lisible */
+    #list-produits .mp-name { font-size: 14px; color: #fff; }
+    #list-produits .mp-lot { font-size: 11px; }
+    #list-produits .mp-unit-label { font-size: 12px; }
+    #list-produits .mp-row-qty span:first-child { font-size: 15px !important; }
     .mp-lot  { font-size: 10px; color: var(--muted); margin-top: 1px; }
     .mp-bar-wrap {
       height: 3px;
@@ -3961,8 +3967,21 @@ function renderProduits() {
     grouped[p.biere].push(p);
   });
 
+  // Ordre d'affichage souhaité (les autres bières suivent, par ordre alphabétique)
+  const ordrePrio = ['Super Nièvre', "Amarillo'Yo", 'Nouvelle Vague', 'Enfant Terrible'];
+  const rangBiere = nom => {
+    const i = ordrePrio.findIndex(o => normBeerName(o) === normBeerName(nom));
+    return i === -1 ? 999 : i;
+  };
+  const bieresOrdonnees = Object.keys(grouped).sort((a, b) => {
+    const ra = rangBiere(a), rb = rangBiere(b);
+    if (ra !== rb) return ra - rb;
+    return a.localeCompare(b);
+  });
+
   let html = '';
-  Object.entries(grouped).forEach(([biere, items]) => {
+  bieresOrdonnees.forEach(biere => {
+    const items = grouped[biere];
     const totalFuts    = items.filter(p=>['fut30inox','fut30kk','fut30kktp','fut20'].includes(p.format)).reduce((s,p)=>s+(p.qty||0),0);
     const totalBtl     = items.filter(p=>p.format==='btl33'||p.format==='btl75').reduce((s,p)=>s+(p.qty||0),0);
     const totalTireuses= items.filter(p=>p.format==='tireuse').reduce((s,p)=>s+(p.qty||0),0);
@@ -4087,16 +4106,16 @@ function renderProduits() {
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px 4px;flex-wrap:wrap;gap:4px">
         <div style="display:flex;align-items:center;gap:6px">
           <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0"></span>
-          <div style="font-size:13px;font-weight:700;color:var(--foam)">${biere}</div>
+          <div style="font-size:15px;font-weight:700;color:#fff">${biere}</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
           <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
             ${totalBadges}
-            <span style="font-size:12px;font-weight:700;color:var(--amber-lt);padding-left:4px">${dispoBrute} total</span>
+            <span style="font-size:14px;font-weight:700;color:var(--amber-lt);padding-left:4px">${dispoBrute} total</span>
           </div>
           ${totalReserve > 0 ? `
           <div onclick="goToCommandesForBeer('${biere.replace(/'/g,"\'")}')" style="cursor:pointer;text-align:right">
-            <div style="font-size:11px;color:rgba(180,180,180,.8);text-decoration:underline;text-underline-offset:2px">🔒 ${totalReserve} réservé${totalReserve>1?'s':''}</div>
+            <div style="font-size:12px;color:rgba(200,200,200,.9);text-decoration:underline;text-underline-offset:2px">🔒 ${totalReserve} réservé${totalReserve>1?'s':''}</div>
             ${weekBadges ? `<div style="margin-top:2px">${weekBadges}</div>` : ''}
           </div>` : ''}
           ${prodHtml}
