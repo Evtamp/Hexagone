@@ -7728,6 +7728,78 @@ function renderPlanning() {
         moveTask(fromKey, toKey, taskId);
       });
     });
+
+    // Drag & drop tactile (mobile) — le DnD HTML5 natif ne répond pas au toucher
+    grid.querySelectorAll('[draggable="true"]').forEach(el => {
+      const taskId  = el.dataset.taskId;
+      const fromKey = el.dataset.fromKey;
+      let clone = null, startX = 0, startY = 0, pressTimer = null, dragging = false;
+
+      const cleanup = () => {
+        clearTimeout(pressTimer);
+        if (clone) { clone.remove(); clone = null; }
+        el.style.opacity = '';
+        dragging = false;
+        document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
+      };
+
+      el.addEventListener('touchstart', e => {
+        if (e.touches.length !== 1) return;
+        const t = e.touches[0];
+        startX = t.clientX; startY = t.clientY;
+        pressTimer = setTimeout(() => {
+          dragging = true;
+          el.style.opacity = '.4';
+          const rect = el.getBoundingClientRect();
+          clone = el.cloneNode(true);
+          clone.style.position = 'fixed';
+          clone.style.left = rect.left + 'px';
+          clone.style.top = rect.top + 'px';
+          clone.style.width = rect.width + 'px';
+          clone.style.pointerEvents = 'none';
+          clone.style.zIndex = '9999';
+          clone.style.opacity = '.92';
+          clone.style.boxShadow = '0 6px 16px rgba(0,0,0,.4)';
+          document.body.appendChild(clone);
+          if (navigator.vibrate) navigator.vibrate(15);
+        }, 280);
+      }, { passive: true });
+
+      el.addEventListener('touchmove', e => {
+        const t = e.touches[0];
+        if (!dragging) {
+          if (Math.abs(t.clientX - startX) > 10 || Math.abs(t.clientY - startY) > 10) {
+            clearTimeout(pressTimer);
+          }
+          return;
+        }
+        e.preventDefault();
+        clone.style.left = (t.clientX - clone.offsetWidth / 2) + 'px';
+        clone.style.top  = (t.clientY - 20) + 'px';
+        clone.style.display = 'none';
+        const under = document.elementFromPoint(t.clientX, t.clientY);
+        clone.style.display = '';
+        document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
+        const zone = under && under.closest('.drop-zone');
+        if (zone) zone.classList.add('drag-over');
+      }, { passive: false });
+
+      el.addEventListener('touchend', e => {
+        clearTimeout(pressTimer);
+        if (!dragging) return;
+        const t = e.changedTouches[0];
+        clone.style.display = 'none';
+        const under = document.elementFromPoint(t.clientX, t.clientY);
+        const zone = under && under.closest('.drop-zone');
+        cleanup();
+        if (zone) {
+          const toKey = zone.dataset.key;
+          if (toKey && toKey !== fromKey) moveTask(fromKey, toKey, taskId);
+        }
+      });
+
+      el.addEventListener('touchcancel', cleanup);
+    });
   };
 
   // Semaine 1 (courante) + Semaine 2 (suivante)
