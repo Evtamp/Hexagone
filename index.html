@@ -7680,7 +7680,7 @@ function renderPlanning() {
             return `<div class="day-task"
               data-task-id="${t.id}" data-from-key="${key}"
               style="display:flex;align-items:center;justify-content:space-between;gap:4px">
-              <span class="day-task-handle" style="font-size:14px;color:var(--border);flex-shrink:0;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;padding:4px 6px;margin:-4px -6px -4px 0">⠿</span>
+              <span class="day-task-handle" style="flex-shrink:0;align-self:stretch;display:flex;align-items:center;justify-content:center;width:30px;font-size:17px;color:var(--border);cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;margin-left:-4px">⠿</span>
               <div onclick="openEditTask('${key}','${t.id}')" style="display:flex;align-items:center;gap:4px;min-width:0;flex:1;cursor:pointer">
                 <span class="day-task-cat" style="background:${tt.color}22;color:${tt.color};flex-shrink:0;font-size:10px;padding:1px 4px">${tt.icon} ${tt.label}</span>
                 <span style="font-size:11px;color:var(--text-dim);overflow-wrap:anywhere;word-break:normal">${taskDetail(t)}</span>
@@ -7955,6 +7955,10 @@ function saveTask() {
   const note = (document.getElementById('modal-note')?.value || '').trim();
   const task = { id: editingTaskId || Date.now().toString(36), type, beer, fermId, eventName, brewNum, note };
   if (type === 'brassin') { task.dureeFerm = dureeFerm; task.dureeGarde = dureeGarde; }
+  if (editingTaskId) {
+    const prevTask = (planningData[modalDateKey] || []).find(t => t.id === editingTaskId);
+    if (prevTask?.brassinId) task.brassinId = prevTask.brassinId;
+  }
 
   if (!planningData[modalDateKey]) planningData[modalDateKey] = [];
 
