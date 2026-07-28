@@ -2619,6 +2619,12 @@
     </div>
 
     <div class="modal-field">
+      <label>Date</label>
+      <input id="modal-move-date" type="date"
+        style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:9px 12px;width:100%"/>
+    </div>
+
+    <div class="modal-field">
       <label>Type de tâche</label>
       <select id="modal-type" onchange="updateModalFields()">
         <option value="brassin">🍺 Brassin</option>
@@ -7671,10 +7677,10 @@ function renderPlanning() {
       const tasksHtml = tasks.length
         ? tasks.map(t => {
             const tt = TASK_TYPES[t.type] || { label:t.type, icon:'•', color:'var(--muted)' };
-            return `<div class="day-task" draggable="true"
+            return `<div class="day-task"
               data-task-id="${t.id}" data-from-key="${key}"
-              style="display:flex;align-items:center;justify-content:space-between;gap:4px;cursor:grab">
-              <span style="font-size:14px;color:var(--border);flex-shrink:0;cursor:grab">⠿</span>
+              style="display:flex;align-items:center;justify-content:space-between;gap:4px">
+              <span class="day-task-handle" style="font-size:14px;color:var(--border);flex-shrink:0;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;padding:4px 6px;margin:-4px -6px -4px 0">⠿</span>
               <div onclick="openEditTask('${key}','${t.id}')" style="display:flex;align-items:center;gap:4px;min-width:0;flex:1;cursor:pointer">
                 <span class="day-task-cat" style="background:${tt.color}22;color:${tt.color};flex-shrink:0;font-size:10px;padding:1px 4px">${tt.icon} ${tt.label}</span>
                 <span style="font-size:11px;color:var(--text-dim);overflow-wrap:anywhere;word-break:normal">${taskDetail(t)}</span>
@@ -7695,110 +7701,76 @@ function renderPlanning() {
       </div>`);
     }
 
-    // Drag & drop
-    grid.querySelectorAll('[draggable="true"]').forEach(el => {
-      el.addEventListener('dragstart', e => {
-        e.dataTransfer.setData('taskId',  el.dataset.taskId);
-        e.dataTransfer.setData('fromKey', el.dataset.fromKey);
-        e.dataTransfer.effectAllowed = 'move';
-        setTimeout(() => el.style.opacity = '.4', 0);
-      });
-      el.addEventListener('dragend', e => {
-        el.style.opacity = '';
-        document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
-      });
-    });
-    grid.querySelectorAll('.drop-zone').forEach(zone => {
-      zone.addEventListener('dragover', e => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
-        zone.classList.add('drag-over');
-      });
-      zone.addEventListener('dragleave', e => {
-        if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
-      });
-      zone.addEventListener('drop', e => {
-        e.preventDefault();
-        zone.classList.remove('drag-over');
-        const taskId  = e.dataTransfer.getData('taskId');
-        const fromKey = e.dataTransfer.getData('fromKey');
-        const toKey   = zone.dataset.key;
-        if (!taskId || fromKey === toKey) return;
-        moveTask(fromKey, toKey, taskId);
-      });
-    });
-
-    // Drag & drop tactile (mobile) — le DnD HTML5 natif ne répond pas au toucher
-    grid.querySelectorAll('[draggable="true"]').forEach(el => {
+    // Glisser-déposer (souris + tactile unifiés via Pointer Events, déclenché depuis la poignée ⠿)
+    grid.querySelectorAll('.day-task').forEach(el => {
+      const handle  = el.querySelector('.day-task-handle');
+      if (!handle) return;
       const taskId  = el.dataset.taskId;
       const fromKey = el.dataset.fromKey;
-      let clone = null, startX = 0, startY = 0, pressTimer = null, dragging = false;
+      let clone = null;
 
-      const cleanup = () => {
-        clearTimeout(pressTimer);
-        if (clone) { clone.remove(); clone = null; }
-        el.style.opacity = '';
-        dragging = false;
-        document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
-      };
+      const clearZones = () => document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
 
-      el.addEventListener('touchstart', e => {
-        if (e.touches.length !== 1) return;
-        const t = e.touches[0];
-        startX = t.clientX; startY = t.clientY;
-        pressTimer = setTimeout(() => {
-          dragging = true;
-          el.style.opacity = '.4';
-          const rect = el.getBoundingClientRect();
-          clone = el.cloneNode(true);
-          clone.style.position = 'fixed';
-          clone.style.left = rect.left + 'px';
-          clone.style.top = rect.top + 'px';
-          clone.style.width = rect.width + 'px';
-          clone.style.pointerEvents = 'none';
-          clone.style.zIndex = '9999';
-          clone.style.opacity = '.92';
-          clone.style.boxShadow = '0 6px 16px rgba(0,0,0,.4)';
-          document.body.appendChild(clone);
-          if (navigator.vibrate) navigator.vibrate(15);
-        }, 280);
-      }, { passive: true });
-
-      el.addEventListener('touchmove', e => {
-        const t = e.touches[0];
-        if (!dragging) {
-          if (Math.abs(t.clientX - startX) > 10 || Math.abs(t.clientY - startY) > 10) {
-            clearTimeout(pressTimer);
-          }
-          return;
-        }
+      const onMove = e => {
         e.preventDefault();
-        clone.style.left = (t.clientX - clone.offsetWidth / 2) + 'px';
-        clone.style.top  = (t.clientY - 20) + 'px';
+        clone.style.left = (e.clientX - clone.offsetWidth / 2) + 'px';
+        clone.style.top  = (e.clientY - 20) + 'px';
         clone.style.display = 'none';
-        const under = document.elementFromPoint(t.clientX, t.clientY);
+        const under = document.elementFromPoint(e.clientX, e.clientY);
         clone.style.display = '';
-        document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
+        clearZones();
         const zone = under && under.closest('.drop-zone');
         if (zone) zone.classList.add('drag-over');
-      }, { passive: false });
+      };
 
-      el.addEventListener('touchend', e => {
-        clearTimeout(pressTimer);
-        if (!dragging) return;
-        const t = e.changedTouches[0];
+      const onUp = e => {
+        handle.releasePointerCapture(e.pointerId);
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onCancel);
         clone.style.display = 'none';
-        const under = document.elementFromPoint(t.clientX, t.clientY);
+        const under = document.elementFromPoint(e.clientX, e.clientY);
+        clone.remove(); clone = null;
+        el.style.opacity = '';
+        clearZones();
         const zone = under && under.closest('.drop-zone');
-        cleanup();
         if (zone) {
           const toKey = zone.dataset.key;
           if (toKey && toKey !== fromKey) moveTask(fromKey, toKey, taskId);
         }
-      });
+      };
 
-      el.addEventListener('touchcancel', cleanup);
+      const onCancel = () => {
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onCancel);
+        if (clone) { clone.remove(); clone = null; }
+        el.style.opacity = '';
+        clearZones();
+      };
+
+      handle.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        handle.setPointerCapture(e.pointerId);
+        el.style.opacity = '.4';
+        const rect = el.getBoundingClientRect();
+        clone = el.cloneNode(true);
+        clone.style.position = 'fixed';
+        clone.style.left = rect.left + 'px';
+        clone.style.top = rect.top + 'px';
+        clone.style.width = rect.width + 'px';
+        clone.style.pointerEvents = 'none';
+        clone.style.zIndex = '9999';
+        clone.style.opacity = '.92';
+        clone.style.boxShadow = '0 6px 16px rgba(0,0,0,.4)';
+        clone.style.background = 'var(--surface2)';
+        clone.style.borderRadius = 'var(--radius-sm)';
+        document.body.appendChild(clone);
+        if (navigator.vibrate) navigator.vibrate(15);
+        handle.addEventListener('pointermove', onMove);
+        handle.addEventListener('pointerup', onUp);
+        handle.addEventListener('pointercancel', onCancel);
+      });
     });
   };
 
@@ -7892,6 +7864,7 @@ function openAddTask(key) {
   const d = new Date(key + 'T12:00:00');
   document.getElementById('modal-date').textContent =
     d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
+  document.getElementById('modal-move-date').value = key;
   document.getElementById('task-modal-title').textContent = 'Nouvelle tâche';
   document.getElementById('modal-note').value = '';
   document.getElementById('task-save-btn').textContent = '✓ Ajouter';
@@ -7918,6 +7891,7 @@ function openEditTask(key, taskId) {
   const d = new Date(key + 'T12:00:00');
   document.getElementById('modal-date').textContent =
     d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
+  document.getElementById('modal-move-date').value = key;
   document.getElementById('task-modal-title').textContent = 'Modifier la tâche';
   document.getElementById('modal-note').value = t.note || '';
   document.getElementById('task-save-btn').textContent = '✓ Modifier';
@@ -8115,6 +8089,12 @@ function saveTask() {
 
     savePlanning();
     showToast(`Brassin ajouté + ${hasDH ? '3' : '2'} tâches créées automatiquement`);
+  }
+
+  // Déplacement via le champ date (alternative fiable au glisser-déposer sur mobile)
+  const moveDateVal = document.getElementById('modal-move-date')?.value;
+  if (moveDateVal && moveDateVal !== modalDateKey) {
+    moveTask(modalDateKey, moveDateVal, task.id);
   }
 
   closeModal();
