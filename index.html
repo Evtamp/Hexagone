@@ -3930,13 +3930,17 @@ function renderProjection() {
   });
 
   // 3) Production attendue : tâches "Enfûtage" du planning, converties en fûts.
-  //    Les fûts ne sont disponibles à la vente qu'APRÈS la refermentation en fût (+1 semaine).
+  //    Dès l'enfûtage, la bière est saisie en stock réel — on ne projette donc que
+  //    les enfûtages à venir, disponibles à la vente après refermentation en fût (+1 semaine).
   const prod = {};
   const DELAI_REFERM_JOURS = 7;
   if (isFuts) {
     Object.entries(planningData).forEach(([dk, tasks]) => {
       const dEnf = new Date(dk + 'T12:00:00');
       if (isNaN(dEnf)) return;
+      const dEnf0 = new Date(dEnf); dEnf0.setHours(0,0,0,0);
+      // Un enfûtage déjà réalisé (aujourd'hui ou avant) est déjà dans le stock réel : on ne le recompte pas ici
+      if (dEnf0 <= today) return;
       // Date de disponibilité réelle = enfûtage + 7 jours (refermentation)
       const dDispo = new Date(dEnf);
       dDispo.setDate(dDispo.getDate() + DELAI_REFERM_JOURS);
