@@ -3945,9 +3945,13 @@ function renderProjection() {
         // Brassin lié : sert à connaître le volume ET si l'enfûtage a déjà été réalisé
         const b = t.brewNum
           ? Object.values(historiqueData).find(x => x.brewNum === t.brewNum)
-          : (t.fermId ? Object.values(historiqueData).find(x => x.cuve === t.fermId && ['fermentation','garde','dh'].includes(x.statut)) : null);
-        // Déjà enfûté (statut "Terminé") → déjà comptabilisé dans le stock réel, on ne le reprojette pas
-        if (b && b.statut === 'termine') return;
+          : (t.fermId
+              ? (Object.values(historiqueData).find(x => x.cuve === t.fermId && ['fermentation','garde','dh'].includes(x.statut))
+                 || Object.values(historiqueData).filter(x => x.cuve === t.fermId && ['conditionne','termine'].includes(x.statut))
+                      .sort((a,b2) => (b2.ts||0) - (a.ts||0))[0])
+              : null);
+        // Déjà enfûté (statut "Conditionné" ou "Terminé") → déjà comptabilisé dans le stock réel, on ne le reprojette pas
+        if (b && (b.statut === 'conditionne' || b.statut === 'termine')) return;
         let volume = 500;
         if (b && b.volume) volume = b.volume;
         const futs = Math.floor(volume / 30);
