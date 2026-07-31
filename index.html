@@ -3930,31 +3930,32 @@ function renderProjection() {
   });
 
   // 3) Production attendue : tâches "Enfûtage" du planning, converties en fûts.
-  //    Dès l'enfûtage, la bière est saisie en stock réel — on ne projette donc que
-  //    les enfûtages à venir, disponibles à la vente après refermentation en fût (+1 semaine).
+  //    Dès que l'enfûtage est RÉALISÉ (via l'onglet Fermenteur, statut brassin → "Terminé"),
+  //    la bière est saisie en stock réel : on ne la projette plus. Tant que ce n'est que
+  //    planifié (statut pas encore "Terminé"), on la garde dans la projection avec le délai
+  //    de refermentation en fût (+1 semaine), même si la date planifiée est aujourd'hui ou passée.
   const prod = {};
   const DELAI_REFERM_JOURS = 7;
   if (isFuts) {
     Object.entries(planningData).forEach(([dk, tasks]) => {
       const dEnf = new Date(dk + 'T12:00:00');
       if (isNaN(dEnf)) return;
-      const dEnf0 = new Date(dEnf); dEnf0.setHours(0,0,0,0);
-      // Un enfûtage déjà réalisé (aujourd'hui ou avant) est déjà dans le stock réel : on ne le recompte pas ici
-      if (dEnf0 <= today) return;
-      // Date de disponibilité réelle = enfûtage + 7 jours (refermentation)
-      const dDispo = new Date(dEnf);
-      dDispo.setDate(dDispo.getDate() + DELAI_REFERM_JOURS);
-      const sem = semaines.find(s => dDispo >= s.debut && dDispo <= s.fin);
-      if (!sem) return; // disponibilité hors de la fenêtre affichée
       (tasks||[]).forEach(t => {
         if (t.type !== 'enfutage' || !t.beer) return;
-        // Volume du brassin lié si connu, sinon 500 L par défaut
-        let volume = 500;
+        // Brassin lié : sert à connaître le volume ET si l'enfûtage a déjà été réalisé
         const b = t.brewNum
           ? Object.values(historiqueData).find(x => x.brewNum === t.brewNum)
           : (t.fermId ? Object.values(historiqueData).find(x => x.cuve === t.fermId && ['fermentation','garde','dh'].includes(x.statut)) : null);
+        // Déjà enfûté (statut "Terminé") → déjà comptabilisé dans le stock réel, on ne le reprojette pas
+        if (b && b.statut === 'termine') return;
+        let volume = 500;
         if (b && b.volume) volume = b.volume;
         const futs = Math.floor(volume / 30);
+        // Date de disponibilité réelle = enfûtage + 7 jours (refermentation)
+        const dDispo = new Date(dEnf);
+        dDispo.setDate(dDispo.getDate() + DELAI_REFERM_JOURS);
+        const sem = semaines.find(s => dDispo >= s.debut && dDispo <= s.fin);
+        if (!sem) return; // disponibilité hors de la fenêtre affichée
         if (!prod[t.beer]) prod[t.beer] = {};
         prod[t.beer][sem.i] = (prod[t.beer][sem.i] || 0) + futs;
       });
