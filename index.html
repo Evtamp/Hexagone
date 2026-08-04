@@ -4202,7 +4202,7 @@ function renderProduits() {
     return (a.lot||'').localeCompare(b.lot||'');
   });
 
-  renderRupturesAlert('ruptures-alert-produits');
+  // Bandeau de rupture retiré : géré désormais par l'onglet Projection stock
 
   if (!entries.length) {
     el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:30px 0;color:var(--muted);font-size:13px">Aucun produit — cliquez sur + pour en ajouter</div>';
@@ -4328,17 +4328,6 @@ function renderProduits() {
 
     const totalReserve = (eng.futs||0) + (eng.cartons||0);
 
-    // Ventilation par semaine
-    const byWeek = eng.byWeek || {};
-    const weekLabels = { 0:'Cette sem.', 1:'Sem. prochaine' };
-    const weekBadges = Object.entries(byWeek)
-      .filter(([,qty]) => qty > 0)
-      .sort(([a],[b]) => parseInt(a)-parseInt(b))
-      .map(([wIdx, qty]) => {
-        const label = weekLabels[wIdx] || `Sem. +${wIdx}`;
-        return `<span style="font-size:12px;color:rgba(200,200,200,.85)">${label} : <b style="color:rgba(230,190,110,.95)">${qty}</b></span>`;
-      }).join(' · ');
-
     // Production en cours (brassins pas encore enfûtés) pour cette bière
     const prod = production[biere];
     let prodHtml = '';
@@ -4365,12 +4354,11 @@ function renderProduits() {
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
           <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
             ${totalBadges}
-            <span style="font-size:14px;font-weight:700;color:var(--amber-lt);padding-left:4px">${dispoBrute} total</span>
+            <span style="font-size:19px;font-weight:800;color:var(--amber-lt);padding-left:4px">${dispoBrute} total</span>
           </div>
           ${totalReserve > 0 ? `
           <div onclick="goToCommandesForBeer('${biere.replace(/'/g,"\'")}')" style="cursor:pointer;text-align:right">
             <div style="font-size:12px;color:rgba(200,200,200,.9);text-decoration:underline;text-underline-offset:2px">🔒 ${totalReserve} réservé${totalReserve>1?'s':''}</div>
-            ${weekBadges ? `<div style="margin-top:2px">${weekBadges}</div>` : ''}
           </div>` : ''}
           ${prodHtml}
         </div>
