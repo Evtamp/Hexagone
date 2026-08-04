@@ -2644,7 +2644,7 @@
 
     <div id="modal-beer-row" class="modal-field">
       <label>Bière</label>
-      <select id="modal-beer"></select>
+      <select id="modal-beer" onchange="suggestBrewNumFromBeer()"></select>
     </div>
 
     <div id="modal-ferm-row" class="modal-field" style="display:none">
@@ -2654,7 +2654,7 @@
 
     <div id="modal-brewnum-row" class="modal-field" style="display:none">
       <label>Numéro de brassin</label>
-      <input id="modal-brew-num" type="text" placeholder="ex: B-2026-001"
+      <input id="modal-brew-num" type="text" placeholder="ex: SUP-001"
         style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:14px;font-weight:700;padding:9px 12px;width:100%;font-family:monospace;letter-spacing:.5px"/>
     </div>
 
@@ -3956,9 +3956,13 @@ function renderProjection() {
       if (isNaN(dEnf)) return;
       (tasks||[]).forEach(t => {
         if (t.type !== 'enfutage' || !t.beer) return;
-        // Brassin lié : sert à connaître le volume ET si l'enfûtage a déjà été réalisé
-        const b = t.brewNum
-          ? Object.values(historiqueData).find(x => x.brewNum === t.brewNum)
+        // Brassin lié : sert à connaître le volume ET si l'enfûtage a déjà été réalisé.
+        // Un même n° de brassin peut avoir été réutilisé dans le temps : on privilégie
+        // toujours le brassin ACTIF pour cette cuve/n°, jamais un ancien déjà terminé.
+        const matchesBrewNum = t.brewNum ? Object.values(historiqueData).filter(x => x.brewNum === t.brewNum) : [];
+        const b = matchesBrewNum.length
+          ? (matchesBrewNum.find(x => ['fermentation','garde','dh'].includes(x.statut))
+             || matchesBrewNum.sort((a,b2) => (b2.ts||0) - (a.ts||0))[0])
           : (t.fermId
               ? (Object.values(historiqueData).find(x => x.cuve === t.fermId && ['fermentation','garde','dh'].includes(x.statut))
                  || Object.values(historiqueData).filter(x => x.cuve === t.fermId && ['conditionne','termine'].includes(x.statut))
@@ -3978,6 +3982,37 @@ function renderProjection() {
         if (!prod[key]) prod[key] = {};
         prod[key][sem.i] = (prod[key][sem.i] || 0) + futs;
       });
+    });
+
+    // 3bis) Filet de sécurité : brassins actuellement en fermenteur (fermentation/garde/DH)
+    //       mais SANS tâche "Enfûtage" créée dans le planning — on estime leur date
+    //       d'enfûtage à partir de la phase en cours du fermenteur, pour ne pas les oublier.
+    const fermIdsPlanifies = new Set();
+    Object.values(planningData).forEach(tasks => (tasks||[]).forEach(t => {
+      if (t.type === 'enfutage' && t.fermId) fermIdsPlanifies.add(t.fermId);
+    }));
+    (typeof FERMENTERS !== 'undefined' ? FERMENTERS : []).forEach(f => {
+      if (!f.beer || !f.phases) return;
+      if (fermIdsPlanifies.has(f.id)) return; // déjà couvert par une tâche planning
+      const phase = f.phases.fermentation?.active ? 'fermentation'
+                  : f.phases.garde?.active        ? 'garde'
+                  : f.phases.dh?.active            ? 'dh' : null;
+      if (!phase || !f.phases[phase].debut) return;
+      const debut = new Date(f.phases[phase].debut + 'T12:00:00');
+      if (isNaN(debut)) return;
+      const dureeRestante = phase === 'fermentation' ? (f.dureeFerm||0) + (f.dureeGarde||0)
+                           : phase === 'garde'        ? (f.dureeGarde||0)
+                           : (f.dureeDH||0);
+      const dEnfEstime = new Date(debut);
+      dEnfEstime.setDate(dEnfEstime.getDate() + dureeRestante);
+      const dDispo = new Date(dEnfEstime);
+      dDispo.setDate(dDispo.getDate() + DELAI_REFERM_JOURS);
+      const sem = semaines.find(s => dDispo >= s.debut && dDispo <= s.fin);
+      if (!sem) return;
+      const futs = Math.floor((f.vol || 500) / 30);
+      const key = canon(f.beer);
+      if (!prod[key]) prod[key] = {};
+      prod[key][sem.i] = (prod[key][sem.i] || 0) + futs;
     });
   }
 
@@ -7915,6 +7950,7 @@ function openAddTask(key) {
   document.getElementById('modal-type').value = 'brassin';
   document.getElementById('modal-event-name').value = '';
   document.getElementById('modal-brew-num').value   = '';
+  _lastAutoBrewNum = '';
   document.getElementById('modal-duree-ferm').value  = 10;
   document.getElementById('modal-duree-garde').value = 8;
   const beerSel = document.getElementById('modal-beer');
@@ -7976,6 +8012,7 @@ function updateModalFields() {
   document.getElementById('modal-ferm-row').style.display     = tt.needsFerm ? 'block' : 'none';
   document.getElementById('modal-brewnum-row').style.display  = (type === 'brassin') ? 'block' : 'none';
   document.getElementById('modal-duree-row').style.display    = (type === 'brassin') ? 'block' : 'none';
+  suggestBrewNumFromBeer();
   document.getElementById('modal-event-row').style.display    = (!tt.needsBeer && !tt.needsFerm) ? 'block' : 'none';
 }
 
@@ -9410,6 +9447,47 @@ function genBrewNum() {
   const existing = Object.values(historiqueData).filter(b => b.brewNum && b.brewNum.startsWith(`B-${y}-`));
   const n = String(existing.length + 1).padStart(3, '0');
   return `B-${y}-${n}`;
+}
+
+// Code court dérivé du nom de bière (3 lettres, insensible casse/accents/apostrophes)
+function beerCode(beerName) {
+  const clean = normBeerName(beerName).replace(/[^a-z0-9]/g, '');
+  return (clean.slice(0, 3) || 'XXX').toUpperCase();
+}
+
+// Prochain numéro pour CETTE bière (compteur séparé par bière), ex: "SUP-014"
+function genBrewNumForBeer(beerName) {
+  const code = beerCode(beerName);
+  const re = new RegExp(`^${code}-(\\d+)$`);
+  let maxN = 0;
+  Object.values(historiqueData).forEach(b => {
+    const m = b.brewNum && b.brewNum.match(re);
+    if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
+  });
+  Object.values(planningData).forEach(tasks => (tasks || []).forEach(t => {
+    if (t.type !== 'brassin') return;
+    const m = t.brewNum && t.brewNum.match(re);
+    if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
+  }));
+  return `${code}-${String(maxN + 1).padStart(3, '0')}`;
+}
+
+// Propose automatiquement le prochain n° de brassin (compteur par bière) dès qu'une
+// bière est choisie dans le planning (tâche "Brassin"). N'écrase jamais une valeur
+// saisie/modifiée à la main, et ne s'active qu'à la création (jamais en édition).
+let _lastAutoBrewNum = '';
+function suggestBrewNumFromBeer() {
+  if (editingTaskId) return;
+  const type = document.getElementById('modal-type')?.value;
+  if (type !== 'brassin') return;
+  const beer  = document.getElementById('modal-beer')?.value;
+  const input = document.getElementById('modal-brew-num');
+  if (!beer || !input) return;
+  const current = input.value.trim();
+  if (current && current !== _lastAutoBrewNum) return; // saisie manuelle : ne pas toucher
+  const suggestion = genBrewNumForBeer(beer);
+  input.value = suggestion;
+  _lastAutoBrewNum = suggestion;
 }
 
 // ===== MODAL BRASSER =====
