@@ -2957,6 +2957,7 @@ let produitsData = {}; // { id: { id, biere, format, qty, ferm, lot, ts } }
 let MP_DATA      = JSON.parse(JSON.stringify(MP_SCHEMA)); // deep copy
 let FERMENTERS   = JSON.parse(JSON.stringify(FERM_DEFAULT));
 let planningData = {};
+let _projCanonMap = {}; // clé normalisée -> nom d'affichage, rafraîchi à chaque renderProjection()
 let ordersData   = {};
 let _localBrewPatches = {}; // patches locaux temporaires pour éviter l'écrasement par Firebase
 let produitsMouvements = {}; // { id: [{ts, delta, qtyAvant, qtyApres, raison}] }
@@ -2968,6 +2969,7 @@ let paramsData   = {
   tauxAccises: 3.87,
   fixed:    [{id:'f1',label:'Loyer',montant:0},{id:'f2',label:'Assurances',montant:0},{id:'f3',label:'Amortissement',montant:0},{id:'f4',label:'Salaires',montant:0}],
   variable: [{id:'v1',label:'Eau',montant:0},{id:'v2',label:'Électricité',montant:0},{id:'v3',label:'Gaz',montant:0},{id:'v4',label:'CO₂',montant:0},{id:'v5',label:'Nettoyage',montant:0}],
+  projectionHidden: {},
 };
 let historiqueData      = {};
 let clientsData         = {};
@@ -3899,13 +3901,24 @@ function renderProjection() {
       sub: `${debut.getDate()}/${debut.getMonth()+1}` });
   }
 
+  // Regroupement des bières insensible à la casse/accents (ex: "Nouvelle Vague" = "nouvelle vague")
+  const canonMap = {}; // clé normalisée -> nom d'affichage retenu
+  const canon = raw => {
+    const key = normBeerName(raw);
+    if (key && !canonMap[key]) canonMap[key] = raw;
+    return key;
+  };
+  // On amorce avec les noms des recettes pour privilégier une casse propre
+  Object.values(recipesData).forEach(r => { if (r.name) canon(r.name); });
+
   // 1) Stock physique actuel par bière
   const stock = {};
   Object.values(produitsData).forEach(p => {
     if (!p.biere) return;
-    if (!stock[p.biere]) stock[p.biere] = 0;
-    if (isFuts && ['fut30inox','fut30kk','fut30kktp','fut20'].includes(p.format)) stock[p.biere] += (p.qty||0);
-    if (!isFuts && (p.format === 'btl33' || p.format === 'btl75'))                stock[p.biere] += (p.qty||0);
+    const key = canon(p.biere);
+    if (!stock[key]) stock[key] = 0;
+    if (isFuts && ['fut30inox','fut30kk','fut30kktp','fut20'].includes(p.format)) stock[key] += (p.qty||0);
+    if (!isFuts && (p.format === 'btl33' || p.format === 'btl75'))                stock[key] += (p.qty||0);
   });
 
   // 2) Besoins par bière et par semaine (commandes futures non clôturées)
@@ -3923,8 +3936,9 @@ function renderProjection() {
         if (q <= 0) return;
         const sem = semaines.find(s => d >= s.debut && d <= s.fin);
         if (!sem) return; // hors de la fenêtre affichée
-        if (!besoins[l.beer]) besoins[l.beer] = {};
-        besoins[l.beer][sem.i] = (besoins[l.beer][sem.i] || 0) + q;
+        const key = canon(l.beer);
+        if (!besoins[key]) besoins[key] = {};
+        besoins[key][sem.i] = (besoins[key][sem.i] || 0) + q;
       });
     });
   });
@@ -3960,17 +3974,23 @@ function renderProjection() {
         dDispo.setDate(dDispo.getDate() + DELAI_REFERM_JOURS);
         const sem = semaines.find(s => dDispo >= s.debut && dDispo <= s.fin);
         if (!sem) return; // disponibilité hors de la fenêtre affichée
-        if (!prod[t.beer]) prod[t.beer] = {};
-        prod[t.beer][sem.i] = (prod[t.beer][sem.i] || 0) + futs;
+        const key = canon(t.beer);
+        if (!prod[key]) prod[key] = {};
+        prod[key][sem.i] = (prod[key][sem.i] || 0) + futs;
       });
     });
   }
 
-  // Liste des bières à afficher (celles qui ont du stock, des besoins ou de la production)
+  _projCanonMap = canonMap;
+
+  // Liste des bières à afficher (celles qui ont du stock, des besoins ou de la production), hors masquées
+  const hidden = paramsData.projectionHidden || {};
   const bieresSet = new Set([...Object.keys(stock), ...Object.keys(besoins), ...Object.keys(prod)]);
   const ordrePrio = ['Super Nièvre', "Amarillo'Yo", 'Nouvelle Vague', 'Enfant Terrible'];
-  const rang = n => { const i = ordrePrio.findIndex(o => normBeerName(o) === normBeerName(n)); return i === -1 ? 999 : i; };
-  const bieres = [...bieresSet].sort((a,b) => (rang(a)-rang(b)) || a.localeCompare(b));
+  const rang = n => { const i = ordrePrio.findIndex(o => normBeerName(o) === n); return i === -1 ? 999 : i; };
+  const bieres = [...bieresSet]
+    .filter(k => !hidden[k])
+    .sort((a,b) => (rang(a)-rang(b)) || (canonMap[a]||a).localeCompare(canonMap[b]||b));
 
   if (!bieres.length) {
     el.innerHTML = '<div style="text-align:center;padding:30px 0;color:var(--muted);font-size:13px">Aucune donnée à projeter</div>';
@@ -3987,17 +4007,23 @@ function renderProjection() {
       </tr>
     </thead><tbody>`;
 
-  bieres.forEach(biere => {
-    let courant = stock[biere] || 0;
+  bieres.forEach(key => {
+    const biere = canonMap[key] || key;
+    let courant = stock[key] || 0;
     html += `<tr>
       <td style="padding:8px 6px;font-size:13px;font-weight:600;color:#fff;border-bottom:1px solid var(--border);position:sticky;left:0;background:var(--bg)">
-        ${esc(biere)}
-        <div style="font-size:10px;color:var(--muted);font-weight:400">stock: ${stock[biere]||0} ${unite}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+          <div>
+            ${esc(biere)}
+            <div style="font-size:10px;color:var(--muted);font-weight:400">stock: ${stock[key]||0} ${unite}</div>
+          </div>
+          <button onclick="hideProjectionBeer('${key}')" title="Ne plus afficher cette bière dans la projection" style="background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:2px 4px;flex-shrink:0;line-height:1">🗑</button>
+        </div>
       </td>`;
 
     semaines.forEach(s => {
-      const p = (prod[biere]?.[s.i]) || 0;
-      const b = (besoins[biere]?.[s.i]) || 0;
+      const p = (prod[key]?.[s.i]) || 0;
+      const b = (besoins[key]?.[s.i]) || 0;
       courant = courant + p - b;
       const col = courant < 0 ? 'var(--danger)' : courant === 0 ? '#c08a20' : 'var(--ok)';
       html += `<td style="padding:6px 4px;text-align:center;border-bottom:1px solid var(--border);${courant<0?'background:rgba(192,57,27,.08)':''}">
@@ -4016,6 +4042,15 @@ function renderProjection() {
     html += `<div style="font-size:11px;color:var(--muted);margin-top:10px">ℹ️ La production attendue n'est estimée que pour les fûts (le format d'embouteillage n'est pas connu avant le conditionnement).</div>`;
   }
   el.innerHTML = html;
+}
+
+function hideProjectionBeer(key) {
+  const displayName = _projCanonMap[key] || key;
+  if (!confirm(`Ne plus afficher "${displayName}" dans la projection de stock ?\n\n(Tu pourras redemander son affichage plus tard si besoin.)`)) return;
+  if (!paramsData.projectionHidden) paramsData.projectionHidden = {};
+  paramsData.projectionHidden[key] = true;
+  fbSet('params/projectionHidden', paramsData.projectionHidden);
+  renderProjection();
 }
 
 function calcRupturesPrevues() {
