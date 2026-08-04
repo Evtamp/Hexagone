@@ -3835,43 +3835,71 @@ function findRecipeByName(name) {
 function calcProductionEnCours() {
   const result = {}; // beer -> { volumeTotal, entries:[{brewNum, cuve, statut, volume, dateEnfutage}] }
 
-  Object.values(historiqueData).forEach(b => {
-    if (!['fermentation', 'garde', 'dh'].includes(b.statut)) return;
-    const beer = b.recette;
-    if (!beer) return;
+  // On part de l'état RÉEL des fermenteurs (onglet Fermenteur) plutôt que du statut
+  // enregistré dans l'historique, qui peut rester bloqué "en cours" par oubli et
+  // additionner un brassin fantôme à celui réellement en cuve aujourd'hui.
+  (typeof FERMENTERS !== 'undefined' ? FERMENTERS : []).forEach(f => {
+    if (!f.beer || !f.phases) return;
+    const phase = f.phases.fermentation?.active ? 'fermentation'
+                : f.phases.garde?.active        ? 'garde'
+                : f.phases.dh?.active            ? 'dh' : null;
+    if (!phase) return; // cuve vide/inactive
+
+    const beer = f.beer;
+    const beerNorm = normBeerName(beer);
+    // Brassin historique correspondant (le plus récent pour cette cuve+bière), pour
+    // récupérer le volume précis et le n° de brassin si disponibles
+    const b = Object.values(historiqueData)
+      .filter(x => x.cuve === f.id && normBeerName(x.recette) === beerNorm)
+      .sort((a, c) => (c.ts || 0) - (a.ts || 0))[0];
+
+    const volume  = (b && b.volume) || f.vol || 500;
+    const brewNum = (b && b.brewNum) || f.brewNum || '';
+
     if (!result[beer]) result[beer] = { volumeTotal: 0, entries: [] };
 
     // 1) Chercher la tâche planning "enfûtage" liée par n° de brassin
     let dateEnfutage = null;
-    if (b.brewNum) {
+    if (brewNum) {
       Object.entries(planningData).some(([key, tasks]) => {
-        const found = (tasks || []).some(t => t.type === 'enfutage' && t.brewNum && t.brewNum === b.brewNum);
+        const found = (tasks || []).some(t => t.type === 'enfutage' && t.brewNum && t.brewNum === brewNum);
         if (found) { dateEnfutage = key; return true; }
         return false;
       });
     }
     // 1bis) Sinon, correspondance cuve + bière — tolérante aux accents/apostrophes/casse,
     // avec un dernier recours sur la cuve seule si le nom de bière ne matche toujours pas
-    // (ex : nom de recette légèrement différent du nom choisi dans le planning)
-    if (!dateEnfutage && b.cuve) {
-      const beerNorm = normBeerName(beer);
+    if (!dateEnfutage) {
       let matchKey = null, fermOnlyKey = null;
       Object.entries(planningData).forEach(([key, tasks]) => {
         (tasks || []).forEach(t => {
-          if (t.type !== 'enfutage' || t.fermId !== b.cuve) return;
+          if (t.type !== 'enfutage' || t.fermId !== f.id) return;
           if (!fermOnlyKey) fermOnlyKey = key;
           if (normBeerName(t.beer) === beerNorm) matchKey = key;
         });
       });
       dateEnfutage = matchKey || fermOnlyKey || null;
     }
-    // Pas de date trouvée dans le planning → on ne devine pas, dateEnfutage reste null
+    // 1ter) Dernier recours : n° de brassin et cuve ne correspondent pas (ex : cuve
+    // réattribuée après coup) — on cherche la tâche "Enfûtage" la plus proche pour
+    // cette même bière, par nom, plutôt que d'afficher "pas de date" à tort.
+    if (!dateEnfutage) {
+      let bestKey = null;
+      Object.entries(planningData).forEach(([key, tasks]) => {
+        (tasks || []).forEach(t => {
+          if (t.type !== 'enfutage' || normBeerName(t.beer) !== beerNorm) return;
+          if (!bestKey || key < bestKey) bestKey = key; // date la plus proche/ancienne d'abord
+        });
+      });
+      dateEnfutage = bestKey;
+    }
+    // Toujours pas de date trouvée dans le planning → on ne devine pas, dateEnfutage reste null
     // (cette production ne sera pas comptée dans la simulation de rupture, seulement affichée sans date)
 
-    result[beer].volumeTotal += (b.volume || 0);
+    result[beer].volumeTotal += volume;
     result[beer].entries.push({
-      brewNum: b.brewNum || '—', cuve: b.cuve || '—', statut: b.statut,
-      volume: b.volume || 0, dateEnfutage
+      brewNum: brewNum || '—', cuve: f.id, statut: phase,
+      volume, dateEnfutage
     });
   });
 
