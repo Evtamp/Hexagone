@@ -4378,7 +4378,14 @@ function renderProduits() {
       } else {
         // Plusieurs brassins simultanés : le détail par lot évite d'attribuer une
         // seule date de disponibilité à l'ensemble du volume cumulé.
-        const lignes = prod.entries.map(e => {
+        // Tri par date de sortie prévue (les plus proches d'abord, sans date en dernier).
+        const entriesTriees = [...prod.entries].sort((a, b) => {
+          if (!a.dateEnfutage && !b.dateEnfutage) return 0;
+          if (!a.dateEnfutage) return 1;
+          if (!b.dateEnfutage) return -1;
+          return a.dateEnfutage.localeCompare(b.dateEnfutage);
+        });
+        const lignes = entriesTriees.map(e => {
           const readyTxt = e.dateEnfutage
             ? `prêt vers le ${fmtDateFr(e.dateEnfutage)}`
             : `<span style="color:#c08a20">pas de date planifiée</span>`;
