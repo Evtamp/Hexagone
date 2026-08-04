@@ -1245,6 +1245,12 @@
           <div class="section-title">Produits finis</div>
           <button onclick="openProduitModal()" style="background:var(--amber);color:var(--bg);border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">+ Ajouter</button>
         </div>
+        <div style="padding:0 16px">
+          <div class="sub-tabs sub-tabs-nested" id="produits-format-tabs" style="margin:0 0 8px">
+            <button class="active" id="produits-tab-futs" onclick="switchProduitsFormatTab('futs')">🛢 Fûts</button>
+            <button id="produits-tab-btl" onclick="switchProduitsFormatTab('btl')">🍾 Bouteilles</button>
+          </div>
+        </div>
         <div style="padding:8px 16px 0" id="ruptures-alert-produits"></div>
         <div style="padding:8px 16px 100px" id="list-produits"></div>
       </div>
@@ -4229,26 +4235,34 @@ function renderRupturesAlert(containerId) {
   </div>`;
 }
 
+const PRODUITS_TAB_FORMATS = { futs: ['fut30inox','fut30kk','fut30kktp','fut20'], btl: ['btl33','btl75'] };
+
 function renderProduits() {
   const el = document.getElementById('list-produits');
   if (!el) return;
-  const entries = Object.values(produitsData).sort((a,b) => {
-    const bComp = (a.biere||'').localeCompare(b.biere||'');
-    if (bComp !== 0) return bComp;
-    return (a.lot||'').localeCompare(b.lot||'');
-  });
+  const isFutsTab = produitsFormatTab !== 'btl';
+  const activeFormats = PRODUITS_TAB_FORMATS[produitsFormatTab] || PRODUITS_TAB_FORMATS.futs;
+
+  const entries = Object.values(produitsData)
+    .filter(p => activeFormats.includes(p.format))
+    .sort((a,b) => {
+      const bComp = (a.biere||'').localeCompare(b.biere||'');
+      if (bComp !== 0) return bComp;
+      return (a.lot||'').localeCompare(b.lot||'');
+    });
 
   // Bandeau de rupture retiré : géré désormais par l'onglet Projection stock
 
   if (!entries.length) {
-    el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:30px 0;color:var(--muted);font-size:13px">Aucun produit — cliquez sur + pour en ajouter</div>';
+    const msg = isFutsTab ? 'Aucun fût en stock' : 'Aucune bouteille en stock';
+    el.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:30px 0;color:var(--muted);font-size:13px">${msg} — cliquez sur + pour en ajouter</div>`;
     return;
   }
 
   // Calcul des engagements issus des commandes futures
   const engage = calcStockEngageParBiere();
-  // Calcul de la production en cours (brassins pas encore enfûtés)
-  const production = calcProductionEnCours();
+  // Calcul de la production en cours (brassins pas encore enfûtés) — concerne les fûts uniquement
+  const production = isFutsTab ? calcProductionEnCours() : {};
 
   // Grouper par bière
   const grouped = {};
@@ -4272,27 +4286,20 @@ function renderProduits() {
   let html = '';
   bieresOrdonnees.forEach(biere => {
     const items = grouped[biere];
-    const totalFuts    = items.filter(p=>['fut30inox','fut30kk','fut30kktp','fut20'].includes(p.format)).reduce((s,p)=>s+(p.qty||0),0);
-    const totalBtl     = items.filter(p=>p.format==='btl33'||p.format==='btl75').reduce((s,p)=>s+(p.qty||0),0);
-    const totalTireuses= items.filter(p=>p.format==='tireuse').reduce((s,p)=>s+(p.qty||0),0);
+    const totalQty = items.reduce((s,p) => s + (p.qty||0), 0);
 
     // Engagements commandes futures pour cette bière
     const eng = engage[biere] || { futs:0, cartons:0, tireuses:0, fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, btl33:0, btl75:0, reservations:[] };
-    // Map format → qty engagée (pour affichage par ligne)
     eng.fut30inox = eng.fut30inox||0; eng.fut30kk = eng.fut30kk||0;
     eng.fut30kktp = eng.fut30kktp||0; eng.fut20    = eng.fut20||0;
     eng.btl33 = eng.cartons||0; eng.btl75 = 0;
-    const futsApresCmd    = totalFuts    - eng.futs;
-    const cartonsApresCmd = totalBtl     - eng.cartons;
-    // Réservations tireuses = tireuses commandées (même champ)
-    const futsApresRes    = futsApresCmd - eng.tireuses; // tireuses nécessitent des fûts
 
-    const hasEngagement = eng.futs > 0 || eng.cartons > 0 || eng.tireuses > 0;
+    // Réservé pour CE format uniquement (fûts : commandes fûts + tireuses ; bouteilles : cartons)
+    const reserve = isFutsTab ? (eng.futs||0) + (eng.tireuses||0) : (eng.cartons||0);
+    const dispoApresRes = totalQty - reserve;
+    const hasEngagement = reserve > 0;
 
-    // Indicateur couleur global (basé sur fûts dispo après tout)
-    const dispoBrute = totalFuts + totalBtl;
-    const dispoNette = futsApresCmd;
-    const statusColor = dispoBrute === 0 ? 'var(--danger)' : dispoNette < 0 ? 'var(--danger)' : dispoNette === 0 ? '#c08a20' : 'var(--ok)';
+    const statusColor = totalQty === 0 ? 'var(--danger)' : dispoApresRes < 0 ? 'var(--danger)' : dispoApresRes === 0 ? '#c08a20' : 'var(--ok)';
 
     const rows = items.map(p => {
       // Engagement pour ce format précis
@@ -4331,23 +4338,22 @@ function renderProduits() {
     }).join('');
 
     // Ligne de stock inline (sans cadres)
-    const alerteTxt = futsApresCmd < 0 || cartonsApresCmd < 0 || futsApresRes < 0
+    const alerteTxt = dispoApresRes < 0
       ? `<span style="color:var(--danger);font-weight:700;margin-left:8px">⚠ stock insuffisant</span>` : '';
 
     const reservationsHtml = (eng.reservations||[]).map(r =>
       `<div style="font-size:12px;color:rgba(200,200,200,.85);padding:2px 0">🔒 ${r.client} · ${r.date} · ${r.fmts.join(', ')}</div>`
     ).join('');
 
+    const uniteLabel = isFutsTab ? 'fût' : 'btl';
     const stockLine = hasEngagement ? `
     <div style="padding:4px 2px 2px;font-size:13px;color:#ddd">
       <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:${reservationsHtml?'4px':'0'}">
-        ${totalFuts  ? `<span>📦 ${totalFuts} fût${totalFuts>1?'s':''}</span>` : ''}
-        ${totalBtl   ? `<span>📦 ${totalBtl} btl</span>` : ''}
-        ${eng.futs   ? `<span style="color:var(--amber-lt)">−${eng.futs} réservé${eng.futs>1?'s':''}</span>` : ''}
-        ${eng.cartons? `<span style="color:var(--amber-lt)">−${eng.cartons} carton${eng.cartons>1?'s':''}</span>` : ''}
-        ${eng.tireuses? `<span style="color:#7ab4e8">−${eng.tireuses} tireuse${eng.tireuses>1?'s':''}</span>` : ''}
-        ${totalFuts && eng.futs ? `<span style="color:${futsApresRes<0?'var(--danger)':futsApresRes===0?'#c08a20':'var(--ok)'}">= ${futsApresRes} libre${futsApresRes>1?'s':''}</span>` : ''}
-        ${totalBtl && eng.cartons ? `<span style="color:${cartonsApresCmd<0?'var(--danger)':cartonsApresCmd===0?'#c08a20':'var(--ok)'}">= ${cartonsApresCmd} btl libre${cartonsApresCmd>1?'s':''}</span>` : ''}
+        ${totalQty ? `<span>📦 ${totalQty} ${uniteLabel}${totalQty>1?'s':''}</span>` : ''}
+        ${isFutsTab && eng.futs ? `<span style="color:var(--amber-lt)">−${eng.futs} réservé${eng.futs>1?'s':''}</span>` : ''}
+        ${isFutsTab && eng.tireuses ? `<span style="color:#7ab4e8">−${eng.tireuses} tireuse${eng.tireuses>1?'s':''}</span>` : ''}
+        ${!isFutsTab && eng.cartons ? `<span style="color:var(--amber-lt)">−${eng.cartons} carton${eng.cartons>1?'s':''}</span>` : ''}
+        <span style="color:${dispoApresRes<0?'var(--danger)':dispoApresRes===0?'#c08a20':'var(--ok)'}">= ${dispoApresRes} libre${dispoApresRes>1?'s':''}</span>
         ${alerteTxt}
       </div>
       ${reservationsHtml}
@@ -4362,9 +4368,7 @@ function renderProduits() {
       .map(([fmt, qty]) => `<span style="font-size:13px;color:#ddd;background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:2px 7px">${qty}×${FORMAT_LABELS[fmt]||fmt}</span>`)
       .join('');
 
-    const totalReserve = (eng.futs||0) + (eng.cartons||0);
-
-    // Production en cours (brassins pas encore enfûtés) pour cette bière
+    // Production en cours (brassins pas encore enfûtés) pour cette bière — onglet Fûts uniquement
     const prod = production[biere];
     let prodHtml = '';
     if (prod && prod.volumeTotal > 0) {
@@ -4406,11 +4410,11 @@ function renderProduits() {
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
           <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
             ${totalBadges}
-            <span style="font-size:19px;font-weight:800;color:var(--amber-lt);padding-left:4px">${dispoBrute} total</span>
+            <span style="font-size:19px;font-weight:800;color:var(--amber-lt);padding-left:4px">${totalQty} total</span>
           </div>
-          ${totalReserve > 0 ? `
+          ${reserve > 0 ? `
           <div onclick="goToCommandesForBeer('${biere.replace(/'/g,"\'")}')" style="cursor:pointer;text-align:right">
-            <div style="font-size:12px;color:rgba(200,200,200,.9);text-decoration:underline;text-underline-offset:2px">🔒 ${totalReserve} réservé${totalReserve>1?'s':''}</div>
+            <div style="font-size:12px;color:rgba(200,200,200,.9);text-decoration:underline;text-underline-offset:2px">🔒 ${reserve} réservé${reserve>1?'s':''}</div>
           </div>` : ''}
           ${prodHtml}
         </div>
@@ -4545,6 +4549,14 @@ function switchMpCat(cat, btn) {
   document.querySelectorAll('#mp-tabs button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderMP();
+}
+
+let produitsFormatTab = 'futs'; // 'futs' | 'btl'
+function switchProduitsFormatTab(tab) {
+  produitsFormatTab = tab;
+  document.querySelectorAll('#produits-format-tabs button').forEach(b => b.classList.remove('active'));
+  document.getElementById('produits-tab-' + tab)?.classList.add('active');
+  renderProduits();
 }
 
 // =========================================================
