@@ -3835,6 +3835,8 @@ function findRecipeByName(name) {
 function calcProductionEnCours() {
   const result = {}; // beer -> { volumeTotal, entries:[{brewNum, cuve, statut, volume, dateEnfutage}] }
 
+  const todayD2 = new Date(); todayD2.setHours(0,0,0,0);
+
   // On part de l'état RÉEL des fermenteurs (onglet Fermenteur) plutôt que du statut
   // enregistré dans l'historique, qui peut rester bloqué "en cours" par oubli et
   // additionner un brassin fantôme à celui réellement en cuve aujourd'hui.
@@ -3868,27 +3870,33 @@ function calcProductionEnCours() {
       });
     }
     // 1bis) Sinon, correspondance cuve + bière — tolérante aux accents/apostrophes/casse,
-    // avec un dernier recours sur la cuve seule si le nom de bière ne matche toujours pas
+    // avec un dernier recours sur la cuve seule si le nom de bière ne matche toujours pas.
+    // On ne regarde que les dates à venir : une tâche passée et non nettoyée ne doit
+    // jamais être prise pour la date réelle d'un brassin toujours en cours.
     if (!dateEnfutage) {
       let matchKey = null, fermOnlyKey = null;
       Object.entries(planningData).forEach(([key, tasks]) => {
+        const dKey = new Date(key + 'T12:00:00');
+        if (isNaN(dKey) || dKey < todayD2) return;
         (tasks || []).forEach(t => {
           if (t.type !== 'enfutage' || t.fermId !== f.id) return;
-          if (!fermOnlyKey) fermOnlyKey = key;
-          if (normBeerName(t.beer) === beerNorm) matchKey = key;
+          if (!fermOnlyKey || key < fermOnlyKey) fermOnlyKey = key;
+          if (normBeerName(t.beer) === beerNorm && (!matchKey || key < matchKey)) matchKey = key;
         });
       });
       dateEnfutage = matchKey || fermOnlyKey || null;
     }
     // 1ter) Dernier recours : n° de brassin et cuve ne correspondent pas (ex : cuve
-    // réattribuée après coup) — on cherche la tâche "Enfûtage" la plus proche pour
-    // cette même bière, par nom, plutôt que d'afficher "pas de date" à tort.
+    // réattribuée après coup) — on cherche la tâche "Enfûtage" la plus proche À VENIR
+    // pour cette même bière, par nom, plutôt que d'afficher "pas de date" à tort.
     if (!dateEnfutage) {
       let bestKey = null;
       Object.entries(planningData).forEach(([key, tasks]) => {
+        const dKey = new Date(key + 'T12:00:00');
+        if (isNaN(dKey) || dKey < todayD2) return;
         (tasks || []).forEach(t => {
           if (t.type !== 'enfutage' || normBeerName(t.beer) !== beerNorm) return;
-          if (!bestKey || key < bestKey) bestKey = key; // date la plus proche/ancienne d'abord
+          if (!bestKey || key < bestKey) bestKey = key; // date à venir la plus proche
         });
       });
       dateEnfutage = bestKey;
@@ -5147,9 +5155,36 @@ function renderDashboard() {
     if (!mpGrouped[key]) mpGrouped[key] = { name: item.name, unit: item.unit, low: item.low||0, mid: item.mid||0, totalVal: 0 };
     mpGrouped[key].totalVal += (item.val||0);
   });
+
+  // Besoins des brassins déjà PLANIFIÉS (planning) mais pas encore lancés : leurs
+  // ingrédients ne sont pas encore déstockés, donc pas encore soustraits du stock MP
+  // actuel — sans ce calcul, l'alerte peut sembler "OK" alors qu'un brassin prévu
+  // cette semaine va vider ce qu'il reste.
+  const todayD = new Date(); todayD.setHours(0,0,0,0);
+  const mpNeeded = {};
+  Object.entries(planningData).forEach(([dk, tasks]) => {
+    const d = new Date(dk + 'T12:00:00');
+    if (isNaN(d) || d < todayD) return;
+    (tasks || []).forEach(t => {
+      if (t.type !== 'brassin' || !t.beer) return;
+      // Déjà lancé (ingrédients déjà déstockés) → ne pas recompter
+      if (t.brewNum && Object.values(historiqueData).some(b => b.brewNum === t.brewNum)) return;
+      const rec = findRecipeByName(t.beer);
+      if (!rec) return;
+      [...(rec.malts||[]), ...(rec.houblons||[]), ...(rec.levures||[]), ...(rec.sels||[])].forEach(l => {
+        if (!l.name) return;
+        const key = l.name.toLowerCase().trim();
+        mpNeeded[key] = (mpNeeded[key] || 0) + (parseFloat(l.qty) || 0);
+      });
+    });
+  });
+
   Object.values(mpGrouped).forEach(g => {
-    if (g.low > 0 && g.totalVal <= g.low) alertsCrit.push(g);
-    else if (g.mid > 0 && g.totalVal <= g.mid) alertsOrder.push(g);
+    const key = (g.name||'').toLowerCase().trim();
+    g.reserve  = mpNeeded[key] || 0;
+    g.dispoNet = g.totalVal - g.reserve;
+    if (g.low > 0 && g.dispoNet <= g.low) alertsCrit.push(g);
+    else if (g.mid > 0 && g.dispoNet <= g.mid) alertsOrder.push(g);
   });
 
   // --- Stock par bière ---
@@ -5203,18 +5238,21 @@ function renderDashboard() {
     </div>`;
   }).join('');
 
+  const fmtQty = n => Number.isInteger(n) ? n : n.toFixed(1);
+  const reserveNote = i => i.reserve > 0
+    ? ` <span style="color:var(--muted)">(${fmtQty(i.totalVal)} ${i.unit} en stock − ${fmtQty(i.reserve)} planning)</span>` : '';
   const alertsHtml = [...alertsCrit.map(i =>
     `<div onclick="openIngredientRecipes('${esc(i.name).replace(/'/g,"\\'")}')" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border);cursor:pointer">
       <div style="width:7px;height:7px;border-radius:50%;background:#E24B4A;flex-shrink:0"></div>
       <span style="font-size:13px;color:var(--foam);flex:1">${esc(i.name)}</span>
-      <span style="font-size:12px;color:#E24B4A">${(Number.isInteger(i.totalVal)?i.totalVal:i.totalVal.toFixed(1))} ${i.unit} · critique</span>
+      <span style="font-size:12px;color:#E24B4A">${fmtQty(i.dispoNet)} ${i.unit} · critique${reserveNote(i)}</span>
       <span style="font-size:11px;color:var(--muted);flex-shrink:0">›</span>
     </div>`),
   ...alertsOrder.map(i =>
     `<div onclick="openIngredientRecipes('${esc(i.name).replace(/'/g,"\\'")}')" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border);cursor:pointer">
       <div style="width:7px;height:7px;border-radius:50%;background:#EF9F27;flex-shrink:0"></div>
       <span style="font-size:13px;color:var(--foam);flex:1">${esc(i.name)}</span>
-      <span style="font-size:12px;color:#EF9F27">${(Number.isInteger(i.totalVal)?i.totalVal:i.totalVal.toFixed(1))} ${i.unit} · à commander</span>
+      <span style="font-size:12px;color:#EF9F27">${fmtQty(i.dispoNet)} ${i.unit} · à commander${reserveNote(i)}</span>
       <span style="font-size:11px;color:var(--muted);flex-shrink:0">›</span>
     </div>`)
   ].join('') || `<div style="font-size:13px;color:var(--muted);padding:8px 0">Aucune alerte · stocks OK</div>`;
