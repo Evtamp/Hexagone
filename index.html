@@ -5217,23 +5217,25 @@ function renderDashboard() {
   });
 
   // --- Render ---
+  // DH est vérifié avant Garde : sur une cuve où l'ancien bug laissait Garde
+  // active en même temps que DH, le DH (plus spécifique/récent) doit primer.
   const phaseLabel = ph => {
     if (ph.fermentation.active) return '<span class="db-badge db-ferm">Ferm.</span>';
-    if (ph.garde.active)        return '<span class="db-badge db-garde">Garde</span>';
     if (ph.dh.active)           return '<span class="db-badge db-dh">DH</span>';
+    if (ph.garde.active)        return '<span class="db-badge db-garde">Garde</span>';
     return '<span class="db-badge db-idle">Libre</span>';
   };
   const phaseColor = ph => {
     if (ph.fermentation.active) return '#1D9E75';
-    if (ph.garde.active)        return '#378ADD';
     if (ph.dh.active)           return '#7F77DD';
+    if (ph.garde.active)        return '#378ADD';
     return 'var(--border)';
   };
   const phaseProgress = (f) => {
     const ph = f.phases;
     if (ph.fermentation.active) return { j: joursEcoules(ph.fermentation.debut), d: f.dureeFerm };
-    if (ph.garde.active)        return { j: joursEcoules(ph.garde.debut), d: f.dureeGarde };
     if (ph.dh.active)           return { j: joursEcoules(ph.dh.debut), d: f.dureeDH };
+    if (ph.garde.active)        return { j: joursEcoules(ph.garde.debut), d: f.dureeGarde };
     return null;
   };
 
@@ -6423,10 +6425,13 @@ function saveDhModal() {
     dhLogs.push({ date: today, hop: item.name, lot: item.lot||'', qty, unit: item.unit||'kg' });
   }
 
-  // Activer la phase DH sur la cuve
+  // Activer la phase DH sur la cuve (phases mutuellement exclusives : la Garde
+  // doit être désactivée, sinon elle reste prioritaire dans l'affichage et le DH
+  // n'apparaît jamais sur l'image du fermenteur)
   normalizeFerm(f);
   f.phases.dh           = { active:true, debut:today };
   f.phases.fermentation = { active:false, debut:null };
+  f.phases.garde        = { active:false, debut:null };
   saveFermenters();
 
   // Mettre à jour le statut dans l'historique des brassins
@@ -6674,10 +6679,12 @@ function renderFermenters() {
     const isIdle = !anyActive;
 
     // Couleur & libellé selon la phase active
+    // DH vérifié avant Garde : sur une cuve où l'ancien bug laissait Garde active
+    // en même temps que DH, le DH (plus spécifique/récent) doit primer à l'affichage.
     let phaseKey = 'idle', phaseLabel = 'Libre';
     if (ph.fermentation.active) { phaseKey='fermentation'; phaseLabel='Fermentation'; }
-    else if (ph.garde.active)   { phaseKey='garde';        phaseLabel='Garde'; }
     else if (ph.dh.active)      { phaseKey='dh';           phaseLabel='Dry Hopping'; }
+    else if (ph.garde.active)   { phaseKey='garde';        phaseLabel='Garde'; }
     const phaseColors = { fermentation:'#4caf72', garde:'#7ab4e8', dh:'#c47ae8', idle:'#555' };
     const col = phaseColors[phaseKey];
 
