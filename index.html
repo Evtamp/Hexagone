@@ -11818,6 +11818,7 @@ function openBlPartielModal(dateKey, orderId) {
 
   _blPartielDateKey = dateKey;
   _blPartielOrderId = orderId;
+  document.getElementById('order-modal')?.classList.remove('open');
 
   let rowsHtml = '';
   (o.lines||[]).forEach((l, li) => {
