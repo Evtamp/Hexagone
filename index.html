@@ -2704,6 +2704,7 @@
         <option value="nett_enzy">🧴 Nettoyage enzymatique</option>
         <option value="nett_neutro">⚗️ Nettoyage Neutro</option>
         <option value="cip">🔄 CIP</option>
+        <option value="livraison">🚚 Livraison</option>
         <option value="marche">🏪 Marché</option>
         <option value="festival">🎪 Festival</option>
         <option value="tto">🏆 TTO</option>
@@ -2748,6 +2749,17 @@
       <label>Nom de l'événement</label>
       <input id="modal-event-name" type="text" placeholder="ex: Marché de Noël"
         style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;width:100%"/>
+    </div>
+
+    <div id="modal-client-row" class="modal-field" style="display:none">
+      <label>Client</label>
+      <select id="modal-client" onchange="fillLieuFromClient()"></select>
+    </div>
+
+    <div id="modal-lieu-row" class="modal-field" style="display:none">
+      <label>Lieu de livraison</label>
+      <input id="modal-lieu" type="text" placeholder="ex: 12 rue de la Bière, 75001 Paris"
+        style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:9px 12px;width:100%"/>
     </div>
 
     <div class="modal-field" style="margin-top:10px">
@@ -5299,6 +5311,12 @@ function normalizeFerm(f) {
     };
     delete f.phase; delete f.jourDebut;
   }
+  // Filet de sécurité : une cuve dont `phases` existe déjà mais sans la clé `dh`
+  // (ajoutée plus tard au modèle) plante silencieusement l'accès à phases.dh.active
+  // et la barre d'état ne se colore jamais pour cette cuve.
+  if (!f.phases.fermentation) f.phases.fermentation = { active:false, debut:null };
+  if (!f.phases.garde)        f.phases.garde        = { active:false, debut:null };
+  if (!f.phases.dh)           f.phases.dh           = { active:false, debut:null };
   return f;
 }
 
@@ -7211,14 +7229,21 @@ function openClientDetailModal(id) {
       ${list.map(b => {
         const d = b.date ? new Date(b.date+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'}) : '—';
         const linesSum = (b.lines||[]).map(l=>`${l.designation||'—'} ×${l.qte||0}`).slice(0,3).join(', ');
-        const signe = b.statut==='signe' ? '<span style="color:var(--ok);font-size:10px">✓ signé</span>' : '';
-        return `<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;align-items:baseline;gap:8px">
-          <div style="min-width:0;flex:1">
-            <span style="font-family:monospace;color:var(--amber-lt)">${b.ref||'—'}</span>
-            <span style="color:var(--muted);margin-left:6px">${d}</span>
-            <div style="color:var(--foam);font-size:11px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${linesSum}</div>
+        const signe = b.statut==='signe';
+        const signeTxt = signe ? '<span style="color:var(--ok);font-size:10px">✓ signé</span>' : '';
+        return `<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+            <div style="min-width:0;flex:1">
+              <span style="font-family:monospace;color:var(--amber-lt)">${b.ref||'—'}</span>
+              <span style="color:var(--muted);margin-left:6px">${d}</span>
+              <div style="color:var(--foam);font-size:11px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${linesSum}</div>
+            </div>
+            ${signeTxt}
           </div>
-          ${signe}
+          <div style="display:flex;gap:6px;margin-top:5px">
+            <button onclick="openBlView('${b.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:10px;padding:3px 8px;cursor:pointer">👁 Voir / Imprimer</button>
+            ${!signe ? `<button onclick="closeClientDetailModal();openBlModal('${b.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:10px;padding:3px 8px;cursor:pointer">✏️ Modifier</button>` : ''}
+          </div>
         </div>`;
       }).join('')}`
     ).join('') || '<div style="color:var(--muted);font-size:12px;font-style:italic">Aucune livraison</div>';
@@ -7858,6 +7883,7 @@ const TASK_TYPES = {
   nett_enzy:    { label:'Nett. enzymatique', icon:'🧴', color:'#a0785a', needsBeer:false, needsFerm:true  },
   nett_neutro:  { label:'Nett. Neutro',      icon:'⚗️',  color:'#a0785a', needsBeer:false, needsFerm:true  },
   cip:          { label:'CIP',               icon:'🔄', color:'#c47ae8', needsBeer:false, needsFerm:true  },
+  livraison:    { label:'Livraison',         icon:'🚚', color:'#5aa9e6', needsBeer:false, needsFerm:false, needsClient:true, needsLieu:true },
   marche:       { label:'Marché',            icon:'🏪', color:'#e8a84a', needsBeer:false, needsFerm:false },
   festival:     { label:'Festival',          icon:'🎪', color:'#e84a9a', needsBeer:false, needsFerm:false },
   tto:          { label:'TTO',               icon:'🏆', color:'#a0c4ff', needsBeer:false, needsFerm:false },
@@ -8211,6 +8237,12 @@ function openAddTask(key) {
   beerSel.innerHTML = getRecipeBeerNames().map(b => `<option value="${b}">${b}</option>`).join('');
   const fermSel = document.getElementById('modal-ferm');
   fermSel.innerHTML = '<option value="">— Aucune (à définir) —</option>' + FERMENTERS.map(f => `<option value="${f.id}">${f.id}${f.beer?' – '+f.beer:' (libre)'}</option>`).join('');
+  const clientSel = document.getElementById('modal-client');
+  const clientNames = Object.values(clientsData).map(c=>c.nom).filter(Boolean).sort((a,b)=>a.localeCompare(b));
+  clientSel.innerHTML = clientNames.length
+    ? clientNames.map(n => `<option value="${n}">${n}</option>`).join('')
+    : '<option value="">Aucun client enregistré</option>';
+  document.getElementById('modal-lieu').value = '';
   updateModalFields();
   document.getElementById('task-modal').classList.add('open');
 }
@@ -8239,10 +8271,19 @@ function openEditTask(key, taskId) {
   beerSel.innerHTML = beerOptions;
   const fermSel = document.getElementById('modal-ferm');
   fermSel.innerHTML = '<option value="">— Aucune (à définir) —</option>' + FERMENTERS.map(f => `<option value="${f.id}">${f.id}${f.beer?' – '+f.beer:' (libre)'}</option>`).join('');
+  const clientSel = document.getElementById('modal-client');
+  const clientNames = Object.values(clientsData).map(c=>c.nom).filter(Boolean).sort((a,b)=>a.localeCompare(b));
+  let clientOptions = clientNames.map(n => `<option value="${n}">${n}</option>`).join('');
+  if (t.client && !clientNames.includes(t.client)) {
+    clientOptions += `<option value="${t.client}">${t.client} (ancien)</option>`;
+  }
+  clientSel.innerHTML = clientOptions || '<option value="">Aucun client enregistré</option>';
   updateModalFields();
   // Pré-remplir les champs selon la structure sauvegardée
   if (t.beer)      { document.getElementById('modal-beer').value = t.beer; }
   if (t.fermId)    { document.getElementById('modal-ferm').value = t.fermId; }
+  if (t.client)    { document.getElementById('modal-client').value = t.client; }
+  document.getElementById('modal-lieu').value = t.lieu || '';
   if (t.brewNum)   { document.getElementById('modal-brew-num').value = t.brewNum; }
   if (t.eventName) { document.getElementById('modal-event-name').value = t.eventName; }
   document.getElementById('modal-duree-ferm').value  = t.dureeFerm  ?? 10;
@@ -8267,7 +8308,20 @@ function updateModalFields() {
   document.getElementById('modal-brewnum-row').style.display  = (type === 'brassin') ? 'block' : 'none';
   document.getElementById('modal-duree-row').style.display    = (type === 'brassin') ? 'block' : 'none';
   suggestBrewNumFromBeer();
-  document.getElementById('modal-event-row').style.display    = (!tt.needsBeer && !tt.needsFerm) ? 'block' : 'none';
+  document.getElementById('modal-client-row').style.display   = tt.needsClient ? 'block' : 'none';
+  document.getElementById('modal-lieu-row').style.display     = tt.needsLieu ? 'block' : 'none';
+  document.getElementById('modal-event-row').style.display    = (!tt.needsBeer && !tt.needsFerm && !tt.needsClient) ? 'block' : 'none';
+}
+
+function fillLieuFromClient() {
+  const clientName = document.getElementById('modal-client')?.value;
+  const lieuInput = document.getElementById('modal-lieu');
+  if (!clientName || !lieuInput) return;
+  const c = Object.values(clientsData).find(x => x.nom === clientName);
+  if (c) {
+    const addr = [c.adresse, c.cp, c.ville].filter(Boolean).join(', ');
+    if (addr) lieuInput.value = addr;
+  }
 }
 
 function saveTask() {
@@ -8276,7 +8330,7 @@ function saveTask() {
   let _dhAdjust = null;
   const type = document.getElementById('modal-type').value;
   const tt = TASK_TYPES[type] || {};
-  let beer = '', fermId = '', eventName = '', brewNum = '';
+  let beer = '', fermId = '', eventName = '', brewNum = '', client = '', lieu = '';
   let dureeFerm = 10, dureeGarde = 8;
   if (tt.needsBeer) beer   = document.getElementById('modal-beer').value || '';
   if (tt.needsFerm) fermId = document.getElementById('modal-ferm').value || '';
@@ -8285,10 +8339,12 @@ function saveTask() {
     dureeFerm  = parseInt(document.getElementById('modal-duree-ferm').value, 10)  || 10;
     dureeGarde = parseInt(document.getElementById('modal-duree-garde').value, 10) || 8;
   }
-  if (!tt.needsBeer && !tt.needsFerm) eventName = document.getElementById('modal-event-name').value.trim();
+  if (tt.needsClient) client = document.getElementById('modal-client').value || '';
+  if (tt.needsLieu)   lieu   = document.getElementById('modal-lieu').value.trim();
+  if (!tt.needsBeer && !tt.needsFerm && !tt.needsClient) eventName = document.getElementById('modal-event-name').value.trim();
 
   const note = (document.getElementById('modal-note')?.value || '').trim();
-  const task = { id: editingTaskId || Date.now().toString(36), type, beer, fermId, eventName, brewNum, note };
+  const task = { id: editingTaskId || Date.now().toString(36), type, beer, fermId, eventName, brewNum, client, lieu, note };
   if (type === 'brassin') { task.dureeFerm = dureeFerm; task.dureeGarde = dureeGarde; }
   if (editingTaskId) {
     const prevTask = (planningData[modalDateKey] || []).find(t => t.id === editingTaskId);
@@ -8479,6 +8535,8 @@ function taskDetail(t) {
   }
   if (t.brewNum) parts.push(t.brewNum);
   if (t.eventName) parts.push(t.eventName);
+  if (t.client) parts.push(t.client);
+  if (t.lieu) parts.push(t.lieu);
   if (!parts.length && t.detail) return t.detail;
   const main = parts.join(' · ');
   if (t.note) return main ? `${main} — ${t.note}` : t.note;
@@ -11908,7 +11966,7 @@ Object.assign(window, {
   updateSuiviDens, buildCalculs, plato,
   destockerDH, deleteDhLog, renderSuiviDhLog, refreshEnfutageRecap, buildEnfutageRecap,
   toggleFermEdit, closeFermEdit, updateFerm, updateFermPhaseDebut, setPhase, toggleFermExpand,
-  changeWeek, changePlanMonth, jumpToWeek, renderPlanningCalendar, openAddTask, openEditTask, closeModal, updateModalFields, saveTask,
+  changeWeek, changePlanMonth, jumpToWeek, renderPlanningCalendar, openAddTask, openEditTask, closeModal, updateModalFields, saveTask, fillLieuFromClient,
   deleteTask,
   changePrevMonth, openOrderModal, closeOrderModal,
   renderOrderList, addOrderLine, removeDraftLine, updateDraftLine,
