@@ -1235,14 +1235,15 @@
     <!-- ===== PAGE STOCKS ===== -->
     <div class="page" id="page-stocks">
       <div class="sub-tabs" id="stocks-tabs">
-        <button class="active" onclick="switchSub('stocks','produits')">Produits</button>
+        <button class="active" onclick="switchSub('stocks','produits')">Bière</button>
         <button onclick="switchSub('stocks','mp')">M.P.</button>
+        <button onclick="switchSub('stocks','nettoyage')">Produits</button>
       </div>
 
       <!-- PRODUITS -->
       <div class="sub-page active" id="stocks-produits">
         <div style="padding:12px 16px 0;display:flex;align-items:center;justify-content:space-between">
-          <div class="section-title">Produits finis</div>
+          <div class="section-title">Bière en stock</div>
           <button onclick="openProduitModal()" style="background:var(--amber);color:var(--bg);border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">+ Ajouter</button>
         </div>
         <div style="padding:0 16px">
@@ -1278,6 +1279,15 @@
           <button onclick="toggleMpSorties()" id="btn-mp-sorties" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:3px 10px;cursor:pointer">Afficher</button>
         </div>
         <div id="mp-sorties-list" style="display:none;padding:0 16px 100px"></div>
+      </div>
+
+      <!-- NETTOYAGE (onglet "Produits") -->
+      <div class="sub-page" id="stocks-nettoyage">
+        <div style="padding:12px 16px 0;display:flex;align-items:center;justify-content:space-between">
+          <div class="section-title">Produits de nettoyage</div>
+          <button onclick="openNettoyageModal()" style="background:var(--amber);color:var(--bg);border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">+ Ajouter</button>
+        </div>
+        <div style="padding:8px 16px 100px" id="list-nettoyage"></div>
       </div>
     </div>
 
@@ -1894,6 +1904,44 @@
     <div style="display:flex;gap:8px;margin-top:18px">
       <button id="btn-close-mp-modal" style="flex:1;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:13px;padding:10px;cursor:pointer">Annuler</button>
       <button id="btn-save-mp-modal"  style="flex:2;background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:13px;font-weight:700;padding:10px;cursor:pointer">✓ Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL PRODUIT DE NETTOYAGE ===== -->
+<div id="nettoyage-modal" class="modal-overlay" onclick="if(event.target===this)closeNettoyageModal()">
+  <div class="modal-box" style="max-width:360px;margin:auto">
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700" id="nettoyage-modal-title">Ajouter un produit de nettoyage</div>
+
+    <div style="margin-top:14px">
+      <div class="field-label">Nom</div>
+      <input id="nettoyage-modal-name" type="text" placeholder="ex: Soude caustique"
+        style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:9px 12px;box-sizing:border-box" />
+    </div>
+
+    <div style="margin-top:12px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end">
+      <div>
+        <div class="field-label">Quantité en stock</div>
+        <input id="nettoyage-modal-qty" type="number" min="0" step="0.1" placeholder="0"
+          style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:9px 12px;box-sizing:border-box" />
+      </div>
+      <select id="nettoyage-modal-unit" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px">
+        <option value="L">L</option>
+        <option value="kg">kg</option>
+        <option value="unité">unité</option>
+      </select>
+    </div>
+
+    <div style="margin-top:12px">
+      <div class="field-label">Seuil d'alerte <span style="color:var(--muted);font-weight:400">(optionnel)</span></div>
+      <input id="nettoyage-modal-low" type="number" min="0" step="0.1" placeholder="ex: 5"
+        style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:9px 12px;box-sizing:border-box" />
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">En dessous de ce seuil, le produit passe en orange dans la liste.</div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:18px">
+      <button onclick="closeNettoyageModal()" style="flex:1;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:13px;padding:10px;cursor:pointer">Annuler</button>
+      <button onclick="saveNettoyageModal()" style="flex:2;background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:13px;font-weight:700;padding:10px;cursor:pointer">✓ Enregistrer</button>
     </div>
   </div>
 </div>
@@ -2960,6 +3008,7 @@ const FERM_DEFAULT = [
 let stocks30L    = Object.fromEntries(BEERS.map(b=>[b,0]));
 let stocks33cL   = Object.fromEntries(BEERS.map(b=>[b,0]));
 let produitsData = {}; // { id: { id, biere, format, qty, ferm, lot, ts } }
+let nettoyageData = {}; // { id: { id, name, unit, val, low } } — produits de nettoyage
 let MP_DATA      = JSON.parse(JSON.stringify(MP_SCHEMA)); // deep copy
 let FERMENTERS   = JSON.parse(JSON.stringify(FERM_DEFAULT));
 let planningData = {};
@@ -3226,6 +3275,11 @@ function initApp() {
     renderProduits();
     renderProjection();
     onLoaded();
+  });
+
+  fbListen('nettoyage', data => {
+    nettoyageData = data || {};
+    renderNettoyage();
   });
 
   fbListen('mp', data => {
@@ -4626,6 +4680,92 @@ function openMpModal(editId, mode) {
 
 function closeMpModal() {
   document.getElementById('mp-modal').style.display = 'none';
+}
+
+// =========================================================
+// PRODUITS DE NETTOYAGE
+// =========================================================
+let nettoyageEditId = null;
+
+function openNettoyageModal(id) {
+  nettoyageEditId = id || null;
+  const item = id ? nettoyageData[id] : null;
+  document.getElementById('nettoyage-modal-title').textContent = id ? 'Modifier le produit' : 'Ajouter un produit de nettoyage';
+  document.getElementById('nettoyage-modal-name').value = item?.name || '';
+  document.getElementById('nettoyage-modal-qty').value  = item?.val  ?? '';
+  document.getElementById('nettoyage-modal-unit').value = item?.unit || 'L';
+  document.getElementById('nettoyage-modal-low').value  = item?.low  ?? '';
+  document.getElementById('nettoyage-modal').style.display = 'flex';
+}
+
+function closeNettoyageModal() {
+  document.getElementById('nettoyage-modal').style.display = 'none';
+  nettoyageEditId = null;
+}
+
+function saveNettoyageModal() {
+  const name = document.getElementById('nettoyage-modal-name').value.trim();
+  if (!name) { showToast('Nom requis', true); return; }
+  const val    = parseFloat(document.getElementById('nettoyage-modal-qty').value) || 0;
+  const unit   = document.getElementById('nettoyage-modal-unit').value;
+  const lowRaw = document.getElementById('nettoyage-modal-low').value;
+  const low    = lowRaw !== '' ? (parseFloat(lowRaw) || 0) : 0;
+  const id = nettoyageEditId || 'n' + Date.now().toString(36);
+  fbSet('nettoyage/' + id, { id, name, unit, val, low });
+  closeNettoyageModal();
+}
+
+function adjustNettoyageQty(id, delta) {
+  const item = nettoyageData[id];
+  if (!item) return;
+  const step = item.unit === 'unité' ? 1 : 0.5;
+  const val = Math.max(0, parseFloat(((item.val||0) + delta*step).toFixed(2)));
+  fbUpdate('nettoyage/' + id, { val });
+}
+
+function setNettoyageQty(id, value) {
+  const val = Math.max(0, parseFloat(value) || 0);
+  fbUpdate('nettoyage/' + id, { val });
+}
+
+function deleteNettoyage(id) {
+  if (!confirm('Supprimer ce produit de nettoyage ?')) return;
+  fbSet('nettoyage/' + id, null);
+}
+
+function renderNettoyage() {
+  const el = document.getElementById('list-nettoyage');
+  if (!el) return;
+  const items = Object.values(nettoyageData).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+
+  if (!items.length) {
+    el.innerHTML = '<div style="text-align:center;padding:30px 0;color:var(--muted);font-size:13px">Aucun produit de nettoyage — cliquez sur + pour en ajouter</div>';
+    return;
+  }
+
+  el.innerHTML = `<div class="mp-list">${items.map(item => {
+    const low = item.low || 0;
+    const dot = (item.val||0) === 0 ? 'var(--danger)' : (low > 0 && item.val <= low) ? '#c08a20' : 'var(--ok)';
+    return `
+    <div class="mp-row">
+      <div class="mp-row-left">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dot};flex-shrink:0"></span>
+          <span style="font-size:14px;color:#fff">${esc(item.name)}</span>
+          ${low > 0 && item.val <= low ? `<span style="font-size:11px;color:#c08a20">⚠ seuil ${low}${item.unit}</span>` : ''}
+        </div>
+      </div>
+      <div class="mp-row-qty">
+        <button class="qty-btn" onclick="adjustNettoyageQty('${item.id}',-1)" style="width:26px;height:26px;font-size:14px">−</button>
+        <input class="mp-input" type="number" min="0" step="0.1" value="${item.val||0}"
+          onchange="setNettoyageQty('${item.id}',this.value)" style="width:66px"/>
+        <button class="qty-btn" onclick="adjustNettoyageQty('${item.id}',1)" style="width:26px;height:26px;font-size:14px">+</button>
+        <span class="mp-unit-label" style="min-width:30px">${item.unit||'L'}</span>
+      </div>
+      <button onclick="openNettoyageModal('${item.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:3px 6px;cursor:pointer;flex-shrink:0">✏️</button>
+      <button onclick="deleteNettoyage('${item.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:3px 6px;cursor:pointer;flex-shrink:0">🗑</button>
+    </div>`;
+  }).join('')}</div>`;
 }
 
 function selectMpCatModal(cat) {
@@ -11731,6 +11871,8 @@ Object.assign(window, {
   addParamLine, removeParamLine, updateParamLine, saveParams, saveBrasserie,
   showToast, toggleRecipeAccordion,
   openMpModal, closeMpModal, selectMpCatModal, saveMpModal, deleteMpItem,
+  openNettoyageModal, closeNettoyageModal, saveNettoyageModal,
+  adjustNettoyageQty, setNettoyageQty, deleteNettoyage, renderNettoyage,
   openLotPicker, selectLotOverride, closeLotPicker,
   updateBrewLineQty, openSubPicker, applySub, closeSubPicker,
   openIngredientRecipes, closeIngredientRecipesModal,
