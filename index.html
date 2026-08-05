@@ -1925,11 +1925,21 @@
         <input id="nettoyage-modal-qty" type="number" min="0" step="0.1" placeholder="0"
           style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:9px 12px;box-sizing:border-box" />
       </div>
-      <select id="nettoyage-modal-unit" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px">
+      <select id="nettoyage-modal-unit" onchange="document.getElementById('nettoyage-modal-price-unit').textContent = '€ / ' + this.value" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px">
         <option value="L">L</option>
         <option value="kg">kg</option>
         <option value="unité">unité</option>
       </select>
+    </div>
+
+    <div style="margin-top:12px">
+      <div class="field-label">Prix unitaire <span style="color:var(--muted);font-weight:400">(optionnel)</span></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <input id="nettoyage-modal-price" type="number" min="0" step="0.01" placeholder="0.00"
+          style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;padding:9px 12px;box-sizing:border-box" />
+        <span id="nettoyage-modal-price-unit" style="color:var(--muted);font-size:13px;white-space:nowrap">€ / L</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Utilisé pour calculer le coût de revient des recettes.</div>
     </div>
 
     <div style="margin-top:12px">
@@ -2478,6 +2488,11 @@
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#7ab4e8;margin:14px 0 8px">🧂 Sels minéraux</div>
     <div id="recipe-sels"></div>
     <button onclick="addRecipeLine('sel')" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:7px;cursor:pointer;margin-bottom:14px">+ Ajouter un sel minéral</button>
+
+    <!-- PRODUITS DE NETTOYAGE -->
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#e0a840;margin:14px 0 8px">🧴 Produits de nettoyage</div>
+    <div id="recipe-nettoyages"></div>
+    <button onclick="addRecipeLine('nettoyage')" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:7px;cursor:pointer;margin-bottom:14px">+ Ajouter un produit de nettoyage</button>
 
     <!-- Notes recette -->
     <div style="margin:14px 0 4px">
@@ -3071,7 +3086,7 @@ let brewLotOverrides = {}; // nom ingrédient -> id de l'item/lot choisi manuell
 let lotPickerIngredient = null;
 let brewEffectiveLines = null; // lignes effectives du brassin en cours (copie modifiable de la recette)
 let subPickerIndex = null;     // index de la ligne en cours de substitution
-let recipeDraftLines = { malt:[], houblon:[], levure:[], sel:[] };
+let recipeDraftLines = { malt:[], houblon:[], levure:[], sel:[], nettoyage:[] };
 
 // =========================================================
 // SAVE FUNCTIONS (écrivent dans Firebase)
@@ -4691,10 +4706,12 @@ function openNettoyageModal(id) {
   nettoyageEditId = id || null;
   const item = id ? nettoyageData[id] : null;
   document.getElementById('nettoyage-modal-title').textContent = id ? 'Modifier le produit' : 'Ajouter un produit de nettoyage';
-  document.getElementById('nettoyage-modal-name').value = item?.name || '';
-  document.getElementById('nettoyage-modal-qty').value  = item?.val  ?? '';
-  document.getElementById('nettoyage-modal-unit').value = item?.unit || 'L';
-  document.getElementById('nettoyage-modal-low').value  = item?.low  ?? '';
+  document.getElementById('nettoyage-modal-name').value  = item?.name || '';
+  document.getElementById('nettoyage-modal-qty').value   = item?.val  ?? '';
+  document.getElementById('nettoyage-modal-unit').value  = item?.unit || 'L';
+  document.getElementById('nettoyage-modal-price').value = item?.price ?? '';
+  document.getElementById('nettoyage-modal-price-unit').textContent = '€ / ' + (item?.unit || 'L');
+  document.getElementById('nettoyage-modal-low').value   = item?.low  ?? '';
   document.getElementById('nettoyage-modal').style.display = 'flex';
 }
 
@@ -4706,13 +4723,16 @@ function closeNettoyageModal() {
 function saveNettoyageModal() {
   const name = document.getElementById('nettoyage-modal-name').value.trim();
   if (!name) { showToast('Nom requis', true); return; }
-  const val    = parseFloat(document.getElementById('nettoyage-modal-qty').value) || 0;
-  const unit   = document.getElementById('nettoyage-modal-unit').value;
-  const lowRaw = document.getElementById('nettoyage-modal-low').value;
-  const low    = lowRaw !== '' ? (parseFloat(lowRaw) || 0) : 0;
+  const val      = parseFloat(document.getElementById('nettoyage-modal-qty').value) || 0;
+  const unit     = document.getElementById('nettoyage-modal-unit').value;
+  const priceRaw = document.getElementById('nettoyage-modal-price').value;
+  const price    = priceRaw !== '' ? (parseFloat(priceRaw) || 0) : 0;
+  const lowRaw   = document.getElementById('nettoyage-modal-low').value;
+  const low      = lowRaw !== '' ? (parseFloat(lowRaw) || 0) : 0;
   const id = nettoyageEditId || 'n' + Date.now().toString(36);
-  fbSet('nettoyage/' + id, { id, name, unit, val, low });
+  fbSet('nettoyage/' + id, { id, name, unit, val, price, low });
   closeNettoyageModal();
+  renderRecipes();
 }
 
 function adjustNettoyageQty(id, delta) {
@@ -5772,6 +5792,7 @@ function printFicheSuivi(brassinId) {
           ${recRows(rec.houblons, 'kg')}
           ${recRows(rec.levures, 'pqt')}
           ${recRows(rec.sels, 'g')}
+          ${recRows(rec.nettoyage, 'L')}
         </tbody>
       </table>`;
   }
@@ -9392,7 +9413,10 @@ function renderRecipes() {
     const maltRows  = (r.malts  ||[]).map(l=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text-dim)">${l.name}</span><span style="color:var(--foam)">${l.qty} kg <span style="color:var(--muted);font-size:10px">${getPrice(l.name)?'('+getPrice(l.name)+'€/kg)':''}</span></span></div>`).join('');
     const houbRows  = (r.houblons||[]).map(l=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text-dim)">${l.name}</span><span style="color:var(--foam);display:flex;align-items:center;gap:6px">${l.qty} kg${l.moment?`<span style="font-size:10px;color:var(--amber-lt);background:rgba(200,128,10,.15);border:1px solid rgba(200,128,10,.25);border-radius:3px;padding:1px 5px;font-family:monospace">${l.moment}</span>`:''}${getPrice(l.name)?`<span style="color:var(--muted);font-size:10px">(${getPrice(l.name)}€/kg)</span>`:''}</span></div>`).join('');
     const levRows   = (r.levures ||[]).map(l=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text-dim)">${l.name}</span><span style="color:var(--foam)">${l.qty} pqt <span style="color:var(--muted);font-size:10px">${getPrice(l.name)?'('+getPrice(l.name)+'€/pqt)':''}</span></span></div>`).join('');
-    const nbIngr = (r.malts||[]).length + (r.houblons||[]).length + (r.levures||[]).length;
+    const selRows   = (r.sels ||[]).map(l=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text-dim)">${l.name}</span><span style="color:var(--foam)">${l.qty} ${l.unite||'g'} <span style="color:var(--muted);font-size:10px">${getPrice(l.name)?'('+getPrice(l.name)+'€/'+(l.unite||'g')+')':''}</span></span></div>`).join('');
+    const getNettoyagePrice = name => { const it = Object.values(nettoyageData).find(n=>n.name===name); return it ? (it.price||0) : 0; };
+    const nettoyageRows = (r.nettoyage ||[]).map(l=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text-dim)">${l.name}</span><span style="color:var(--foam)">${l.qty} ${l.unite||'L'} <span style="color:var(--muted);font-size:10px">${getNettoyagePrice(l.name)?'('+getNettoyagePrice(l.name)+'€/'+(l.unite||'L')+')':''}</span></span></div>`).join('');
+    const nbIngr = (r.malts||[]).length + (r.houblons||[]).length + (r.levures||[]).length + (r.sels||[]).length + (r.nettoyage||[]).length;
     return `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden">
 
@@ -9438,6 +9462,8 @@ function renderRecipes() {
           ${r.notes ? `<div style="margin:8px 0 4px;font-size:12px;color:var(--muted);background:var(--surface2);border-left:2px solid var(--border);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:6px 10px;white-space:pre-wrap">📝 ${r.notes}</div>` : ''}
           ${houbRows  ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#7ec87e;margin:8px 0 4px">🌿 Houblons</div>${houbRows}` : ''}
           ${levRows   ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#c47ae8;margin:8px 0 4px">🧫 Levures</div>${levRows}` : ''}
+          ${selRows   ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#7ab4e8;margin:8px 0 4px">🧂 Sels minéraux</div>${selRows}` : ''}
+          ${nettoyageRows ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#e0a840;margin:8px 0 4px">🧴 Produits de nettoyage</div>${nettoyageRows}` : ''}
           <!-- Détail des coûts -->
           <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
             <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:6px">Détail coûts</div>
@@ -9485,9 +9511,16 @@ function calcCout(r) {
     ...(r.malts   ||[]),
     ...(r.houblons||[]),
     ...(r.levures ||[]),
+    ...(r.sels    ||[]), // sels minéraux — corrigé, oubliés jusqu'ici du coût de revient
   ];
   allLines.forEach(l => {
     const item = allItems.find(i => i.name === l.name);
+    const price = item ? (item.price || 0) : (parseFloat(l.price) || 0);
+    total += (parseFloat(l.qty) || 0) * price;
+  });
+  // Produits de nettoyage (prix défini dans Stock → onglet Produits)
+  (r.nettoyage || []).forEach(l => {
+    const item = Object.values(nettoyageData).find(n => n.name === l.name);
     const price = item ? (item.price || 0) : (parseFloat(l.price) || 0);
     total += (parseFloat(l.qty) || 0) * price;
   });
@@ -9508,10 +9541,11 @@ function openRecipeModal(id) {
   document.getElementById('recipe-temp-fermentation').value = r ? (r.tempFermentation||'') : '';
   document.getElementById('recipe-notes').value          = r ? (r.notes||'')        : '';
   recipeDraftLines = {
-    malt:    r ? (r.malts   ||[]).map(l=>({...l})) : [],
-    houblon: r ? (r.houblons||[]).map(l=>({...l})) : [],
-    levure:  r ? (r.levures ||[]).map(l=>({...l})) : [],
-    sel:     r ? (r.sels    ||[]).map(l=>({...l})) : [],
+    malt:      r ? (r.malts     ||[]).map(l=>({...l})) : [],
+    houblon:   r ? (r.houblons  ||[]).map(l=>({...l})) : [],
+    levure:    r ? (r.levures   ||[]).map(l=>({...l})) : [],
+    sel:       r ? (r.sels      ||[]).map(l=>({...l})) : [],
+    nettoyage: r ? (r.nettoyage ||[]).map(l=>({...l})) : [],
   };
   renderRecipeDraftLines();
   document.getElementById('recipe-modal').classList.add('open');
@@ -9524,6 +9558,12 @@ function closeRecipeModal() {
 
 function addRecipeLine(cat) {
   const defaults = { malt:'Pilsen', houblon:'Magnum', levure:'S-04', sel:'Gypse (SO₄Ca)' };
+  if (cat === 'nettoyage') {
+    const first = Object.values(nettoyageData).sort((a,b)=>(a.name||'').localeCompare(b.name||''))[0];
+    recipeDraftLines.nettoyage.push({ name: first?.name || '', qty: 0, unite: first?.unit || 'L' });
+    renderRecipeDraftLines();
+    return;
+  }
   const line = { name: defaults[cat]||'', qty: 0, price: 0 };
   if (cat === 'houblon') line.moment = "75'";
   recipeDraftLines[cat].push(line);
@@ -9537,20 +9577,50 @@ function removeRecipeLine(cat, i) {
 
 function updateRecipeLine(cat, i, field, val) {
   recipeDraftLines[cat][i][field] = val;
+  // Choisir un produit de nettoyage met à jour son unité automatiquement
+  if (cat === 'nettoyage' && field === 'name') {
+    const item = Object.values(nettoyageData).find(n => n.name === val);
+    recipeDraftLines.nettoyage[i].unite = item?.unit || 'L';
+    renderRecipeDraftLines();
+  }
 }
 
 function renderRecipeDraftLines() {
-  ['malt','houblon','levure','sel'].forEach(cat => {
-    const elId = { malt:'recipe-malts', houblon:'recipe-houblons', levure:'recipe-levures', sel:'recipe-sels' }[cat];
+  ['malt','houblon','levure','sel','nettoyage'].forEach(cat => {
+    const elId = { malt:'recipe-malts', houblon:'recipe-houblons', levure:'recipe-levures', sel:'recipe-sels', nettoyage:'recipe-nettoyages' }[cat];
     const el = document.getElementById(elId);
     if (!el) return;
     // Les ingrédients "autre" (épices, sucres, fruits…) sont proposés dans toutes les catégories,
     // car ils peuvent être ajoutés avec le malt, à l'ébullition, en fermentation ou en DH.
-    const items = [...(MP_DATA[cat] || []), ...(MP_DATA.autre || [])];
+    const items = cat === 'nettoyage' ? [] : [...(MP_DATA[cat] || []), ...(MP_DATA.autre || [])];
     const unit  = cat === 'levure' ? 'pqt' : cat === 'sel' ? 'g/ml' : 'kg';
     const step  = cat === 'houblon' ? '0.1' : cat === 'levure' ? '0.5' : cat === 'sel' ? '1' : '1';
 
-    if (cat === 'houblon') {
+    if (cat === 'nettoyage') {
+      const produits = Object.values(nettoyageData).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+      el.innerHTML = recipeDraftLines[cat].map((l, i) => `
+      <div style="display:grid;grid-template-columns:1fr 70px 50px 24px;gap:6px;margin-bottom:6px;align-items:end">
+        <div>
+          <div style="font-size:9px;color:var(--muted);margin-bottom:2px">Produit</div>
+          <select onchange="updateRecipeLine('nettoyage',${i},'name',this.value)"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:7px 8px;width:100%">
+            ${produits.length ? produits.map(it=>`<option value="${it.name}"${it.name===l.name?'selected':''}>${it.name}</option>`).join('') : `<option value="">Aucun produit défini</option>`}
+          </select>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--muted);margin-bottom:2px">Quantité</div>
+          <input type="number" min="0" step="0.1" value="${l.qty||''}" placeholder="0"
+            onchange="updateRecipeLine('nettoyage',${i},'qty',this.value)"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;font-weight:700;padding:7px 4px;width:100%;text-align:center"/>
+        </div>
+        <div style="font-size:12px;color:var(--muted);padding-bottom:8px;text-align:center">${l.unite || 'L'}</div>
+        <button onclick="removeRecipeLine('nettoyage',${i})"
+          style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0;line-height:1;margin-bottom:2px">×</button>
+      </div>`).join('');
+      if (!produits.length) {
+        el.insertAdjacentHTML('beforeend', `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Ajoutez d'abord des produits dans Stock → onglet Produits.</div>`);
+      }
+    } else if (cat === 'houblon') {
       el.innerHTML = recipeDraftLines[cat].map((l, i) => `
       <div style="display:grid;grid-template-columns:1fr 70px 90px 24px;gap:6px;margin-bottom:6px;align-items:end">
         <div>
@@ -9639,6 +9709,7 @@ function saveRecipe() {
     houblons: recipeDraftLines.houblon.map(l=>({...l, qty:parseFloat(l.qty)||0, moment:l.moment||"75'"})),
     levures:  recipeDraftLines.levure.map(l=>({...l, qty:parseFloat(l.qty)||0})),
     sels:     recipeDraftLines.sel.map(l=>({...l, qty:parseFloat(l.qty)||0, unite:l.unite||'g'})),
+    nettoyage: recipeDraftLines.nettoyage.map(l=>({...l, qty:parseFloat(l.qty)||0, unite:l.unite||'L'})),
   };
   saveRecipes();
   closeRecipeModal();
