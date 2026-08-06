@@ -1405,6 +1405,10 @@
         <span style="color:#7ec87e">+n</span> production disponible (enfûtage + 1 sem. de refermentation) ·
         <span style="color:var(--amber-lt)">−n</span> besoins (commandes)
       </div>
+      <div style="padding:0 16px 6px">
+        <span onclick="toggleHiddenBeersPanel()" style="font-size:11px;color:var(--amber-lt);cursor:pointer;text-decoration:underline;text-underline-offset:2px">🗑 Bières masquées</span>
+        <div id="projection-hidden-panel" style="display:none;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px"></div>
+      </div>
       <div style="padding:0 16px 100px;overflow-x:auto" id="projection-table"></div>
     </div>
 
@@ -4192,6 +4196,36 @@ function hideProjectionBeer(key) {
   paramsData.projectionHidden[key] = true;
   fbSet('params/projectionHidden', paramsData.projectionHidden);
   renderProjection();
+}
+
+function unhideProjectionBeer(key) {
+  if (!paramsData.projectionHidden) return;
+  delete paramsData.projectionHidden[key];
+  fbSet('params/projectionHidden', paramsData.projectionHidden);
+  renderProjection();
+  toggleHiddenBeersPanel(true);
+}
+
+function toggleHiddenBeersPanel(forceOpen) {
+  const el = document.getElementById('projection-hidden-panel');
+  if (!el) return;
+  const open = forceOpen === true || (forceOpen !== false && el.style.display === 'none');
+  if (!open) { el.style.display = 'none'; return; }
+
+  const hidden = paramsData.projectionHidden || {};
+  const keys = Object.keys(hidden);
+  if (!keys.length) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:8px 0">Aucune bière masquée.</div>`;
+  } else {
+    el.innerHTML = keys.map(key => {
+      const name = _projCanonMap[key] || key;
+      return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:13px;color:var(--foam)">${esc(name)}</span>
+        <button onclick="unhideProjectionBeer('${key}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:11px;padding:4px 10px;cursor:pointer">↺ Réafficher</button>
+      </div>`;
+    }).join('');
+  }
+  el.style.display = 'block';
 }
 
 function calcRupturesPrevues() {
@@ -7874,9 +7908,9 @@ const DAYS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 
 const TASK_TYPES = {
   brassin:      { label:'Brassin',           icon:'🍺', color:'#c8800a', needsBeer:true,  needsFerm:true  },
-  garde:        { label:'Mise en garde',     icon:'❄️',  color:'#7ab4e8', needsBeer:false, needsFerm:true  },
-  dh:           { label:'Dry Hopping',       icon:'🌿', color:'#7ec87e', needsBeer:false, needsFerm:true  },
-  enfutage:     { label:'Enfûtage',          icon:'🛢️',  color:'#4a9e5c', needsBeer:false, needsFerm:true  },
+  garde:        { label:'Mise en garde',     icon:'❄️',  color:'#7ab4e8', needsBeer:true, needsFerm:true  },
+  dh:           { label:'Dry Hopping',       icon:'🌿', color:'#7ec87e', needsBeer:true, needsFerm:true  },
+  enfutage:     { label:'Enfûtage',          icon:'🛢️',  color:'#4a9e5c', needsBeer:true, needsFerm:true  },
   embout:       { label:'Embouteillage',     icon:'🍾', color:'#4a9e5c', needsBeer:false, needsFerm:true  },
   nett_enzy:    { label:'Nett. enzymatique', icon:'🧴', color:'#a0785a', needsBeer:false, needsFerm:true  },
   nett_neutro:  { label:'Nett. Neutro',      icon:'⚗️',  color:'#a0785a', needsBeer:false, needsFerm:true  },
@@ -8328,26 +8362,29 @@ function saveTask() {
   let _dhAdjust = null;
   const type = document.getElementById('modal-type').value;
   const tt = TASK_TYPES[type] || {};
+  const prevTask = editingTaskId ? (planningData[modalDateKey] || []).find(t => t.id === editingTaskId) : null;
   let beer = '', fermId = '', eventName = '', brewNum = '', client = '', lieu = '';
   let dureeFerm = 10, dureeGarde = 8;
-  if (tt.needsBeer) beer   = document.getElementById('modal-beer').value || '';
-  if (tt.needsFerm) fermId = document.getElementById('modal-ferm').value || '';
+  // Si le champ n'est pas affiché dans ce type de tâche (ex: bière d'un Enfûtage/Garde/DH,
+  // venue de la cascade auto depuis le Brassin), on conserve la valeur déjà enregistrée
+  // plutôt que de l'écraser par vide à chaque modification/sauvegarde.
+  beer   = tt.needsBeer ? (document.getElementById('modal-beer').value || '') : (prevTask?.beer || '');
+  fermId = tt.needsFerm ? (document.getElementById('modal-ferm').value || '') : (prevTask?.fermId || '');
   if (type === 'brassin') {
     brewNum    = document.getElementById('modal-brew-num').value.trim();
     dureeFerm  = parseInt(document.getElementById('modal-duree-ferm').value, 10)  || 10;
     dureeGarde = parseInt(document.getElementById('modal-duree-garde').value, 10) || 8;
+  } else {
+    brewNum = prevTask?.brewNum || '';
   }
-  if (tt.needsClient) client = document.getElementById('modal-client').value || '';
-  if (tt.needsLieu)   lieu   = document.getElementById('modal-lieu').value.trim();
+  client = tt.needsClient ? (document.getElementById('modal-client').value || '') : (prevTask?.client || '');
+  lieu   = tt.needsLieu   ? document.getElementById('modal-lieu').value.trim()    : (prevTask?.lieu || '');
   if (!tt.needsBeer && !tt.needsFerm && !tt.needsClient) eventName = document.getElementById('modal-event-name').value.trim();
 
   const note = (document.getElementById('modal-note')?.value || '').trim();
   const task = { id: editingTaskId || Date.now().toString(36), type, beer, fermId, eventName, brewNum, client, lieu, note };
   if (type === 'brassin') { task.dureeFerm = dureeFerm; task.dureeGarde = dureeGarde; }
-  if (editingTaskId) {
-    const prevTask = (planningData[modalDateKey] || []).find(t => t.id === editingTaskId);
-    if (prevTask?.brassinId) task.brassinId = prevTask.brassinId;
-  }
+  if (prevTask?.brassinId) task.brassinId = prevTask.brassinId;
 
   if (!planningData[modalDateKey]) planningData[modalDateKey] = [];
 
@@ -12042,6 +12079,7 @@ function closeConfirmCreation() {
 
 Object.assign(window, {
   switchPage, switchSub, switchMpCat, switchProduitsFormatTab, renderDashboard, renderFutsPage, renderProjection,
+  hideProjectionBeer, unhideProjectionBeer, toggleHiddenBeersPanel,
   openBeerClientsModal, closeBeerClientsModal, goToCommandesForBeer,
   openPastOrdersModal, closePastOrdersModal,
   toggleOrderStockPanel, renderOrderStockPanel,
