@@ -3100,6 +3100,7 @@ let editingFerm    = null;
 let prevMonthOffset = 0;
 let orderModalKey  = null;
 let editOrderId    = null;
+let orderListFocusId = null; // si défini, la liste n'affiche que cette commande
 let _prevWeekBeerDetails = {}; // weekIdx -> { wLabel, range, clientsByBeer }
 let draftLines     = [];
 let weekOffset     = 0;
@@ -4118,37 +4119,6 @@ function renderProjection() {
         if (!prod[key]) prod[key] = {};
         prod[key][sem.i] = (prod[key][sem.i] || 0) + futs;
       });
-    });
-
-    // 3bis) Filet de sécurité : brassins actuellement en fermenteur (fermentation/garde/DH)
-    //       mais SANS tâche "Enfûtage" créée dans le planning — on estime leur date
-    //       d'enfûtage à partir de la phase en cours du fermenteur, pour ne pas les oublier.
-    const fermIdsPlanifies = new Set();
-    Object.values(planningData).forEach(tasks => (tasks||[]).forEach(t => {
-      if (t.type === 'enfutage' && t.fermId) fermIdsPlanifies.add(t.fermId);
-    }));
-    (typeof FERMENTERS !== 'undefined' ? FERMENTERS : []).forEach(f => {
-      if (!f.beer || !f.phases) return;
-      if (fermIdsPlanifies.has(f.id)) return; // déjà couvert par une tâche planning
-      const phase = f.phases.fermentation?.active ? 'fermentation'
-                  : f.phases.garde?.active        ? 'garde'
-                  : f.phases.dh?.active            ? 'dh' : null;
-      if (!phase || !f.phases[phase].debut) return;
-      const debut = new Date(f.phases[phase].debut + 'T12:00:00');
-      if (isNaN(debut)) return;
-      const dureeRestante = phase === 'fermentation' ? (f.dureeFerm||0) + (f.dureeGarde||0)
-                           : phase === 'garde'        ? (f.dureeGarde||0)
-                           : (f.dureeDH||0);
-      const dEnfEstime = new Date(debut);
-      dEnfEstime.setDate(dEnfEstime.getDate() + dureeRestante);
-      const dDispo = new Date(dEnfEstime);
-      dDispo.setDate(dDispo.getDate() + DELAI_REFERM_JOURS);
-      const sem = semaines.find(s => dDispo >= s.debut && dDispo <= s.fin);
-      if (!sem) return;
-      const futs = Math.floor((f.vol || 500) / 30);
-      const key = canon(f.beer);
-      if (!prod[key]) prod[key] = {};
-      prod[key][sem.i] = (prod[key][sem.i] || 0) + futs;
     });
   }
 
@@ -6617,13 +6587,11 @@ function saveDhModal() {
     dhLogs.push({ date: today, hop: item.name, lot: item.lot||'', qty, unit: item.unit||'kg' });
   }
 
-  // Activer la phase DH sur la cuve (phases mutuellement exclusives : la Garde
-  // doit être désactivée, sinon elle reste prioritaire dans l'affichage et le DH
-  // n'apparaît jamais sur l'image du fermenteur)
+  // Activer la phase DH sur la cuve. Le DH se déroule PENDANT la garde (les deux
+  // sont actives en même temps) — seule la fermentation est exclusive avec le DH.
   normalizeFerm(f);
   f.phases.dh           = { active:true, debut:today };
   f.phases.fermentation = { active:false, debut:null };
-  f.phases.garde        = { active:false, debut:null };
   saveFermenters();
 
   // Mettre à jour le statut dans l'historique des brassins
@@ -6860,121 +6828,138 @@ function saveEnfutage() {
   _enfutageSaving = false;
 }
 
+function buildFermCardHtml(f, cardKey, phaseKeyOverride) {
+  const isEditing = editingFerm === cardKey;
+  const ph = f.phases;
+  const anyActive = ph.fermentation.active || ph.garde.active || ph.dh.active;
+  const isIdle = !anyActive;
+
+  // Couleur & libellé selon la phase active. Si phaseKeyOverride est fourni (cas
+  // Garde+DH actifs en même temps, affichés en deux cartes), on force cette phase
+  // plutôt que de laisser l'auto-détection choisir.
+  let phaseKey = 'idle', phaseLabel = 'Libre';
+  if (phaseKeyOverride) {
+    phaseKey = phaseKeyOverride;
+    phaseLabel = phaseKeyOverride === 'dh' ? 'Dry Hopping' : phaseKeyOverride === 'garde' ? 'Garde' : 'Fermentation';
+  } else if (ph.fermentation.active) { phaseKey='fermentation'; phaseLabel='Fermentation'; }
+  else if (ph.dh.active)      { phaseKey='dh';           phaseLabel='Dry Hopping'; }
+  else if (ph.garde.active)   { phaseKey='garde';        phaseLabel='Garde'; }
+  const phaseColors = { fermentation:'#4caf72', garde:'#7ab4e8', dh:'#c47ae8', idle:'#555' };
+  const col = phaseColors[phaseKey];
+
+  // Avancement de la phase affichée (pour le remplissage du dessin)
+  let jours = 0, dureePhase = 0, pct = 0;
+  if (anyActive) {
+    const dureeByKey = { fermentation:f.dureeFerm, garde:f.dureeGarde, dh:f.dureeDH };
+    dureePhase = dureeByKey[phaseKey] || 0;
+    jours = joursEcoules(ph[phaseKey].debut);
+    pct = dureePhase > 0 ? Math.min(100, Math.round((jours / dureePhase) * 100)) : 0;
+  }
+
+  // Dessin SVG d'une cuve conique (style fermenteur inox)
+  // Le liquide monte selon l'avancement de la phase.
+  const liquidTop = anyActive ? (58 - (pct/100)*40) : 58; // vide si idle
+  const svg = `
+    <svg viewBox="0 0 80 110" style="width:64px;height:88px">
+      <defs>
+        <clipPath id="tank-${cardKey}">
+          <path d="M18,10 L62,10 L62,60 L40,96 L18,60 Z"/>
+        </clipPath>
+      </defs>
+      <!-- liquide -->
+      ${anyActive ? `<rect x="10" y="${liquidTop}" width="60" height="90" fill="${col}" opacity="0.55" clip-path="url(#tank-${cardKey})"/>` : ''}
+      <!-- corps de cuve -->
+      <path d="M18,10 L62,10 L62,60 L40,96 L18,60 Z" fill="none" stroke="${anyActive?col:'#666'}" stroke-width="2.5" stroke-linejoin="round"/>
+      <!-- couvercle -->
+      <ellipse cx="40" cy="10" rx="22" ry="4" fill="none" stroke="${anyActive?col:'#666'}" stroke-width="2.5"/>
+      <!-- pieds -->
+      <line x1="30" y1="94" x2="27" y2="104" stroke="#666" stroke-width="2"/>
+      <line x1="50" y1="94" x2="53" y2="104" stroke="#666" stroke-width="2"/>
+      <!-- petit robinet -->
+      <line x1="40" y1="96" x2="40" y2="102" stroke="#888" stroke-width="2"/>
+      ${anyActive ? `<text x="40" y="42" text-anchor="middle" font-size="13" font-weight="bold" fill="#fff">J${jours}</text>` : ''}
+    </svg>`;
+
+  // Panneau détails (déplié au clic) : temp, volume, boutons de phase, enfûtage, édition
+  const tempAffichee = (ph.garde.active || ph.dh.active) ? f.tempGarde : f.tempFerm;
+  const tempLabel    = (ph.garde.active || ph.dh.active) ? 'T° garde' : 'T° ferm.';
+
+  const detailsHtml = `
+    <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px">
+      ${anyActive ? `
+      <div style="display:flex;justify-content:space-around;margin-bottom:8px">
+        <div style="text-align:center"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">${tempLabel}</div><div style="font-size:14px;font-weight:700;color:var(--foam)">${tempAffichee}°C</div></div>
+        <div style="text-align:center"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Volume</div><div style="font-size:14px;font-weight:700;color:var(--foam)">${f.vol} L</div></div>
+        <div style="text-align:center"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Avancement</div><div style="font-size:14px;font-weight:700;color:${col}">J${jours}/${dureePhase}</div></div>
+      </div>` : ''}
+      <div class="ferm-phases">
+        <button class="phase-btn ${isIdle?'active-idle':''}" onclick="event.stopPropagation();setPhase('${f.id}','idle')">Libre</button>
+        <button class="phase-btn ${ph.fermentation.active?'active-ferm':''}" onclick="event.stopPropagation();setPhase('${f.id}','fermentation')">Ferm.</button>
+        <button class="phase-btn ${ph.garde.active?'active-garde':''}" onclick="event.stopPropagation();setPhase('${f.id}','garde')">Garde</button>
+        <button class="phase-btn ${ph.dh.active?'active-dh':''}" onclick="event.stopPropagation();setPhase('${f.id}','dh')">DH</button>
+      </div>
+      ${anyActive ? `<button onclick="event.stopPropagation();openEnfutageModal('${f.id}')" style="margin-top:8px;width:100%;background:var(--surface2);border:1px solid var(--amber);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;font-weight:600;padding:8px;cursor:pointer">🛢 Enfûtage / Embouteillage</button>` : ''}
+      <button onclick="event.stopPropagation();toggleFermEdit('${cardKey}')" style="margin-top:6px;width:100%;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:7px;cursor:pointer">${isEditing?'▲ Fermer l’édition':'✏️ Modifier'}</button>
+    </div>`;
+
+  // Formulaire d'édition (identique à avant) — édite toujours la vraie cuve (f.id)
+  const editHtml = `
+  <div class="ferm-edit-panel ${isEditing ? 'open' : ''}" id="edit-${cardKey}" onclick="event.stopPropagation()">
+    <div class="ferm-edit-grid">
+      <div class="ferm-field full"><label>Bière</label>
+        <input type="text" placeholder="Nom de la bière" value="${f.beer || ''}" oninput="updateFerm('${f.id}','beer',this.value)" /></div>
+      <div class="ferm-field"><label>T° fermentation (°C)</label>
+        <input type="number" step="0.5" value="${f.tempFerm}" oninput="updateFerm('${f.id}','tempFerm',this.value)" /></div>
+      <div class="ferm-field"><label>T° garde (°C)</label>
+        <input type="number" step="0.5" value="${f.tempGarde}" oninput="updateFerm('${f.id}','tempGarde',this.value)" /></div>
+      <div class="ferm-section-title" style="grid-column:1/-1">Durées prévues (jours)</div>
+      <div class="ferm-field"><label>Fermentation</label>
+        <input type="number" min="1" value="${f.dureeFerm}" oninput="updateFerm('${f.id}','dureeFerm',this.value)" /></div>
+      <div class="ferm-field"><label>Garde</label>
+        <input type="number" min="1" value="${f.dureeGarde}" oninput="updateFerm('${f.id}','dureeGarde',this.value)" /></div>
+      <div class="ferm-field"><label>Dry Hopping</label>
+        <input type="number" min="0" value="${f.dureeDH}" oninput="updateFerm('${f.id}','dureeDH',this.value)" /></div>
+      <div class="ferm-section-title" style="grid-column:1/-1">Dates de début</div>
+      <div class="ferm-field"><label>Début fermentation</label>
+        <input type="date" value="${ph.fermentation.debut || ''}" oninput="updateFermPhaseDebut('${f.id}','fermentation',this.value)" /></div>
+      <div class="ferm-field"><label>Début garde</label>
+        <input type="date" value="${ph.garde.debut || ''}" oninput="updateFermPhaseDebut('${f.id}','garde',this.value)" /></div>
+      <div class="ferm-field"><label>Début DH</label>
+        <input type="date" value="${ph.dh.debut || ''}" oninput="updateFermPhaseDebut('${f.id}','dh',this.value)" /></div>
+    </div>
+    <button class="ferm-save-btn" onclick="event.stopPropagation();closeFermEdit('${cardKey}')">✓ Valider</button>
+  </div>`;
+
+  const expanded = expandedFerm === cardKey;
+  const phaseSuffix = phaseKeyOverride ? ` <span style="font-size:10px;font-weight:400;color:${col}">· ${phaseLabel}</span>` : '';
+
+  return `
+  <div class="ferm-card ${expanded?'expanded':''}" id="card-${cardKey}" onclick="toggleFermExpand('${cardKey}')" style="cursor:pointer;text-align:center">
+    <div style="display:flex;justify-content:center">${svg}</div>
+    <div class="ferm-id" style="margin-top:2px">Cuve ${f.id}${phaseSuffix}</div>
+    <div class="ferm-name" style="font-size:12px">${f.beer || '— Disponible —'}</div>
+    ${f.brewNum ? `<div style="font-size:10px;font-family:monospace;color:var(--amber-lt)">${f.brewNum}</div>` : ''}
+    <div style="margin-top:4px"><span class="badge ${phaseKey==='idle'?'idle':phaseKey}" style="font-size:10px">${phaseLabel}</span></div>
+    ${anyActive && dureePhase>0 ? `<div style="margin-top:6px;height:4px;background:var(--surface2);border-radius:2px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${col}"></div></div>` : ''}
+    ${expanded ? detailsHtml + editHtml : `<div style="font-size:10px;color:var(--muted);margin-top:6px">👆 détails</div>`}
+  </div>`;
+}
+
 function renderFermenters() {
   const el = document.getElementById('list-ferm');
   el.innerHTML = '';
 
   FERMENTERS.map(normalizeFerm).forEach(f => {
-    const isEditing = editingFerm === f.id;
     const ph = f.phases;
-    const anyActive = ph.fermentation.active || ph.garde.active || ph.dh.active;
-    const isIdle = !anyActive;
-
-    // Couleur & libellé selon la phase active
-    // DH vérifié avant Garde : sur une cuve où l'ancien bug laissait Garde active
-    // en même temps que DH, le DH (plus spécifique/récent) doit primer à l'affichage.
-    let phaseKey = 'idle', phaseLabel = 'Libre';
-    if (ph.fermentation.active) { phaseKey='fermentation'; phaseLabel='Fermentation'; }
-    else if (ph.dh.active)      { phaseKey='dh';           phaseLabel='Dry Hopping'; }
-    else if (ph.garde.active)   { phaseKey='garde';        phaseLabel='Garde'; }
-    const phaseColors = { fermentation:'#4caf72', garde:'#7ab4e8', dh:'#c47ae8', idle:'#555' };
-    const col = phaseColors[phaseKey];
-
-    // Avancement de la phase active (pour le remplissage du dessin)
-    let jours = 0, dureePhase = 0, pct = 0;
-    if (anyActive) {
-      const dureeByKey = { fermentation:f.dureeFerm, garde:f.dureeGarde, dh:f.dureeDH };
-      dureePhase = dureeByKey[phaseKey] || 0;
-      jours = joursEcoules(ph[phaseKey].debut);
-      pct = dureePhase > 0 ? Math.min(100, Math.round((jours / dureePhase) * 100)) : 0;
+    // Garde et DH peuvent être actifs EN MÊME TEMPS sur la même cuve (le DH se
+    // déroule pendant la garde) : dans ce cas, afficher deux cartes distinctes
+    // avec leur propre durée/avancement, plutôt qu'une seule qui masquerait l'une des deux.
+    if (ph.garde.active && ph.dh.active) {
+      el.insertAdjacentHTML('beforeend', buildFermCardHtml(f, f.id + '_garde', 'garde'));
+      el.insertAdjacentHTML('beforeend', buildFermCardHtml(f, f.id + '_dh', 'dh'));
+    } else {
+      el.insertAdjacentHTML('beforeend', buildFermCardHtml(f, f.id, null));
     }
-
-    // Dessin SVG d'une cuve conique (style fermenteur inox)
-    // Le liquide monte selon l'avancement de la phase.
-    const liquidTop = anyActive ? (58 - (pct/100)*40) : 58; // vide si idle
-    const svg = `
-      <svg viewBox="0 0 80 110" style="width:64px;height:88px">
-        <defs>
-          <clipPath id="tank-${f.id}">
-            <path d="M18,10 L62,10 L62,60 L40,96 L18,60 Z"/>
-          </clipPath>
-        </defs>
-        <!-- liquide -->
-        ${anyActive ? `<rect x="10" y="${liquidTop}" width="60" height="90" fill="${col}" opacity="0.55" clip-path="url(#tank-${f.id})"/>` : ''}
-        <!-- corps de cuve -->
-        <path d="M18,10 L62,10 L62,60 L40,96 L18,60 Z" fill="none" stroke="${anyActive?col:'#666'}" stroke-width="2.5" stroke-linejoin="round"/>
-        <!-- couvercle -->
-        <ellipse cx="40" cy="10" rx="22" ry="4" fill="none" stroke="${anyActive?col:'#666'}" stroke-width="2.5"/>
-        <!-- pieds -->
-        <line x1="30" y1="94" x2="27" y2="104" stroke="#666" stroke-width="2"/>
-        <line x1="50" y1="94" x2="53" y2="104" stroke="#666" stroke-width="2"/>
-        <!-- petit robinet -->
-        <line x1="40" y1="96" x2="40" y2="102" stroke="#888" stroke-width="2"/>
-        ${anyActive ? `<text x="40" y="42" text-anchor="middle" font-size="13" font-weight="bold" fill="#fff">J${jours}</text>` : ''}
-      </svg>`;
-
-    // Panneau détails (déplié au clic) : temp, volume, boutons de phase, enfûtage, édition
-    const tempAffichee = (ph.garde.active || ph.dh.active) ? f.tempGarde : f.tempFerm;
-    const tempLabel    = (ph.garde.active || ph.dh.active) ? 'T° garde' : 'T° ferm.';
-
-    const detailsHtml = `
-      <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px">
-        ${anyActive ? `
-        <div style="display:flex;justify-content:space-around;margin-bottom:8px">
-          <div style="text-align:center"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">${tempLabel}</div><div style="font-size:14px;font-weight:700;color:var(--foam)">${tempAffichee}°C</div></div>
-          <div style="text-align:center"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Volume</div><div style="font-size:14px;font-weight:700;color:var(--foam)">${f.vol} L</div></div>
-          <div style="text-align:center"><div style="font-size:9px;color:var(--muted);text-transform:uppercase">Avancement</div><div style="font-size:14px;font-weight:700;color:${col}">J${jours}/${dureePhase}</div></div>
-        </div>` : ''}
-        <div class="ferm-phases">
-          <button class="phase-btn ${isIdle?'active-idle':''}" onclick="event.stopPropagation();setPhase('${f.id}','idle')">Libre</button>
-          <button class="phase-btn ${ph.fermentation.active?'active-ferm':''}" onclick="event.stopPropagation();setPhase('${f.id}','fermentation')">Ferm.</button>
-          <button class="phase-btn ${ph.garde.active?'active-garde':''}" onclick="event.stopPropagation();setPhase('${f.id}','garde')">Garde</button>
-          <button class="phase-btn ${ph.dh.active?'active-dh':''}" onclick="event.stopPropagation();setPhase('${f.id}','dh')">DH</button>
-        </div>
-        ${anyActive ? `<button onclick="event.stopPropagation();openEnfutageModal('${f.id}')" style="margin-top:8px;width:100%;background:var(--surface2);border:1px solid var(--amber);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;font-weight:600;padding:8px;cursor:pointer">🛢 Enfûtage / Embouteillage</button>` : ''}
-        <button onclick="event.stopPropagation();toggleFermEdit('${f.id}')" style="margin-top:6px;width:100%;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:7px;cursor:pointer">${isEditing?'▲ Fermer l’édition':'✏️ Modifier'}</button>
-      </div>`;
-
-    // Formulaire d'édition (identique à avant)
-    const editHtml = `
-    <div class="ferm-edit-panel ${isEditing ? 'open' : ''}" id="edit-${f.id}" onclick="event.stopPropagation()">
-      <div class="ferm-edit-grid">
-        <div class="ferm-field full"><label>Bière</label>
-          <input type="text" placeholder="Nom de la bière" value="${f.beer || ''}" oninput="updateFerm('${f.id}','beer',this.value)" /></div>
-        <div class="ferm-field"><label>T° fermentation (°C)</label>
-          <input type="number" step="0.5" value="${f.tempFerm}" oninput="updateFerm('${f.id}','tempFerm',this.value)" /></div>
-        <div class="ferm-field"><label>T° garde (°C)</label>
-          <input type="number" step="0.5" value="${f.tempGarde}" oninput="updateFerm('${f.id}','tempGarde',this.value)" /></div>
-        <div class="ferm-section-title" style="grid-column:1/-1">Durées prévues (jours)</div>
-        <div class="ferm-field"><label>Fermentation</label>
-          <input type="number" min="1" value="${f.dureeFerm}" oninput="updateFerm('${f.id}','dureeFerm',this.value)" /></div>
-        <div class="ferm-field"><label>Garde</label>
-          <input type="number" min="1" value="${f.dureeGarde}" oninput="updateFerm('${f.id}','dureeGarde',this.value)" /></div>
-        <div class="ferm-field"><label>Dry Hopping</label>
-          <input type="number" min="0" value="${f.dureeDH}" oninput="updateFerm('${f.id}','dureeDH',this.value)" /></div>
-        <div class="ferm-section-title" style="grid-column:1/-1">Dates de début</div>
-        <div class="ferm-field"><label>Début fermentation</label>
-          <input type="date" value="${ph.fermentation.debut || ''}" oninput="updateFermPhaseDebut('${f.id}','fermentation',this.value)" /></div>
-        <div class="ferm-field"><label>Début garde</label>
-          <input type="date" value="${ph.garde.debut || ''}" oninput="updateFermPhaseDebut('${f.id}','garde',this.value)" /></div>
-        <div class="ferm-field"><label>Début DH</label>
-          <input type="date" value="${ph.dh.debut || ''}" oninput="updateFermPhaseDebut('${f.id}','dh',this.value)" /></div>
-      </div>
-      <button class="ferm-save-btn" onclick="event.stopPropagation();closeFermEdit('${f.id}')">✓ Valider</button>
-    </div>`;
-
-    const expanded = expandedFerm === f.id;
-
-    el.insertAdjacentHTML('beforeend', `
-    <div class="ferm-card ${expanded?'expanded':''}" id="card-${f.id}" onclick="toggleFermExpand('${f.id}')" style="cursor:pointer;text-align:center">
-      <div style="display:flex;justify-content:center">${svg}</div>
-      <div class="ferm-id" style="margin-top:2px">Cuve ${f.id}</div>
-      <div class="ferm-name" style="font-size:12px">${f.beer || '— Disponible —'}</div>
-      ${f.brewNum ? `<div style="font-size:10px;font-family:monospace;color:var(--amber-lt)">${f.brewNum}</div>` : ''}
-      <div style="margin-top:4px"><span class="badge ${phaseKey==='idle'?'idle':phaseKey}" style="font-size:10px">${phaseLabel}</span></div>
-      ${anyActive && dureePhase>0 ? `<div style="margin-top:6px;height:4px;background:var(--surface2);border-radius:2px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${col}"></div></div>` : ''}
-      ${expanded ? detailsHtml + editHtml : `<div style="font-size:10px;color:var(--muted);margin-top:6px">👆 détails</div>`}
-    </div>`);
   });
 }
 
@@ -8711,7 +8696,7 @@ function renderOrdersList() {
       const qtys = [totalF?`🛢 ${totalF}`:'', totalC?`📦 ${totalC}`:'', totalT?`🍺 ${totalT}`:''].filter(Boolean).join('  ');
       const beers = [...new Set(o.lines.map(l=>l.beer).filter(Boolean))].join(', ');
       return `
-      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="openOrderModal('${k}')">
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="openOrderModal('${k}','${o.id}')">
         <div style="min-width:70px;flex-shrink:0">
           <div style="font-size:11px;color:var(--danger);font-weight:600">${dateStr}</div>
           <div style="font-size:10px;color:var(--danger)">+${nbJours} j</div>
@@ -8787,7 +8772,7 @@ function renderOrdersList() {
       const beers = [...new Set(o.lines.map(l=>l.beer).filter(Boolean))].join(', ');
       return `
       <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer"
-        onclick="openOrderModal('${k}')">
+        onclick="openOrderModal('${k}','${o.id}')">
         <div style="font-size:11px;color:var(--muted);min-width:70px;flex-shrink:0">${dateStr}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;color:var(--foam);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.client)||'—'}</div>
@@ -8990,9 +8975,10 @@ function onOrderClientSelect(val) {
   else { input.value = ''; input.style.display = ''; }
 }
 
-function openOrderModal(key) {
+function openOrderModal(key, focusOrderId) {
   orderModalKey = key;
   editOrderId   = null;
+  orderListFocusId = focusOrderId || null;
   draftLines    = [{ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, tireuse:0, prixFut30inox:0, prixFut30kk:0, prixFut30kktp:0, prixFut20:0, prixCarton:0, prixTireuse:0 }];
   const d = new Date(key + 'T12:00:00');
   document.getElementById('order-modal-date').textContent =
@@ -9008,20 +8994,38 @@ function openOrderModal(key) {
   renderOrderList(key);
   renderDraftLines();
   document.getElementById('order-modal').classList.add('open');
+  if (focusOrderId) editOrderForm(key, focusOrderId);
 }
 
 function closeOrderModal() {
   document.getElementById('order-modal').classList.remove('open');
-  orderModalKey = null; editOrderId = null; draftLines = [];
+  orderModalKey = null; editOrderId = null; draftLines = []; orderListFocusId = null;
+}
+
+function showAllOrdersThisDay() {
+  orderListFocusId = null;
+  renderOrderList(orderModalKey);
 }
 
 function renderOrderList(key) {
   const rawOrders = ordersData[key] || [];
-  const orders = rawOrders.map(migrateOrder);
+  let orders = rawOrders.map(migrateOrder);
   const el = document.getElementById('order-list');
   if (!orders.length) {
     el.innerHTML = '<div style="font-size:12px;color:var(--muted);font-style:italic;padding:4px 0 8px">Aucun bon ce jour</div>';
     return;
+  }
+  let backLinkHtml = '';
+  if (orderListFocusId) {
+    const stillThere = orders.some(o => o.id === orderListFocusId);
+    if (stillThere) {
+      orders = orders.filter(o => o.id === orderListFocusId);
+      if (orders.length < rawOrders.length) {
+        backLinkHtml = `<div onclick="showAllOrdersThisDay()" style="font-size:12px;color:var(--amber-lt);cursor:pointer;padding:2px 0 8px;text-decoration:underline;text-underline-offset:2px">← Voir les ${rawOrders.length} commandes de ce jour</div>`;
+      }
+    } else {
+      orderListFocusId = null; // la commande ciblée n'existe plus (supprimée)
+    }
   }
   el.innerHTML = orders.map(o => {
     const totalF = o.lines.reduce((a,l)=>(a+(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0)),0);
@@ -9087,6 +9091,7 @@ function renderOrderList(key) {
       </div>
     </div>`;
   }).join('');
+  el.innerHTML = backLinkHtml + el.innerHTML;
 }
 
 function renderDraftLines() {
@@ -12059,7 +12064,7 @@ Object.assign(window, {
   deleteTask,
   changePrevMonth, openOrderModal, closeOrderModal,
   renderOrderList, addOrderLine, removeDraftLine, updateDraftLine,
-  editOrderForm, deleteOrder, saveOrder,
+  editOrderForm, deleteOrder, saveOrder, showAllOrdersThisDay,
   onOrderClientSelect,
   openBlPartielModal, closeBlPartielModal, confirmCreerBlPartiel, creerFactureDepuisCommande,
   showConfirmCreation, closeConfirmCreation,
