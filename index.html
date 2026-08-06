@@ -2741,8 +2741,10 @@
 
     <div id="modal-brewnum-row" class="modal-field" style="display:none">
       <label>Numéro de brassin</label>
-      <input id="modal-brew-num" type="text" placeholder="ex: SUP-001"
+      <input id="modal-brew-num" type="text" placeholder="ex: SUP-001" list="modal-brew-num-list" oninput="checkBrewNumLink()"
         style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:14px;font-weight:700;padding:9px 12px;width:100%;font-family:monospace;letter-spacing:.5px"/>
+      <datalist id="modal-brew-num-list"></datalist>
+      <div id="modal-brewnum-hint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
     </div>
 
     <div id="modal-duree-row" class="modal-field" style="display:none">
@@ -7907,10 +7909,10 @@ function deleteNote(id) {
 const DAYS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 
 const TASK_TYPES = {
-  brassin:      { label:'Brassin',           icon:'🍺', color:'#c8800a', needsBeer:true,  needsFerm:true  },
-  garde:        { label:'Mise en garde',     icon:'❄️',  color:'#7ab4e8', needsBeer:true, needsFerm:true  },
-  dh:           { label:'Dry Hopping',       icon:'🌿', color:'#7ec87e', needsBeer:true, needsFerm:true  },
-  enfutage:     { label:'Enfûtage',          icon:'🛢️',  color:'#4a9e5c', needsBeer:true, needsFerm:true  },
+  brassin:      { label:'Brassin',           icon:'🍺', color:'#c8800a', needsBeer:true,  needsFerm:true,  needsBrewNum:true },
+  garde:        { label:'Mise en garde',     icon:'❄️',  color:'#7ab4e8', needsBeer:true, needsFerm:true,  needsBrewNum:true },
+  dh:           { label:'Dry Hopping',       icon:'🌿', color:'#7ec87e', needsBeer:true, needsFerm:true,  needsBrewNum:true },
+  enfutage:     { label:'Enfûtage',          icon:'🛢️',  color:'#4a9e5c', needsBeer:true, needsFerm:true,  needsBrewNum:true },
   embout:       { label:'Embouteillage',     icon:'🍾', color:'#4a9e5c', needsBeer:false, needsFerm:true  },
   nett_enzy:    { label:'Nett. enzymatique', icon:'🧴', color:'#a0785a', needsBeer:false, needsFerm:true  },
   nett_neutro:  { label:'Nett. Neutro',      icon:'⚗️',  color:'#a0785a', needsBeer:false, needsFerm:true  },
@@ -8317,6 +8319,7 @@ function openEditTask(key, taskId) {
   if (t.client)    { document.getElementById('modal-client').value = t.client; }
   document.getElementById('modal-lieu').value = t.lieu || '';
   if (t.brewNum)   { document.getElementById('modal-brew-num').value = t.brewNum; }
+  checkBrewNumLink();
   if (t.eventName) { document.getElementById('modal-event-name').value = t.eventName; }
   document.getElementById('modal-duree-ferm').value  = t.dureeFerm  ?? 10;
   document.getElementById('modal-duree-garde').value = t.dureeGarde ?? 8;
@@ -8337,12 +8340,47 @@ function updateModalFields() {
   const tt = TASK_TYPES[type] || {};
   document.getElementById('modal-beer-row').style.display     = tt.needsBeer ? 'block' : 'none';
   document.getElementById('modal-ferm-row').style.display     = tt.needsFerm ? 'block' : 'none';
-  document.getElementById('modal-brewnum-row').style.display  = (type === 'brassin') ? 'block' : 'none';
+  document.getElementById('modal-brewnum-row').style.display  = tt.needsBrewNum ? 'block' : 'none';
   document.getElementById('modal-duree-row').style.display    = (type === 'brassin') ? 'block' : 'none';
   suggestBrewNumFromBeer();
+  if (tt.needsBrewNum) { populateBrewNumDatalist(); checkBrewNumLink(); }
   document.getElementById('modal-client-row').style.display   = tt.needsClient ? 'block' : 'none';
   document.getElementById('modal-lieu-row').style.display     = tt.needsLieu ? 'block' : 'none';
   document.getElementById('modal-event-row').style.display    = (!tt.needsBeer && !tt.needsFerm && !tt.needsClient) ? 'block' : 'none';
+}
+
+// Liste de tous les n° de brassin connus (tâches "Brassin" du planning + historique),
+// pour aider à lier une tâche Garde/DH/Enfûtage au bon brassin d'origine (autocomplétion).
+function populateBrewNumDatalist() {
+  const dl = document.getElementById('modal-brew-num-list');
+  if (!dl) return;
+  const nums = new Set();
+  Object.values(planningData).forEach(tasks => (tasks||[]).forEach(t => {
+    if (t.type === 'brassin' && t.brewNum) nums.add(t.brewNum);
+  }));
+  Object.values(historiqueData).forEach(b => { if (b.brewNum) nums.add(b.brewNum); });
+  dl.innerHTML = [...nums].sort().map(n => `<option value="${n}"></option>`).join('');
+}
+
+// Vérifie si le n° saisi correspond à un brassin connu et affiche un indice visuel
+function checkBrewNumLink() {
+  const hint = document.getElementById('modal-brewnum-hint');
+  const input = document.getElementById('modal-brew-num');
+  if (!hint || !input) return;
+  const val = input.value.trim();
+  if (!val) { hint.textContent = ''; return; }
+  let match = null;
+  Object.values(planningData).some(tasks => {
+    const t = (tasks||[]).find(x => x.type === 'brassin' && x.brewNum === val);
+    if (t) { match = t; return true; }
+    return false;
+  });
+  if (!match) match = Object.values(historiqueData).find(b => b.brewNum === val);
+  if (match) {
+    hint.innerHTML = `<span style="color:var(--ok)">✓ lié au brassin ${esc(match.beer||match.recette||'')}</span>`;
+  } else {
+    hint.innerHTML = `<span style="color:#c08a20">⚠ aucun brassin ne porte ce numéro</span>`;
+  }
 }
 
 function fillLieuFromClient() {
@@ -8370,12 +8408,10 @@ function saveTask() {
   // plutôt que de l'écraser par vide à chaque modification/sauvegarde.
   beer   = tt.needsBeer ? (document.getElementById('modal-beer').value || '') : (prevTask?.beer || '');
   fermId = tt.needsFerm ? (document.getElementById('modal-ferm').value || '') : (prevTask?.fermId || '');
+  brewNum = tt.needsBrewNum ? document.getElementById('modal-brew-num').value.trim() : (prevTask?.brewNum || '');
   if (type === 'brassin') {
-    brewNum    = document.getElementById('modal-brew-num').value.trim();
     dureeFerm  = parseInt(document.getElementById('modal-duree-ferm').value, 10)  || 10;
     dureeGarde = parseInt(document.getElementById('modal-duree-garde').value, 10) || 8;
-  } else {
-    brewNum = prevTask?.brewNum || '';
   }
   client = tt.needsClient ? (document.getElementById('modal-client').value || '') : (prevTask?.client || '');
   lieu   = tt.needsLieu   ? document.getElementById('modal-lieu').value.trim()    : (prevTask?.lieu || '');
@@ -12098,7 +12134,7 @@ Object.assign(window, {
   updateSuiviDens, buildCalculs, plato,
   destockerDH, deleteDhLog, renderSuiviDhLog, refreshEnfutageRecap, buildEnfutageRecap,
   toggleFermEdit, closeFermEdit, updateFerm, updateFermPhaseDebut, setPhase, toggleFermExpand,
-  changeWeek, changePlanMonth, jumpToWeek, renderPlanningCalendar, openAddTask, openEditTask, closeModal, updateModalFields, saveTask, fillLieuFromClient,
+  changeWeek, changePlanMonth, jumpToWeek, renderPlanningCalendar, openAddTask, openEditTask, closeModal, updateModalFields, saveTask, fillLieuFromClient, checkBrewNumLink,
   deleteTask,
   changePrevMonth, openOrderModal, closeOrderModal,
   renderOrderList, addOrderLine, removeDraftLine, updateDraftLine,
