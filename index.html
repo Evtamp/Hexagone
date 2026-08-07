@@ -11490,8 +11490,13 @@ function saveBl() {
   };
   blData[id] = entry;
   saveBl1(id, entry);
-  // Mettre à jour le parc inox uniquement à la création
-  if (isNew) updateStockFromBl(client, lines, 1);
+  // Répercuter sur le stock produits : en modification, on annule d'abord l'impact des
+  // anciennes lignes avant de réappliquer les nouvelles — un article ajouté est bien
+  // déstocké, un article retiré ou diminué est remis en stock, seul l'écart net bouge.
+  if (!isNew && existing.lines && existing.lines.length) {
+    updateStockFromBl(existing.client || client, existing.lines, -1);
+  }
+  updateStockFromBl(client, lines, 1);
   // Clôturer la commande associée : chercher sur toutes les dates futures le client correspondant
   if (isNew && entry.client) {
     let found = false;
