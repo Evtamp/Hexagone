@@ -2700,12 +2700,14 @@
           <label>Date de livraison</label>
           <input id="order-date" type="date"
             onclick="this.showPicker&&this.showPicker()"
+            onchange="renderOrderTireuseLines()"
             style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;width:100%;cursor:pointer"/>
         </div>
         <div class="modal-field">
           <label>Date de reprise <span style="font-weight:400;color:var(--muted)">(option.)</span></label>
           <input id="order-date-reprise" type="date"
             onclick="this.showPicker&&this.showPicker()"
+            onchange="renderOrderTireuseLines()"
             style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;width:100%;cursor:pointer"/>
         </div>
       </div>
@@ -2736,6 +2738,12 @@
 
       <button onclick="addOrderLine()" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:13px;padding:9px;cursor:pointer;margin-bottom:12px">
         + Ajouter une bière
+      </button>
+
+      <!-- Tireuses (indépendantes des lignes de bière) -->
+      <div id="order-tireuses-lines" style="margin-bottom:8px"></div>
+      <button onclick="addOrderTireuseLine()" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:13px;padding:9px;cursor:pointer;margin-bottom:12px">
+        + Ajouter tireuse
       </button>
 
       <div class="modal-field">
@@ -3164,6 +3172,7 @@ let editOrderId    = null;
 let orderListFocusId = null; // si défini, la liste n'affiche que cette commande
 let _prevWeekBeerDetails = {}; // weekIdx -> { wLabel, range, clientsByBeer }
 let draftLines     = [];
+let draftTireuseLines = []; // [{beer, tireuseId, prix}] — indépendant des lignes de bière
 let weekOffset     = 0;
 let editingNoteId  = null;
 let modalDateKey   = null;
@@ -3282,21 +3291,45 @@ function deleteTireuse(id) {
 }
 
 // Retourne les tireuses disponibles pour une date donnée (pas réservées ce jour)
-function getTireusesDispos(dateKey) {
+function getOrderTireuseLines(o) {
+  // Nouveau format : o.tireuseLines = [{beer, tireuseId, prix}]
+  if (o.tireuseLines && o.tireuseLines.length) return o.tireuseLines;
+  // Ancien format (tireuse liée à une ligne de bière) : reconstituer à l'identique
+  const out = [];
+  (o.lines||[]).forEach(l => {
+    if (l.tireuseIds && l.tireuseIds.length) {
+      l.tireuseIds.forEach(tid => out.push({ beer:l.beer, tireuseId:tid, prix: parseFloat(l.prixTireuse)||0 }));
+    } else if (parseInt(l.tireuse) > 0) {
+      for (let i=0; i<parseInt(l.tireuse); i++) out.push({ beer:l.beer, tireuseId:null, prix: parseFloat(l.prixTireuse)||0 });
+    }
+  });
+  return out;
+}
+
+function getTireusesDispos(dateKey, dateRepriseKey) {
   const toutes = Object.values(tireusesData).sort((a,b) => (a.num||'').localeCompare(b.num||''));
-  // Tireuses réservées ce jour dans d'autres commandes (exclure la commande en cours d'édition)
+  if (!dateKey) return toutes.map(t => ({ ...t, dispo:true, reservePar:null }));
+
+  // Chevauchement sur toute la période de prêt (date de livraison → date de reprise),
+  // pas seulement le jour de livraison : une tireuse prêtée du 10 au 15 doit bloquer
+  // toute commande qui chevauche cette période, pas juste celles tombant pile le 10.
+  const start = new Date(dateKey + 'T00:00:00');
+  const end   = new Date((dateRepriseKey || dateKey) + 'T23:59:59');
   const reservations = {}; // tireuseId → client
-  const raw = ordersData[dateKey] || [];
-  const dayOrders = Array.isArray(raw) ? raw : Object.values(raw);
-  dayOrders.forEach(o => {
-    if (o.id === editOrderId) return; // exclure la commande en cours
-    const client = o.client || o.lines?.[0]?.beer || '?';
-    (o.tireuseIds||[]).forEach(tid => { reservations[tid] = client; });
-    // Aussi scanner les lignes
-    (o.lines||[]).forEach(l => {
-      (l.tireuseIds||[]).forEach(tid => { reservations[tid] = client; });
+
+  Object.entries(ordersData).forEach(([k, rawList]) => {
+    const list = Array.isArray(rawList) ? rawList : Object.values(rawList||{});
+    list.forEach(o => {
+      if (o.id === editOrderId) return; // exclure la commande en cours d'édition
+      const oStart = new Date(k + 'T00:00:00');
+      if (isNaN(oStart)) return;
+      const oEnd = new Date((o.dateReprise || k) + 'T23:59:59');
+      if (oStart > end || oEnd < start) return; // pas de chevauchement de période
+      const client = o.client || o.lines?.[0]?.beer || '?';
+      getOrderTireuseLines(o).forEach(tl => { if (tl.tireuseId && !reservations[tl.tireuseId]) reservations[tl.tireuseId] = client; });
     });
   });
+
   return toutes.map(t => ({
     ...t,
     dispo: !reservations[t.id],
@@ -3894,6 +3927,13 @@ function calcStockEngageParBiere() {
         if (car)  fmts.push(`${car}×carton`);
         if (tir)  fmts.push(`${tir}×tireuse`);
         if (fmts.length) engage[beer].reservations.push({ client, date:dateStr, fmts });
+      });
+      // Tireuses au format ordre (nouveau) : chaque ligne associe une bière à une unité physique
+      (o.tireuseLines||[]).forEach(tl => {
+        const beer = tl.beer || '—';
+        if (!engage[beer]) engage[beer] = { futs:0, cartons:0, tireuses:0, fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, btl33:0, btl75:0, reservations:[], byWeek:{} };
+        engage[beer].tireuses += 1;
+        engage[beer].reservations.push({ client, date:dateStr, fmts:['1×tireuse'] });
       });
     });
   });
@@ -7462,14 +7502,15 @@ function openClientDetailModal(id) {
 
   const cmdsHtml = cmds.length ? cmds.slice(0,8).map(o => {
     const d = new Date(o.dateKey+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'});
-    const lines = (o.lines||[]).map(l=>{ const tf=(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0); return `${l.beer}${tf?` ×${tf}🛢`:''}${l.cartons?` ×${l.cartons}📦`:''}${l.tireuse?` ×${l.tireuse}🍺`:''}`; }).join(', ');
+    const lines = (o.lines||[]).map(l=>{ const tf=(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0); return `${l.beer}${tf?` ×${tf}🛢`:''}${l.cartons?` ×${l.cartons}📦`:''}`; }).join(', ');
+    const nbTireuses = getOrderTireuseLines(o).length;
     const clot = o._cloture ? '<span style="font-size:10px;color:var(--ok)"> ✓</span>' : '';
     return `<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;opacity:${o._cloture?'.55':'1'}">
       <div style="display:flex;justify-content:space-between;align-items:baseline">
         <span style="color:var(--muted)">${d}</span>${clot}
         ${o.note ? `<span style="color:var(--text-dim);font-style:italic;font-size:11px">${esc(o.note)}</span>` : ''}
       </div>
-      <div style="color:var(--foam);margin-top:2px">${lines||'—'}</div>
+      <div style="color:var(--foam);margin-top:2px">${lines||'—'}${nbTireuses?` · ${nbTireuses}×🍺 tireuse${nbTireuses>1?'s':''}`:''}</div>
     </div>`;
   }).join('') : '<div style="color:var(--muted);font-size:12px;font-style:italic">Aucune commande</div>';
 
@@ -8898,14 +8939,15 @@ function openPastOrdersModal(key) {
       if (parseInt(l.fut30kktp)||0) parts.push(`${l.fut30kktp} KKTP`);
       if (parseInt(l.fut20)||0)     parts.push(`${l.fut20} 20L`);
       if (parseInt(l.cartons)||0)   parts.push(`${l.cartons} carton${l.cartons>1?'s':''}`);
-      if (parseInt(l.tireuse)||0)   parts.push(`${l.tireuse} tireuse${l.tireuse>1?'s':''}`);
       return `<div style="font-size:12px;color:var(--muted)">↳ ${l.beer||'—'} : ${parts.join(', ')||'—'}</div>`;
     }).join('');
+    const nbTireuses = getOrderTireuseLines(o).length;
+    const tireuseLine = nbTireuses ? `<div style="font-size:12px;color:var(--muted)">↳ 🍺 ${nbTireuses} tireuse${nbTireuses>1?'s':''}</div>` : '';
     const cloture = o._cloture ? '<span style="font-size:10px;color:var(--ok);margin-left:6px">✓ BL créé</span>' : '';
     return `
     <div style="padding:8px 0;border-bottom:1px solid var(--border)">
       <div style="font-size:13px;font-weight:600;color:var(--foam)">${esc(o.client)||'—'}${cloture}</div>
-      ${lines}
+      ${lines}${tireuseLine}
       ${o.dateReprise?`<div style="font-size:11px;color:var(--amber-lt);margin-top:2px">↩ Reprise le ${new Date(o.dateReprise+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})}</div>`:''}
       ${o.note?`<div style="font-size:11px;color:var(--muted);font-style:italic;margin-top:2px">📝 ${esc(o.note)}</div>`:''}
     </div>`;
@@ -8935,7 +8977,6 @@ function openBeerClientsModal(weekIdx, beer) {
     if (c.fut30kktp) parts.push(`${c.fut30kktp} KKTP`);
     if (c.fut20)     parts.push(`${c.fut20} 20L`);
     if (c.cartons)   parts.push(`${c.cartons} carton${c.cartons>1?'s':''}`);
-    if (c.tireuse)   parts.push(`${c.tireuse} tireuse${c.tireuse>1?'s':''}`);
     return `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
       <div style="min-width:0;flex:1">
@@ -9013,7 +9054,7 @@ function renderOrdersList() {
       const nbJours = Math.round((today - date) / 86400000);
       const totalF = o.lines.reduce((a,l)=>(a+(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0)),0);
       const totalC = o.lines.reduce((a,l)=>a+(parseInt(l.cartons)||0),0);
-      const totalT = o.lines.reduce((a,l)=>a+(parseInt(l.tireuse)||0),0);
+      const totalT = getOrderTireuseLines(o).length;
       const qtys = [totalF?`🛢 ${totalF}`:'', totalC?`📦 ${totalC}`:'', totalT?`🍺 ${totalT}`:''].filter(Boolean).join('  ');
       const beers = [...new Set(o.lines.map(l=>l.beer).filter(Boolean))].join(', ');
       return `
@@ -9045,16 +9086,16 @@ function renderOrdersList() {
     const clientsByBeer = {};    // { beer: [{client, date, qty}] }
     let totalTireusesWeek = 0;   // total tireuses de la semaine, à part
     orders.forEach(({ o, date }) => {
+      const nbTireuses = getOrderTireuseLines(o).length;
+      totalTireusesWeek += nbTireuses;
       o.lines.forEach(l => {
         if (!l.beer) return;
-        const tireuseQty = parseInt(l.tireuse)||0;
-        totalTireusesWeek += tireuseQty;
         const qty = (parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0)
                   + (parseInt(l.cartons)||0);
         if (qty > 0) {
           totalByBeer[l.beer] = (totalByBeer[l.beer]||0) + qty;
         }
-        if (qty > 0 || tireuseQty > 0) {
+        if (qty > 0) {
           if (!clientsByBeer[l.beer]) clientsByBeer[l.beer] = [];
           clientsByBeer[l.beer].push({
             client: o.client || '—',
@@ -9062,7 +9103,7 @@ function renderOrdersList() {
             qty,
             fut30inox: parseInt(l.fut30inox)||0, fut30kk: parseInt(l.fut30kk)||0,
             fut30kktp: parseInt(l.fut30kktp)||0, fut20: parseInt(l.fut20)||0,
-            cartons: parseInt(l.cartons)||0, tireuse: tireuseQty,
+            cartons: parseInt(l.cartons)||0,
           });
         }
       });
@@ -9084,7 +9125,7 @@ function renderOrdersList() {
       const dateStr = date.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});
       const totalF = o.lines.reduce((a,l)=>(a+(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0)),0);
       const totalC = o.lines.reduce((a,l)=>a+(parseInt(l.cartons)||0),0);
-      const totalT = o.lines.reduce((a,l)=>a+(parseInt(l.tireuse)||0),0);
+      const totalT = getOrderTireuseLines(o).length;
       const qtys = [
         totalF ? `🛢 ${totalF}` : '',
         totalC ? `📦 ${totalC}` : '',
@@ -9150,10 +9191,14 @@ function renderPrevWeeks() {
           byBeer[beer].fut30kktp += ft; byBeer[beer].fut20      += fv;
           byBeer[beer].futs    += lFuts;
           byBeer[beer].cartons += parseInt(l.cartons) || 0;
-          byBeer[beer].tireuse += parseInt(l.tireuse) || 0;
           totalFuts     += lFuts;
           totalCartons  += parseInt(l.cartons) || 0;
-          totalTireuses += parseInt(l.tireuse) || 0;
+        });
+        getOrderTireuseLines(o).forEach(tl => {
+          const beer = tl.beer || '—';
+          if (!byBeer[beer]) byBeer[beer] = { futs:0, cartons:0, tireuse:0, fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0 };
+          byBeer[beer].tireuse += 1;
+          totalTireuses += 1;
         });
       });
     }
@@ -9242,7 +9287,7 @@ function renderPrevCalendar() {
 
     const totalF = orders.map(migrateOrder).reduce((a,o)=>a+o.lines.reduce((b,l)=>b+(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0),0),0);
     const totalC = orders.map(migrateOrder).reduce((a,o)=>a+o.lines.reduce((b,l)=>b+(parseInt(l.cartons)||0),0),0);
-    const totalT = orders.map(migrateOrder).reduce((a,o)=>a+o.lines.reduce((b,l)=>b+(parseInt(l.tireuse)||0),0),0);
+    const totalT = orders.map(migrateOrder).reduce((a,o)=>a+getOrderTireuseLines(o).length,0);
     const hasOrders = orders.length > 0;
 
     const dotHtml = hasOrders ? `
@@ -9300,7 +9345,8 @@ function openOrderModal(key, focusOrderId) {
   orderModalKey = key;
   editOrderId   = null;
   orderListFocusId = focusOrderId || null;
-  draftLines    = [{ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, tireuse:0, prixFut30inox:0, prixFut30kk:0, prixFut30kktp:0, prixFut20:0, prixCarton:0, prixTireuse:0 }];
+  draftLines    = [{ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, prixCarton:0 }];
+  draftTireuseLines = [];
   const d = new Date(key + 'T12:00:00');
   document.getElementById('order-modal-date').textContent =
     d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
@@ -9314,13 +9360,14 @@ function openOrderModal(key, focusOrderId) {
   populateOrderClientSelect('');
   renderOrderList(key);
   renderDraftLines();
+  renderOrderTireuseLines();
   document.getElementById('order-modal').classList.add('open');
   if (focusOrderId) editOrderForm(key, focusOrderId);
 }
 
 function closeOrderModal() {
   document.getElementById('order-modal').classList.remove('open');
-  orderModalKey = null; editOrderId = null; draftLines = []; orderListFocusId = null;
+  orderModalKey = null; editOrderId = null; draftLines = []; draftTireuseLines = []; orderListFocusId = null;
 }
 
 function showAllOrdersThisDay() {
@@ -9351,21 +9398,12 @@ function renderOrderList(key) {
   el.innerHTML = orders.map(o => {
     const totalF = o.lines.reduce((a,l)=>(a+(parseInt(l.fut30inox)||0)+(parseInt(l.fut30kk)||0)+(parseInt(l.fut30kktp)||0)+(parseInt(l.fut20)||0)),0);
     const totalC = o.lines.reduce((a,l)=>a+(parseInt(l.cartons)||0),0);
-    const totalT = o.lines.reduce((a,l)=>a+(parseInt(l.tireuse)||0),0);
-    const totalHT = o.lines.reduce((a,l)=>
-      a + (parseInt(l.fut30inox)||0)*(parseFloat(l.prixFut30inox)||0)
-        + (parseInt(l.fut30kk)||0)*(parseFloat(l.prixFut30kk)||0)
-        + (parseInt(l.fut30kktp)||0)*(parseFloat(l.prixFut30kktp)||0)
-        + (parseInt(l.fut20)||0)*(parseFloat(l.prixFut20)||0)
-        + (parseInt(l.cartons)||0)*(parseFloat(l.prixCarton)||0)
-        + (parseInt(l.tireuse)||0)*(parseFloat(l.prixTireuse)||0), 0);
+    const tireuseLignes = getOrderTireuseLines(o);
+    const totalT = tireuseLignes.length;
+    const totalTireuseHT = tireuseLignes.reduce((a,tl)=>a+(parseFloat(tl.prix)||0),0);
+    const totalHT = o.lines.reduce((a,l)=> a + (parseInt(l.cartons)||0)*(parseFloat(l.prixCarton)||0), 0) + totalTireuseHT;
     const linesHtml = o.lines.map(l => {
-      const ligneHT = (parseInt(l.fut30inox)||0)*(parseFloat(l.prixFut30inox)||0)
-                    + (parseInt(l.fut30kk)||0)*(parseFloat(l.prixFut30kk)||0)
-                    + (parseInt(l.fut30kktp)||0)*(parseFloat(l.prixFut30kktp)||0)
-                    + (parseInt(l.fut20)||0)*(parseFloat(l.prixFut20)||0)
-                    + (parseInt(l.cartons)||0)*(parseFloat(l.prixCarton)||0)
-                    + (parseInt(l.tireuse)||0)*(parseFloat(l.prixTireuse)||0);
+      const ligneHT = (parseInt(l.cartons)||0)*(parseFloat(l.prixCarton)||0);
       return `
       <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:12px;color:var(--amber-lt);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.beer||'—'}</span>
@@ -9375,11 +9413,17 @@ function renderOrderList(key) {
           ${(parseInt(l.fut30kktp)||0)>0 ? `<span style="font-size:11px;color:var(--amber-lt)">🛢KKTP×${l.fut30kktp}</span>` : ''}
           ${(parseInt(l.fut20)||0)>0     ? `<span style="font-size:11px;color:var(--amber-lt)">🛢20L×${l.fut20}</span>`     : ''}
           ${l.cartons ? `<span style="font-size:11px;color:var(--ok)">📦×${l.cartons}${l.prixCarton?' ('+parseFloat(l.prixCarton).toFixed(2)+'€)':''}</span>` : ''}
-          ${l.tireuse ? `<span style="font-size:11px;color:#7ab4e8">🍺×${l.tireuse}${l.prixTireuse?' ('+parseFloat(l.prixTireuse).toFixed(2)+'€)':''}</span>` : ''}
           ${ligneHT > 0 ? `<span style="font-size:11px;font-weight:700;color:var(--foam)">${ligneHT.toFixed(2)}€</span>` : ''}
         </div>
       </div>`;
-    }).join('');
+    }).join('') + (totalT ? `
+      <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:12px;color:#7ab4e8;flex:1">🍺 Tireuses</span>
+        <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
+          ${tireuseLignes.map(tl => `<span style="font-size:11px;color:#7ab4e8">${tl.beer}${tl.prix?' ('+parseFloat(tl.prix).toFixed(2)+'€)':''}</span>`).join('')}
+          ${totalTireuseHT > 0 ? `<span style="font-size:11px;font-weight:700;color:var(--foam)">${totalTireuseHT.toFixed(2)}€</span>` : ''}
+        </div>
+      </div>` : '');
         const clicAction = o._cloture ? '' : `editOrderForm('${key}','${o.id}')`;
     return `
     <div style="background:var(--surface2);border:1px solid ${o._cloture?'var(--ok)':'var(--border)'};border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:10px;cursor:pointer;opacity:${o._cloture?'.5':'1'}"
@@ -9418,13 +9462,8 @@ function renderOrderList(key) {
 function renderDraftLines() {
   const el = document.getElementById('order-lines');
   el.innerHTML = draftLines.map((l, i) => {
-    const totalFuts    = (parseInt(l.fut30inox)||0)*(parseFloat(l.prixFut30inox)||0)
-                       + (parseInt(l.fut30kk)||0)*(parseFloat(l.prixFut30kk)||0)
-                       + (parseInt(l.fut30kktp)||0)*(parseFloat(l.prixFut30kktp)||0)
-                       + (parseInt(l.fut20)||0)*(parseFloat(l.prixFut20)||0);
     const totalCartons = (parseInt(l.cartons)||0) * (parseFloat(l.prixCarton)||0);
-    const totalTireuse = (parseInt(l.tireuse)||0) * (parseFloat(l.prixTireuse)||0);
-    const totalLigne   = totalFuts + totalCartons + totalTireuse;
+    const totalLigne   = totalCartons;
     return `
   <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:8px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -9462,7 +9501,7 @@ function renderDraftLines() {
           style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:15px;font-weight:700;padding:6px 4px;width:100%;text-align:center"/>
       </div>
     </div>
-    <!-- Cartons + Tireuses -->
+    <!-- Cartons -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
       <div>
         <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">📦 Cartons</div>
@@ -9471,75 +9510,9 @@ function renderDraftLines() {
           style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:15px;font-weight:700;padding:6px 4px;width:100%;text-align:center"/>
       </div>
       <div>
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">🍺 Tireuses</div>
-        <input type="number" min="0" placeholder="0" value="${l.tireuse||''}"
-          onchange="updateDraftLine(${i},'tireuse',this.value)"
-          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:15px;font-weight:700;padding:6px 4px;width:100%;text-align:center"/>
-      </div>
-    </div>
-    ${(parseInt(l.tireuse)||0) > 0 ? (() => {
-      const dispos = getTireusesDispos(orderModalKey);
-      const selectedIds = l.tireuseIds || [];
-      if (!dispos.length) return `
-        <div style="margin-top:6px;font-size:11px;color:var(--muted);font-style:italic">
-          Aucune tireuse configurée — ajoutez-en dans Paramètres → Parc tireuses
-        </div>`;
-      return `<div style="margin-top:6px">
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Sélectionner les tireuses</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px">
-          ${dispos.map(t => {
-            const sel = selectedIds.includes(t.id);
-            const color = !t.dispo && !sel ? 'var(--danger)' : sel ? 'var(--amber)' : 'var(--border)';
-            const bg    = sel ? 'rgba(200,128,10,.2)' : 'var(--surface)';
-    const isBlocked = !t.dispo && !sel;
-            return `<button type="button"
-              onclick="toggleTireuseOnLine(${i},'${t.id}')"
-              ${isBlocked ? 'disabled' : ''}
-              style="padding:5px 10px;border-radius:var(--radius-sm);border:1px solid ${color};background:${bg};color:${sel?'var(--amber-lt)':t.dispo?'var(--foam)':'rgba(200,80,80,.5)'};font-size:12px;font-weight:700;cursor:${isBlocked?'not-allowed':'pointer'};opacity:${isBlocked?'0.55':'1'}"
-              title="${sel?'Sélectionnée':t.dispo?'Disponible':'Réservée pour '+t.reservePar}">
-              #${t.num}${t.modele?' '+t.modele:''}${sel?' ✓':''}${isBlocked?' 🔒 '+t.reservePar:''}
-            </button>`;
-          }).join('')}
-        </div>
-      </div>`;
-    })() : ''}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-      <div>
-        <div style="font-size:10px;color:var(--muted);margin-bottom:3px">€/30L Inox HT</div>
-        <input type="number" min="0" step="0.01" placeholder="0" value="${l.prixFut30inox||''}"
-          onchange="updateDraftLine(${i},'prixFut30inox',this.value)"
-          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 4px;width:100%;text-align:center"/>
-      </div>
-      <div>
-        <div style="font-size:10px;color:var(--muted);margin-bottom:3px">€/30L KK HT</div>
-        <input type="number" min="0" step="0.01" placeholder="0" value="${l.prixFut30kk||''}"
-          onchange="updateDraftLine(${i},'prixFut30kk',this.value)"
-          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 4px;width:100%;text-align:center"/>
-      </div>
-      <div>
-        <div style="font-size:10px;color:var(--muted);margin-bottom:3px">€/30L KKTP HT</div>
-        <input type="number" min="0" step="0.01" placeholder="0" value="${l.prixFut30kktp||''}"
-          onchange="updateDraftLine(${i},'prixFut30kktp',this.value)"
-          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 4px;width:100%;text-align:center"/>
-      </div>
-      <div>
-        <div style="font-size:10px;color:var(--muted);margin-bottom:3px">€/20L HT</div>
-        <input type="number" min="0" step="0.01" placeholder="0" value="${l.prixFut20||''}"
-          onchange="updateDraftLine(${i},'prixFut20',this.value)"
-          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 4px;width:100%;text-align:center"/>
-      </div>
-      <div>
-        <div style="font-size:10px;color:var(--muted);margin-bottom:3px" style="display:none">placeholder</div>
-      <div>
         <div style="font-size:10px;color:var(--muted);margin-bottom:3px">€/carton HT</div>
         <input type="number" min="0" step="0.01" placeholder="0" value="${l.prixCarton||''}"
           onchange="updateDraftLine(${i},'prixCarton',this.value)"
-          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 4px;width:100%;text-align:center"/>
-      </div>
-      <div>
-        <div style="font-size:10px;color:var(--muted);margin-bottom:3px">€/tireuse HT</div>
-        <input type="number" min="0" step="0.01" placeholder="0" value="${l.prixTireuse||''}"
-          onchange="updateDraftLine(${i},'prixTireuse',this.value)"
           style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 4px;width:100%;text-align:center"/>
       </div>
     </div>
@@ -9548,35 +9521,98 @@ function renderDraftLines() {
   }).join('');
 }
 
-function toggleTireuseOnLine(i, tireuseId) {
-  // Vérifier si la tireuse est réservée par un autre client
-  const dispos = getTireusesDispos(orderModalKey);
-  const t = dispos.find(x => x.id === tireuseId);
-  const ids = draftLines[i].tireuseIds || [];
-  const alreadySel = ids.includes(tireuseId);
-  if (t && !t.dispo && !alreadySel) {
-    showToast(`🚫 Tireuse #${t.num} réservée pour ${t.reservePar}`, true);
-    return;
-  }
-  const idx = ids.indexOf(tireuseId);
-  if (idx >= 0) ids.splice(idx, 1);
-  else ids.push(tireuseId);
-  draftLines[i].tireuseIds = ids;
-  draftLines[i].tireuse = ids.length || draftLines[i].tireuse || 0;
-  renderDraftLines();
-}
-
 function updateDraftLine(i, field, val) {
-  const numFields = ['fut30inox','fut30kk','fut30kktp','fut20','cartons','tireuse','prixFut30inox','prixFut30kk','prixFut30kktp','prixFut20','prixCarton','prixTireuse'];
+  const numFields = ['fut30inox','fut30kk','fut30kktp','fut20','cartons','prixCarton'];
   draftLines[i][field] = numFields.includes(field) ? (parseFloat(val)||0) : val;
-  // Si on remet tireuse à 0, vider les ids
-  if (field === 'tireuse' && (parseFloat(val)||0) === 0) draftLines[i].tireuseIds = [];
   renderDraftLines();
 }
 
 function addOrderLine() {
-  draftLines.push({ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, tireuse:0, prixFut30inox:0, prixFut30kk:0, prixFut30kktp:0, prixFut20:0, prixCarton:0, prixTireuse:0 });
+  draftLines.push({ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, prixCarton:0 });
   renderDraftLines();
+}
+
+// --- Tireuses : indépendantes des lignes de bière, chacune associe une bière (celle
+// chargée dans la tireuse) à une unité physique disponible sur toute la période du prêt ---
+function addOrderTireuseLine() {
+  draftTireuseLines.push({ beer: getRecipeBeerNames()[0], tireuseId: '', prix: 0 });
+  renderOrderTireuseLines();
+}
+
+function removeOrderTireuseLine(i) {
+  draftTireuseLines.splice(i, 1);
+  renderOrderTireuseLines();
+}
+
+function updateOrderTireuseLine(i, field, val) {
+  draftTireuseLines[i][field] = field === 'prix' ? (parseFloat(val)||0) : val;
+  renderOrderTireuseLines();
+}
+
+function toggleOrderTireuseUnit(i, tireuseId) {
+  const date = document.getElementById('order-date')?.value;
+  const dispos = getTireusesDispos(date, document.getElementById('order-date-reprise')?.value);
+  const t = dispos.find(x => x.id === tireuseId);
+  const already = draftTireuseLines[i].tireuseId === tireuseId;
+  if (t && !t.dispo && !already) {
+    showToast(`🚫 Tireuse #${t.num} réservée pour ${t.reservePar}`, true);
+    return;
+  }
+  draftTireuseLines[i].tireuseId = already ? '' : tireuseId;
+  renderOrderTireuseLines();
+}
+
+function renderOrderTireuseLines() {
+  const el = document.getElementById('order-tireuses-lines');
+  if (!el) return;
+  const date = document.getElementById('order-date')?.value;
+  const dateReprise = document.getElementById('order-date-reprise')?.value;
+  const dispos = getTireusesDispos(date, dateReprise);
+
+  if (!dispos.length) {
+    el.innerHTML = draftTireuseLines.length ? `
+      <div style="font-size:11px;color:var(--muted);font-style:italic;padding:4px 0">
+        Aucune tireuse configurée — ajoutez-en dans Paramètres → Parc tireuses
+      </div>` : '';
+    return;
+  }
+
+  const nbDispo = dispos.filter(t => t.dispo).length;
+
+  el.innerHTML = draftTireuseLines.map((tl, i) => `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <select onchange="updateOrderTireuseLine(${i},'beer',this.value)"
+          style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;font-weight:600;padding:7px 10px">
+          ${getRecipeBeerNames().map(b=>`<option value="${b}"${b===tl.beer?'selected':''}>${b}</option>`).join('')}
+        </select>
+        <button onclick="removeOrderTireuseLine(${i})" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0;line-height:1">×</button>
+      </div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">
+        Tireuse ${date ? `· ${nbDispo}/${dispos.length} dispo${dateReprise?` du ${fmtDateFr(date)} au ${fmtDateFr(dateReprise)}`:` le ${fmtDateFr(date)}`}` : '(choisissez une date de livraison)'}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+        ${dispos.map(t => {
+          const sel = tl.tireuseId === t.id;
+          const color = !t.dispo && !sel ? 'var(--danger)' : sel ? 'var(--amber)' : 'var(--border)';
+          const bg    = sel ? 'rgba(200,128,10,.2)' : 'var(--surface)';
+          const isBlocked = !t.dispo && !sel;
+          return `<button type="button"
+            onclick="toggleOrderTireuseUnit(${i},'${t.id}')"
+            ${isBlocked ? 'disabled' : ''}
+            style="padding:5px 10px;border-radius:var(--radius-sm);border:1px solid ${color};background:${bg};color:${sel?'var(--amber-lt)':t.dispo?'var(--foam)':'rgba(200,80,80,.5)'};font-size:12px;font-weight:700;cursor:${isBlocked?'not-allowed':'pointer'};opacity:${isBlocked?'0.55':'1'}"
+            title="${sel?'Sélectionnée':t.dispo?'Disponible':'Réservée pour '+t.reservePar}">
+            #${t.num}${t.modele?' '+t.modele:''}${sel?' ✓':''}${isBlocked?' 🔒 '+t.reservePar:''}
+          </button>`;
+        }).join('')}
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px">€/tireuse HT</div>
+        <input type="number" min="0" step="0.01" placeholder="0" value="${tl.prix||''}"
+          onchange="updateOrderTireuseLine(${i},'prix',this.value)"
+          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 4px;width:100%;text-align:center"/>
+      </div>
+    </div>`).join('');
 }
 
 function removeDraftLine(i) {
@@ -9612,11 +9648,11 @@ function editOrderForm(key, id) {
   draftLines = o.lines.map(l => ({
     beer: l.beer||getRecipeBeerNames()[0],
     fut30inox: l.fut30inox||0, fut30kk: l.fut30kk||0, fut30kktp: l.fut30kktp||0, fut20: l.fut20||0,
-    cartons: l.cartons||0, tireuse: l.tireuse||0,
-    prixFut30inox: l.prixFut30inox||0, prixFut30kk: l.prixFut30kk||0, prixFut30kktp: l.prixFut30kktp||0, prixFut20: l.prixFut20||0,
-    prixCarton: l.prixCarton||0, prixTireuse: l.prixTireuse||0
+    cartons: l.cartons||0, prixCarton: l.prixCarton||0
   }));
+  draftTireuseLines = getOrderTireuseLines(o).map(tl => ({ beer: tl.beer || getRecipeBeerNames()[0], tireuseId: tl.tireuseId || '', prix: tl.prix || 0 }));
   renderDraftLines();
+  renderOrderTireuseLines();
   // Scroller vers le haut du formulaire pour voir la date et le client
   setTimeout(() => {
     const el = document.getElementById('order-form-title');
@@ -9641,7 +9677,8 @@ function saveOrder() {
   const client = document.getElementById('order-client').value.trim();
   const note   = document.getElementById('order-note').value.trim();
   const dateReprise = document.getElementById('order-date-reprise').value || '';
-  const lines  = draftLines.filter(l => l.beer && ((l.fut30inox||0)+(l.fut30kk||0)+(l.fut30kktp||0)+(l.fut20||0)+l.cartons||l.tireuse));
+  const lines  = draftLines.filter(l => l.beer && ((l.fut30inox||0)+(l.fut30kk||0)+(l.fut30kktp||0)+(l.fut20||0)+(l.cartons||0)));
+  const tireuseLines = draftTireuseLines.filter(tl => tl.tireuseId);
   if (!client) { showToast('Renseignez le nom du client'); return; }
 
   if (editOrderId) {
@@ -9651,17 +9688,18 @@ function saveOrder() {
     if (!ordersData[oldKey].length) delete ordersData[oldKey];
     // Ajouter à la nouvelle date
     if (!ordersData[newKey]) ordersData[newKey] = [];
-    ordersData[newKey].push({ id: editOrderId, client, note, lines, dateReprise });
+    ordersData[newKey].push({ id: editOrderId, client, note, lines, dateReprise, tireuseLines });
     // Si la date a changé, mettre à jour la modal
     if (newKey !== oldKey) orderModalKey = newKey;
   } else {
     if (!ordersData[newKey]) ordersData[newKey] = [];
-    ordersData[newKey].push({ id: Date.now().toString(36), client, note, lines, dateReprise });
+    ordersData[newKey].push({ id: Date.now().toString(36), client, note, lines, dateReprise, tireuseLines });
   }
 
   saveOrders();
   editOrderId = null;
-  draftLines  = [{ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, tireuse:0, prixFut30inox:0, prixFut30kk:0, prixFut30kktp:0, prixFut20:0, prixCarton:0, prixTireuse:0 }];
+  draftLines  = [{ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, prixCarton:0 }];
+  draftTireuseLines = [];
   document.getElementById('order-date').value   = newKey;
   document.getElementById('order-date-reprise').value = '';
   document.getElementById('order-client').value = '';
@@ -9671,6 +9709,7 @@ function saveOrder() {
   // Aussi mettre à jour l'ancienne date si elle a changé
   if (oldKey && oldKey !== newKey) renderOrderList(oldKey);
   renderDraftLines();
+  renderOrderTireuseLines();
   renderOrderList(newKey);
   renderPrevWeeks();
   renderPrevCalendar();
@@ -12167,6 +12206,7 @@ function openBlPartielModal(dateKey, orderId) {
   let rowsHtml = '';
   (o.lines||[]).forEach((l, li) => {
     BL_PARTIEL_FORMATS.forEach(f => {
+      if (f.field === 'tireuse') return; // géré séparément ci-dessous (indépendant des lignes)
       const qty = parseInt(l[f.field]) || 0;
       if (qty <= 0) return;
       rowsHtml += `
@@ -12180,6 +12220,18 @@ function openBlPartielModal(dateKey, orderId) {
         </div>
       </div>`;
     });
+  });
+  getOrderTireuseLines(o).forEach((tl, ti) => {
+    rowsHtml += `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:13px;color:var(--foam)">${esc(tl.beer)} <span style="color:var(--muted);font-size:11px">— Tireuse</span></div>
+      <div style="display:flex;align-items:center;gap:4px">
+        <input type="number" min="0" max="1" value="1"
+          data-tireuse-idx="${ti}" class="bl-partiel-input bl-partiel-tireuse"
+          style="width:56px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;font-weight:700;padding:6px 4px;text-align:center"/>
+        <span style="font-size:11px;color:var(--muted)">/ 1</span>
+      </div>
+    </div>`;
   });
 
   document.getElementById('bl-partiel-lines').innerHTML = rowsHtml ||
@@ -12203,16 +12255,21 @@ function confirmCreerBlPartiel() {
 
     // Quantités sélectionnées dans le modal (par ligne / format)
     const selected = {};
-    document.querySelectorAll('.bl-partiel-input').forEach(inp => {
+    document.querySelectorAll('.bl-partiel-input:not(.bl-partiel-tireuse)').forEach(inp => {
       const li = inp.dataset.li, field = inp.dataset.field;
       if (!selected[li]) selected[li] = {};
       selected[li][field] = Math.max(0, parseInt(inp.value) || 0);
+    });
+    const tireuseSelected = {}; // index dans getOrderTireuseLines(o) -> 0 ou 1
+    document.querySelectorAll('.bl-partiel-tireuse').forEach(inp => {
+      tireuseSelected[inp.dataset.tireuseIdx] = Math.max(0, Math.min(1, parseInt(inp.value) || 0));
     });
 
     const blLinesFromOrder = [];
     let totalSelected = 0;
     (o.lines||[]).forEach((l, li) => {
       BL_PARTIEL_FORMATS.forEach(f => {
+        if (f.field === 'tireuse') return; // géré séparément ci-dessous
         const max = parseInt(l[f.field]) || 0;
         if (max <= 0) return;
         const qty = Math.min(max, selected[li]?.[f.field] ?? max);
@@ -12220,6 +12277,13 @@ function confirmCreerBlPartiel() {
         totalSelected += qty;
         blLinesFromOrder.push({ designation:`${l.beer} — ${f.label}`, qte:qty, unite:f.unite, lotRef:'' });
       });
+    });
+    const tireuseLignesOrder = getOrderTireuseLines(o);
+    tireuseLignesOrder.forEach((tl, ti) => {
+      const qty = tireuseSelected[ti] ?? 1;
+      if (qty <= 0) return;
+      totalSelected += 1;
+      blLinesFromOrder.push({ designation:`${tl.beer} — Tireuse`, qte:1, unite:'tireuse', lotRef:'' });
     });
 
     if (!totalSelected) { showToast('Sélectionnez au moins un article à livrer', true); return; }
@@ -12247,6 +12311,7 @@ function confirmCreerBlPartiel() {
       let resteTotal = 0;
       migrated.lines.forEach((l, li) => {
         BL_PARTIEL_FORMATS.forEach(f => {
+          if (f.field === 'tireuse') return; // géré séparément ci-dessous
           const max = parseInt(l[f.field]) || 0;
           if (max <= 0) return;
           const qty = Math.min(max, selected[li]?.[f.field] ?? max);
@@ -12254,6 +12319,11 @@ function confirmCreerBlPartiel() {
           resteTotal += l[f.field];
         });
       });
+      // Tireuses : ne garder sur la commande source que celles NON livrées maintenant
+      if (Array.isArray(migrated.tireuseLines)) {
+        migrated.tireuseLines = migrated.tireuseLines.filter((tl, ti) => !(tireuseSelected[ti] ?? 1));
+        resteTotal += migrated.tireuseLines.length;
+      }
       migrated._cloture = resteTotal === 0;
       arrSrc[idx] = migrated;
       ordersData[dateKey] = arrSrc;
@@ -12298,7 +12368,16 @@ function creerFactureDepuisCommande(dateKey, orderId) {
       if ((parseInt(l.fut30kktp)||0)>0) factLines.push({ desc:`${l.beer} — Fût 30L KKTP`, qty:parseInt(l.fut30kktp), pu:parseFloat(l.prixFut30kktp)||0 });
       if ((parseInt(l.fut20)||0)>0)     factLines.push({ desc:`${l.beer} — Fût 20L`,      qty:parseInt(l.fut20),     pu:parseFloat(l.prixFut20)||0     });
       if (parseInt(l.cartons)> 0) factLines.push({ desc:`${l.beer} — Carton`,   qty:parseInt(l.cartons), pu:parseFloat(l.prixCarton)||0 });
-      if (parseInt(l.tireuse)> 0) factLines.push({ desc:`${l.beer} — Tireuse`,  qty:parseInt(l.tireuse), pu:parseFloat(l.prixTireuse)||0 });
+    });
+    // Tireuses (indépendantes des lignes de bière) : groupées par bière chargée
+    const tireuseParBiere = {}; // beer -> {qty, pu}
+    getOrderTireuseLines(o).forEach(tl => {
+      const beer = tl.beer || '—';
+      if (!tireuseParBiere[beer]) tireuseParBiere[beer] = { qty:0, pu:parseFloat(tl.prix)||0 };
+      tireuseParBiere[beer].qty += 1;
+    });
+    Object.entries(tireuseParBiere).forEach(([beer, {qty, pu}]) => {
+      factLines.push({ desc:`${beer} — Tireuse`, qty, pu });
     });
 
     if (!factLines.length) { showToast('Aucun article dans la commande'); return; }
@@ -12430,7 +12509,8 @@ Object.assign(window, {
   openBrewDetailModal, closeBrewDetailModal, saveBrewDetail,
   toggleHistoriqueBrassin, updateBrewVolume, updateBrewStatut, deleteHistorique, annulerBrassin,
   updateBrewField, toggleMpSorties, annulerSortieMP,
-  addTireuse, deleteTireuse, updateTireuse, toggleTireuseOnLine, genBrewNum,
+  addTireuse, deleteTireuse, updateTireuse, genBrewNum,
+  addOrderTireuseLine, removeOrderTireuseLine, updateOrderTireuseLine, toggleOrderTireuseUnit, renderOrderTireuseLines,
   addParamLine, removeParamLine, updateParamLine, saveParams, saveBrasserie,
   showToast, toggleRecipeAccordion,
   openMpModal, closeMpModal, selectMpCatModal, saveMpModal, deleteMpItem,
