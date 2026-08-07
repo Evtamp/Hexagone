@@ -7702,7 +7702,7 @@ function renderHistorique() {
   if (historiqueTab === 'mois')  { el.innerHTML = renderHistoriqueParMois(brassins);  return; }
   if (historiqueTab === 'annee') { el.innerHTML = renderHistoriqueParAnnee(brassins); return; }
 
-  el.innerHTML = brassins.map(b => {
+  const buildBrewCard = (b) => {
     const date = b.ts ? new Date(b.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}) : '—';
     const mpLotsHtml = b.mpLots && Object.keys(b.mpLots).length
       ? Object.entries(b.mpLots).map(([name, lot]) =>
@@ -7901,7 +7901,25 @@ function renderHistorique() {
       </div>
       </div><!-- /brew-body -->
     </div>`;
-  }).join('');
+  };
+
+  // Sous-catégories par nom de bière — l'ordre des groupes suit l'ordre de première
+  // apparition dans `brassins` (déjà trié par date décroissante), donc la bière la
+  // plus récemment brassée arrive en premier.
+  const grouped = {};
+  brassins.forEach(b => {
+    const nom = b.recette || '—';
+    (grouped[nom] ||= []).push(b);
+  });
+
+  el.innerHTML = Object.entries(grouped).map(([nom, list]) => `
+    <div style="margin-bottom:18px">
+      <div style="position:sticky;top:0;z-index:1;background:var(--bg);padding:8px 2px 6px;border-bottom:2px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:14px;font-weight:800;color:var(--amber-lt)">${esc(nom)}</div>
+        <div style="font-size:11px;color:var(--muted)">${list.length} brassin${list.length>1?'s':''}</div>
+      </div>
+      ${list.map(buildBrewCard).join('')}
+    </div>`).join('');
 
   // Rouvrir les corps et panneaux qui étaient ouverts avant le re-render
   openBodies.forEach(id => {
