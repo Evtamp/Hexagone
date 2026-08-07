@@ -1554,6 +1554,11 @@
         <div class="section-title">Historique des brassins</div>
         <span id="lot-counter" style="font-size:11px;color:var(--muted)"></span>
       </div>
+      <div class="sub-tabs sub-tabs-nested" id="historique-tabs" style="margin:8px 16px">
+        <button class="active" id="historique-tab-biere" onclick="switchHistoriqueTab('biere')">Par bière</button>
+        <button id="historique-tab-mois" onclick="switchHistoriqueTab('mois')">Par mois</button>
+        <button id="historique-tab-annee" onclick="switchHistoriqueTab('annee')">Par année</button>
+      </div>
       <div style="padding:0 16px 100px" id="historique-list"></div>
     </div>
 
@@ -7360,6 +7365,101 @@ function genLotNumber() {
   return `LOT-${y}${m}-${n}`;
 }
 
+let historiqueTab = 'biere'; // 'biere' | 'mois' | 'annee'
+let historiqueMoisYear = new Date().getFullYear();
+
+function switchHistoriqueTab(tab) {
+  historiqueTab = tab;
+  document.querySelectorAll('#historique-tabs button').forEach(b => b.classList.remove('active'));
+  document.getElementById('historique-tab-' + tab)?.classList.add('active');
+  renderHistorique();
+}
+
+function changeHistoriqueMoisYear(y) {
+  historiqueMoisYear = parseInt(y, 10);
+  renderHistorique();
+}
+
+// Tableau croisé bière × année — répond à "combien de X sur telle année"
+function renderHistoriqueParAnnee(brassins) {
+  const parBiereAnnee = {};
+  const yearsSet = new Set();
+  brassins.forEach(b => {
+    if (!b.ts) return;
+    const y = new Date(b.ts).getFullYear();
+    yearsSet.add(y);
+    const nom = b.recette || '—';
+    if (!parBiereAnnee[nom]) parBiereAnnee[nom] = {};
+    parBiereAnnee[nom][y] = (parBiereAnnee[nom][y] || 0) + 1;
+  });
+  const years = [...yearsSet].sort((a,b) => b - a);
+  const beers = Object.keys(parBiereAnnee).sort((a,b) => a.localeCompare(b));
+  if (!years.length) return `<div style="text-align:center;padding:30px 0;color:var(--muted);font-size:13px">Aucun brassin daté.</div>`;
+
+  const totals = {};
+  years.forEach(y => totals[y] = beers.reduce((s,nom) => s + (parBiereAnnee[nom][y]||0), 0));
+
+  return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:${150 + years.length*64}px">
+    <thead><tr>
+      <th style="text-align:left;padding:8px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);border-bottom:2px solid var(--border);position:sticky;left:0;background:var(--bg);min-width:140px">Bière</th>
+      ${years.map(y => `<th style="padding:8px 4px;font-size:12px;color:var(--muted);border-bottom:2px solid var(--border);text-align:center;min-width:56px">${y}</th>`).join('')}
+    </tr></thead><tbody>
+      ${beers.map(nom => `<tr>
+        <td style="padding:7px 6px;font-size:13px;color:var(--foam);font-weight:600;border-bottom:1px solid var(--border);position:sticky;left:0;background:var(--bg)">${esc(nom)}</td>
+        ${years.map(y => `<td style="padding:7px 4px;text-align:center;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;color:${parBiereAnnee[nom][y]?'var(--amber-lt)':'var(--border)'}">${parBiereAnnee[nom][y]||'—'}</td>`).join('')}
+      </tr>`).join('')}
+      <tr>
+        <td style="padding:7px 6px;font-size:12px;color:var(--muted);font-weight:700;border-top:2px solid var(--border);position:sticky;left:0;background:var(--bg)">Total</td>
+        ${years.map(y => `<td style="padding:7px 4px;text-align:center;border-top:2px solid var(--border);font-size:13px;font-weight:700;color:var(--foam)">${totals[y]}</td>`).join('')}
+      </tr>
+    </tbody></table></div>`;
+}
+
+// Tableau croisé bière × mois (pour une année choisie) — répond à "combien de X en mai [année]"
+function renderHistoriqueParMois(brassins) {
+  const years = [...new Set(brassins.map(b => b.ts ? new Date(b.ts).getFullYear() : null).filter(Boolean))].sort((a,b) => b - a);
+  if (!years.length) return `<div style="text-align:center;padding:30px 0;color:var(--muted);font-size:13px">Aucun brassin daté.</div>`;
+  if (!years.includes(historiqueMoisYear)) historiqueMoisYear = years[0];
+
+  const MOIS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
+  const parBiereMois = {};
+  brassins.forEach(b => {
+    if (!b.ts) return;
+    const d = new Date(b.ts);
+    if (d.getFullYear() !== historiqueMoisYear) return;
+    const nom = b.recette || '—';
+    if (!parBiereMois[nom]) parBiereMois[nom] = Array(12).fill(0);
+    parBiereMois[nom][d.getMonth()]++;
+  });
+  const beers = Object.keys(parBiereMois).sort((a,b) => a.localeCompare(b));
+  const totals = Array(12).fill(0);
+  beers.forEach(nom => parBiereMois[nom].forEach((c,i) => totals[i] += c));
+
+  const selectHtml = `<select onchange="changeHistoriqueMoisYear(this.value)"
+    style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 10px;margin-bottom:10px">
+    ${years.map(y => `<option value="${y}" ${y===historiqueMoisYear?'selected':''}>${y}</option>`).join('')}
+  </select>`;
+
+  if (!beers.length) {
+    return selectHtml + `<div style="text-align:center;padding:30px 0;color:var(--muted);font-size:13px">Aucun brassin en ${historiqueMoisYear}.</div>`;
+  }
+
+  return selectHtml + `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:${150 + 12*42}px">
+    <thead><tr>
+      <th style="text-align:left;padding:8px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);border-bottom:2px solid var(--border);position:sticky;left:0;background:var(--bg);min-width:140px">Bière</th>
+      ${MOIS.map(m => `<th style="padding:8px 2px;font-size:11px;color:var(--muted);border-bottom:2px solid var(--border);text-align:center;min-width:36px">${m}</th>`).join('')}
+    </tr></thead><tbody>
+      ${beers.map(nom => `<tr>
+        <td style="padding:7px 6px;font-size:13px;color:var(--foam);font-weight:600;border-bottom:1px solid var(--border);position:sticky;left:0;background:var(--bg)">${esc(nom)}</td>
+        ${parBiereMois[nom].map(c => `<td style="padding:7px 2px;text-align:center;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;color:${c?'var(--amber-lt)':'var(--border)'}">${c||'—'}</td>`).join('')}
+      </tr>`).join('')}
+      <tr>
+        <td style="padding:7px 6px;font-size:12px;color:var(--muted);font-weight:700;border-top:2px solid var(--border);position:sticky;left:0;background:var(--bg)">Total</td>
+        ${totals.map(c => `<td style="padding:7px 2px;text-align:center;border-top:2px solid var(--border);font-size:13px;font-weight:700;color:var(--foam)">${c}</td>`).join('')}
+      </tr>
+    </tbody></table></div>`;
+}
+
 function renderHistorique() {
   const el = document.getElementById('historique-list');
   if (!el) return;
@@ -7384,6 +7484,9 @@ function renderHistorique() {
     el.innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--muted);font-size:13px">Aucun brassin enregistré.<br>Lancez un brassin depuis l\'onglet Recettes.</div>';
     return;
   }
+
+  if (historiqueTab === 'mois')  { el.innerHTML = renderHistoriqueParMois(brassins);  return; }
+  if (historiqueTab === 'annee') { el.innerHTML = renderHistoriqueParAnnee(brassins); return; }
 
   // --- Graphique : nombre de brassins par bière (barres horizontales) ---
   const parBiere = {};
@@ -12114,7 +12217,7 @@ function closeConfirmCreation() {
 
 
 Object.assign(window, {
-  switchPage, switchSub, switchMpCat, switchProduitsFormatTab, renderDashboard, renderFutsPage, renderProjection,
+  switchPage, switchSub, switchMpCat, switchProduitsFormatTab, switchHistoriqueTab, changeHistoriqueMoisYear, renderDashboard, renderFutsPage, renderProjection,
   hideProjectionBeer, unhideProjectionBeer, toggleHiddenBeersPanel,
   openBeerClientsModal, closeBeerClientsModal, goToCommandesForBeer,
   openPastOrdersModal, closePastOrdersModal,
