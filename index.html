@@ -2012,6 +2012,7 @@
 
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--amber-lt);margin:12px 0 8px">Articles livrés</div>
     <div id="bl-lines-container"></div>
+    <datalist id="bl-designation-list"></datalist>
     <button onclick="addBlLine()" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:8px;cursor:pointer;margin-bottom:12px">+ Ajouter un article</button>
 
     <div class="modal-field">
@@ -11221,13 +11222,26 @@ function updateBlLine(i, field, val) {
   blLines[i][field] = val;
 }
 
+// Suggestions "bière — format" pour l'auto-complétion de la désignation (liste des bières
+// connues × formats standards, pour ne pas avoir à tout taper à la main).
+function populateBlDesignationList() {
+  const dl = document.getElementById('bl-designation-list');
+  if (!dl) return;
+  const beers = getRecipeBeerNames();
+  const formats = BL_PARTIEL_FORMATS.map(f => f.label);
+  const opts = [];
+  beers.forEach(beer => formats.forEach(fmt => opts.push(`${beer} — ${fmt}`)));
+  dl.innerHTML = opts.map(o => `<option value="${esc(o)}"></option>`).join('');
+}
+
 function renderBlLines() {
+  populateBlDesignationList();
   const el = document.getElementById('bl-lines-container');
   el.innerHTML = blLines.map((l,i) => `
   <div style="display:grid;grid-template-columns:1fr 50px 70px 24px;gap:6px;margin-bottom:6px;align-items:end">
     <div>
       ${i===0?'<div style="font-size:9px;color:var(--muted);margin-bottom:2px">Article / Désignation</div>':''}
-      <input type="text" placeholder="Super Nièvre — fût 30L" value="${l.designation||''}"
+      <input type="text" placeholder="Super Nièvre — fût 30L" value="${l.designation||''}" list="bl-designation-list"
         onchange="updateBlLine(${i},'designation',this.value)"
         style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:7px 9px;width:100%"/>
     </div>
