@@ -1555,9 +1555,9 @@
         <span id="lot-counter" style="font-size:11px;color:var(--muted)"></span>
       </div>
       <div class="sub-tabs sub-tabs-nested" id="historique-tabs" style="margin:8px 16px">
-        <button class="active" id="historique-tab-biere" onclick="switchHistoriqueTab('biere')">Par bière</button>
-        <button id="historique-tab-mois" onclick="switchHistoriqueTab('mois')">Par mois</button>
+        <button class="active" id="historique-tab-mois" onclick="switchHistoriqueTab('mois')">Par mois</button>
         <button id="historique-tab-annee" onclick="switchHistoriqueTab('annee')">Par année</button>
+        <button id="historique-tab-biere" onclick="switchHistoriqueTab('biere')">Par bière</button>
       </div>
       <div style="padding:0 16px 100px" id="historique-list"></div>
     </div>
@@ -7366,7 +7366,7 @@ function genLotNumber() {
   return `LOT-${y}${m}-${n}`;
 }
 
-let historiqueTab = 'biere'; // 'biere' | 'mois' | 'annee'
+let historiqueTab = 'mois'; // 'mois' | 'annee' | 'biere'
 let historiqueMoisYear = new Date().getFullYear();
 
 function switchHistoriqueTab(tab) {
@@ -7489,35 +7489,7 @@ function renderHistorique() {
   if (historiqueTab === 'mois')  { el.innerHTML = renderHistoriqueParMois(brassins);  return; }
   if (historiqueTab === 'annee') { el.innerHTML = renderHistoriqueParAnnee(brassins); return; }
 
-  // --- Graphique : nombre de brassins par bière (barres horizontales) ---
-  const parBiere = {};
-  brassins.forEach(b => {
-    const nom = b.recette || '—';
-    parBiere[nom] = (parBiere[nom] || 0) + 1;
-  });
-  const bieresTriees = Object.entries(parBiere).sort((a, b) => b[1] - a[1]);
-  const maxNb = Math.max(...bieresTriees.map(e => e[1]), 1);
-  const rowH = 34, gap = 8, labelW = 190, chartRight = 40, chartWtot = 620;
-  const barZoneW = chartWtot - labelW - chartRight;
-  const chartHtot = bieresTriees.length * (rowH + gap) + 6;
-  const rowsSvg = bieresTriees.map(([nom, nb], i) => {
-    const y = i * (rowH + gap) + 3;
-    const w = (nb / maxNb) * barZoneW;
-    const nomCourt = nom.length > 22 ? nom.slice(0, 21) + '…' : nom;
-    return `
-      <text x="${labelW-6}" y="${y + rowH/2 + 3}" text-anchor="end" font-size="12" fill="var(--foam)">${esc(nomCourt)}</text>
-      <rect x="${labelW}" y="${y}" width="${Math.max(w,1)}" height="${rowH}" rx="3" fill="var(--amber)"/>
-      <text x="${labelW + Math.max(w,1) + 5}" y="${y + rowH/2 + 3}" font-size="12" font-weight="700" fill="var(--amber-lt)">${nb}</text>`;
-  }).join('');
-  const chartBieresHtml = `
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:12px">
-      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Brassins par bière</div>
-      <svg viewBox="0 0 ${chartWtot} ${chartHtot}" style="width:100%;max-width:520px;height:auto;overflow:visible;display:block">
-        ${rowsSvg}
-      </svg>
-    </div>`;
-
-  el.innerHTML = chartBieresHtml + brassins.map(b => {
+  el.innerHTML = brassins.map(b => {
     const date = b.ts ? new Date(b.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}) : '—';
     const mpLotsHtml = b.mpLots && Object.keys(b.mpLots).length
       ? Object.entries(b.mpLots).map(([name, lot]) =>
