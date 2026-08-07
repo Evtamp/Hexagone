@@ -6982,6 +6982,28 @@ function saveEnfutage() {
     setPhase(fermIdSaved, 'idle');
   }
 
+  // Déduire les étiquettes utilisées pour les lignes en bouteille (33cl/75cl)
+  const etiqUsed = {}; // format -> qty
+  validLines.forEach(line => {
+    if (line.format === 'btl33' || line.format === 'btl75') {
+      etiqUsed[line.format] = (etiqUsed[line.format]||0) + line.qty;
+    }
+  });
+  if (Object.keys(etiqUsed).length) {
+    const beerNorm = normBeerName(beerName);
+    Object.entries(etiqUsed).forEach(([format, qty]) => {
+      const etiq = Object.values(etiquettesData).find(e => normBeerName(e.biere) === beerNorm && e.format === format);
+      if (etiq) {
+        const newQty = Math.max(0, (etiq.qty||0) - qty);
+        etiquettesData[etiq.id] = { ...etiquettesData[etiq.id], qty: newQty };
+        fbUpdate('etiquettes/' + etiq.id, { qty: newQty });
+      } else {
+        showToast(`⚠️ Pas de stock d'étiquettes "${ETIQ_FORMATS[format]||format}" trouvé pour ${beerName}`, true);
+      }
+    });
+    renderEtiquettes();
+  }
+
   renderProduits();
 
   // Enregistrer dans le suivi du brassin.
