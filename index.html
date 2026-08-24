@@ -12211,6 +12211,30 @@ const BL_PARTIEL_FORMATS = [
 ];
 let _blPartielDateKey = null, _blPartielOrderId = null;
 
+function getProduitStockDispo(beer, format) {
+  const beerNorm = normBeerName(beer);
+  return Object.values(produitsData)
+    .filter(p => normBeerName(p.biere) === beerNorm && p.format === format)
+    .reduce((s,p) => s + (p.qty||0), 0);
+}
+
+function checkBlPartielRow(input) {
+  const stock = parseInt(input.dataset.stock) || 0;
+  const val = parseInt(input.value) || 0;
+  const warnEl = input.parentElement.querySelector('.bl-partiel-warn');
+  if (!warnEl) return;
+  if (val > stock) {
+    warnEl.textContent = `⚠ stock insuffisant (${stock} dispo)`;
+    warnEl.style.display = 'block';
+    input.style.borderColor = 'var(--danger)';
+    input.style.color = 'var(--danger)';
+  } else {
+    warnEl.style.display = 'none';
+    input.style.borderColor = 'var(--border)';
+    input.style.color = 'var(--foam)';
+  }
+}
+
 function openBlPartielModal(dateKey, orderId) {
   const raw = ordersData[dateKey];
   const dayList = raw ? (Array.isArray(raw) ? raw : Object.values(raw)) : [];
@@ -12227,15 +12251,21 @@ function openBlPartielModal(dateKey, orderId) {
       if (f.field === 'tireuse') return; // géré séparément ci-dessous (indépendant des lignes)
       const qty = parseInt(l[f.field]) || 0;
       if (qty <= 0) return;
+      const stock = getProduitStockDispo(l.beer, f.field);
+      const overStock = qty > stock;
       rowsHtml += `
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-        <div style="font-size:13px;color:var(--foam)">${esc(l.beer)} <span style="color:var(--muted);font-size:11px">— ${f.label}</span></div>
-        <div style="display:flex;align-items:center;gap:4px">
-          <input type="number" min="0" max="${qty}" value="${qty}"
-            data-li="${li}" data-field="${f.field}" class="bl-partiel-input"
-            style="width:56px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;font-weight:700;padding:6px 4px;text-align:center"/>
-          <span style="font-size:11px;color:var(--muted)">/ ${qty}</span>
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:13px;color:var(--foam)">${esc(l.beer)} <span style="color:var(--muted);font-size:11px">— ${f.label}</span></div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" min="0" max="${qty}" value="${qty}"
+              data-li="${li}" data-field="${f.field}" data-stock="${stock}" class="bl-partiel-input"
+              oninput="checkBlPartielRow(this)"
+              style="width:56px;background:var(--surface2);border:1px solid ${overStock?'var(--danger)':'var(--border)'};border-radius:var(--radius-sm);color:${overStock?'var(--danger)':'var(--foam)'};font-size:13px;font-weight:700;padding:6px 4px;text-align:center"/>
+            <span style="font-size:11px;color:var(--muted)">/ ${qty}</span>
+          </div>
         </div>
+        <div class="bl-partiel-warn" style="display:${overStock?'block':'none'};font-size:11px;color:var(--danger);text-align:right;padding-bottom:4px">⚠ stock insuffisant (${stock} dispo)</div>
       </div>`;
     });
   });
@@ -12257,6 +12287,7 @@ function openBlPartielModal(dateKey, orderId) {
   document.getElementById('bl-partiel-modal').classList.add('open');
 }
 
+
 function closeBlPartielModal() {
   document.getElementById('bl-partiel-modal').classList.remove('open');
   _blPartielDateKey = null; _blPartielOrderId = null;
@@ -12273,11 +12304,17 @@ function confirmCreerBlPartiel() {
 
     // Quantités sélectionnées dans le modal (par ligne / format)
     const selected = {};
+    let hasOverStock = false;
     document.querySelectorAll('.bl-partiel-input:not(.bl-partiel-tireuse)').forEach(inp => {
       const li = inp.dataset.li, field = inp.dataset.field;
       if (!selected[li]) selected[li] = {};
-      selected[li][field] = Math.max(0, parseInt(inp.value) || 0);
+      const val = Math.max(0, parseInt(inp.value) || 0);
+      selected[li][field] = val;
+      if (val > (parseInt(inp.dataset.stock) || 0)) hasOverStock = true;
     });
+    if (hasOverStock) {
+      if (!confirm('⚠️ Certaines quantités sélectionnées dépassent le stock disponible.\n\nCréer le BL quand même ?')) return;
+    }
     const tireuseSelected = {}; // index dans getOrderTireuseLines(o) -> 0 ou 1
     document.querySelectorAll('.bl-partiel-tireuse').forEach(inp => {
       tireuseSelected[inp.dataset.tireuseIdx] = Math.max(0, Math.min(1, parseInt(inp.value) || 0));
@@ -12503,7 +12540,7 @@ Object.assign(window, {
   renderOrderList, addOrderLine, removeDraftLine, updateDraftLine,
   editOrderForm, deleteOrder, saveOrder, showAllOrdersThisDay,
   onOrderClientSelect,
-  openBlPartielModal, closeBlPartielModal, confirmCreerBlPartiel, creerFactureDepuisCommande,
+  openBlPartielModal, closeBlPartielModal, confirmCreerBlPartiel, checkBlPartielRow, creerFactureDepuisCommande,
   showConfirmCreation, closeConfirmCreation,
   openNoteModal, closeNoteModal, saveNote, deleteNote,
   openRecipeModal, closeRecipeModal, addRecipeLine, removeRecipeLine,
