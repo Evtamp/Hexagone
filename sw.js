@@ -1,43 +1,58 @@
-// Trail Coach — service worker
-// Stratégie : network-first pour index.html (pour recevoir les mises à jour),
-// cache-first pour le reste.
-const CACHE = "trailcoach-v2";
-const SHELL = ["./", "./index.html", "./manifest.json"];
+// Service Worker Hexagone — cache l'application pour le mode hors-ligne
+// Stratégie : network-first pour index.html (toujours la dernière version si réseau),
+// repli sur le cache si hors-ligne. Cache-first pour les CDN (jamais modifiés).
+const CACHE_NAME = 'hexagone-v1';
+const APP_SHELL = ['./', './index.html', './manifest.json'];
 
-self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
-});
-
-self.addEventListener("activate", e => {
+self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
+    caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).catch(() => {})
   );
+  self.skipWaiting();
 });
 
-self.addEventListener("fetch", e => {
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== "GET") return;
 
-  // Ne jamais mettre en cache les appels Firebase
-  if (url.hostname.includes("firebase") || url.hostname.includes("googleapis")) return;
+  // Ne jamais intercepter Firebase (temps réel / auth)
+  if (url.hostname.includes('firebaseio.com') ||
+      url.hostname.includes('googleapis.com') ||
+      url.hostname.includes('firebase')) {
+    return;
+  }
 
-  const isDoc = e.request.mode === "navigate" || url.pathname.endsWith("index.html");
-
-  if (isDoc) {
+  // App shell (même origine) : network-first avec repli cache
+  if (url.origin === self.location.origin) {
     e.respondWith(
       fetch(e.request)
-        .then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })
-        .catch(() => caches.match(e.request).then(r => r || caches.match("./index.html")))
+        .then(resp => {
+          const copy = resp.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(e.request, copy));
+          return resp;
+        })
+        .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
     );
-  } else {
-    e.respondWith(
-      caches.match(e.request).then(r => r || fetch(e.request).then(resp => {
-        const copy = resp.clone();
-        caches.open(CACHE).then(c => c.put(e.request, copy));
-        return resp;
-      }).catch(() => r))
-    );
+    return;
   }
+
+  // CDN (jsdelivr, cdnjs, gstatic scripts) : cache-first
+  e.respondWith(
+    caches.match(e.request).then(cached => {
+      if (cached) return cached;
+      return fetch(e.request).then(resp => {
+        const copy = resp.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(e.request, copy));
+        return resp;
+      });
+    })
+  );
 });
