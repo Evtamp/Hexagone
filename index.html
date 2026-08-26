@@ -5582,8 +5582,24 @@ function renderDashboard() {
     if (isNaN(d) || d < todayD) return;
     (tasks || []).forEach(t => {
       if (t.type !== 'brassin' || !t.beer) return;
-      // Déjà lancé (ingrédients déjà déstockés) → ne pas recompter
-      if (t.brewNum && Object.values(historiqueData).some(b => b.brewNum === t.brewNum)) return;
+      // Déjà lancé (ingrédients déjà déstockés) → ne pas recompter.
+      // Le champ n° de brassin est laissé vide par défaut au lancement (openBrewModal)
+      // et le champ cuve est souvent laissé "à définir" à la planification (planning sur
+      // plusieurs semaines, cuves occupées au moment de la saisie) : on ne peut donc pas
+      // toujours se fier à ces deux champs pour relier la tâche planifiée au brassin réel.
+      // On matche successivement par :
+      //  1) n° de brassin identique,
+      //  2) cuve identique (si assignée à la tâche) + bière + lancé à partir du jour prévu,
+      //  3) à défaut de cuve assignée : bière + lancé exactement le jour prévu.
+      const dejaLance = Object.values(historiqueData).some(b => {
+        if (t.brewNum && b.brewNum && b.brewNum === t.brewNum) return true;
+        if (normBeerName(b.recette) !== normBeerName(t.beer)) return false;
+        const bDateKey = b.ts ? dateKey(new Date(b.ts)) : null;
+        if (!bDateKey) return false;
+        if (t.fermId) return (!b.cuve || b.cuve === t.fermId) && bDateKey >= dk;
+        return bDateKey === dk;
+      });
+      if (dejaLance) return;
       const rec = findRecipeByName(t.beer);
       if (!rec) return;
       [...(rec.malts||[]), ...(rec.houblons||[]), ...(rec.levures||[]), ...(rec.sels||[])].forEach(l => {
