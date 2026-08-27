@@ -3175,7 +3175,7 @@ let editOrderId    = null;
 let orderListFocusId = null; // si défini, la liste n'affiche que cette commande
 let _prevWeekBeerDetails = {}; // weekIdx -> { wLabel, range, clientsByBeer }
 let draftLines     = [];
-let draftTireuseLines = []; // [{beer, tireuseId, prix}] — indépendant des lignes de bière
+let draftTireuseLines = []; // [{tireuseId, prix}] — indépendant des lignes de bière
 let weekOffset     = 0;
 let editingNoteId  = null;
 let modalDateKey   = null;
@@ -3296,7 +3296,6 @@ function deleteTireuse(id) {
 
 // Retourne les tireuses disponibles pour une date donnée (pas réservées ce jour)
 function getOrderTireuseLines(o) {
-  // Nouveau format : o.tireuseLines = [{beer, tireuseId, prix}]
   if (o.tireuseLines && o.tireuseLines.length) return o.tireuseLines;
   // Ancien format (tireuse liée à une ligne de bière) : reconstituer à l'identique
   const out = [];
@@ -3308,6 +3307,14 @@ function getOrderTireuseLines(o) {
     }
   });
   return out;
+}
+
+// Libellé d'une ligne tireuse : une tireuse est une unité physique indépendante,
+// rattachée uniquement à la commande et à sa période de location (dates) — jamais à
+// une bière en particulier.
+function tireuseLabel(tl) {
+  const t = tl && tl.tireuseId ? tireusesData[tl.tireuseId] : null;
+  return t ? `Tireuse #${t.num}${t.modele ? ' '+t.modele : ''}` : 'Tireuse';
 }
 
 function getTireusesDispos(dateKey, dateRepriseKey) {
@@ -3932,13 +3939,8 @@ function calcStockEngageParBiere() {
         if (tir)  fmts.push(`${tir}×tireuse`);
         if (fmts.length) engage[beer].reservations.push({ client, date:dateStr, fmts });
       });
-      // Tireuses au format ordre (nouveau) : chaque ligne associe une bière à une unité physique
-      (o.tireuseLines||[]).forEach(tl => {
-        const beer = tl.beer || '—';
-        if (!engage[beer]) engage[beer] = { futs:0, cartons:0, tireuses:0, fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, btl33:0, btl75:0, reservations:[], byWeek:{} };
-        engage[beer].tireuses += 1;
-        engage[beer].reservations.push({ client, date:dateStr, fmts:['1×tireuse'] });
-      });
+      // Les tireuses ne sont plus rattachées à une bière (uniquement à la commande et à
+      // ses dates de location) : elles ne réservent donc plus de stock d'une bière donnée.
     });
   });
   return engage;
@@ -9675,7 +9677,7 @@ function renderOrderList(key) {
       <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:12px;color:#7ab4e8;flex:1">🍺 Tireuses</span>
         <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
-          ${tireuseLignes.map(tl => `<span style="font-size:11px;color:#7ab4e8">${tl.beer}${tl.prix?' ('+parseFloat(tl.prix).toFixed(2)+'€)':''}</span>`).join('')}
+          ${tireuseLignes.map(tl => `<span style="font-size:11px;color:#7ab4e8">${tireuseLabel(tl)}${tl.prix?' ('+parseFloat(tl.prix).toFixed(2)+'€)':''}</span>`).join('')}
           ${totalTireuseHT > 0 ? `<span style="font-size:11px;font-weight:700;color:var(--foam)">${totalTireuseHT.toFixed(2)}€</span>` : ''}
         </div>
       </div>` : '');
@@ -9790,7 +9792,7 @@ function addOrderLine() {
 // --- Tireuses : indépendantes des lignes de bière, chacune associe une bière (celle
 // chargée dans la tireuse) à une unité physique disponible sur toute la période du prêt ---
 function addOrderTireuseLine() {
-  draftTireuseLines.push({ beer: getRecipeBeerNames()[0], tireuseId: '', prix: 0 });
+  draftTireuseLines.push({ tireuseId: '', prix: 0 });
   renderOrderTireuseLines();
 }
 
@@ -9836,11 +9838,8 @@ function renderOrderTireuseLines() {
 
   el.innerHTML = draftTireuseLines.map((tl, i) => `
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:8px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <select onchange="updateOrderTireuseLine(${i},'beer',this.value)"
-          style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;font-weight:600;padding:7px 10px">
-          ${getRecipeBeerNames().map(b=>`<option value="${b}"${b===tl.beer?'selected':''}>${b}</option>`).join('')}
-        </select>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:600;color:var(--foam)">🍺 Tireuse</span>
         <button onclick="removeOrderTireuseLine(${i})" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0;line-height:1">×</button>
       </div>
       <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">
@@ -9905,7 +9904,7 @@ function editOrderForm(key, id) {
     fut30inox: l.fut30inox||0, fut30kk: l.fut30kk||0, fut30kktp: l.fut30kktp||0, fut20: l.fut20||0,
     cartons: l.cartons||0, prixCarton: l.prixCarton||0
   }));
-  draftTireuseLines = getOrderTireuseLines(o).map(tl => ({ beer: tl.beer || getRecipeBeerNames()[0], tireuseId: tl.tireuseId || '', prix: tl.prix || 0 }));
+  draftTireuseLines = getOrderTireuseLines(o).map(tl => ({ tireuseId: tl.tireuseId || '', prix: tl.prix || 0 }));
   renderDraftLines();
   renderOrderTireuseLines();
   // Scroller vers le haut du formulaire pour voir la date et le client
@@ -12550,7 +12549,7 @@ function openBlPartielModal(dateKey, orderId) {
   getOrderTireuseLines(o).forEach((tl, ti) => {
     rowsHtml += `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-      <div style="font-size:13px;color:var(--foam)">${esc(tl.beer)} <span style="color:var(--muted);font-size:11px">— Tireuse</span></div>
+      <div style="font-size:13px;color:var(--foam)">${esc(tireuseLabel(tl))}</div>
       <div style="display:flex;align-items:center;gap:4px">
         <input type="number" min="0" max="1" value="1"
           data-tireuse-idx="${ti}" class="bl-partiel-input bl-partiel-tireuse"
@@ -12616,7 +12615,7 @@ function confirmCreerBlPartiel() {
       const qty = tireuseSelected[ti] ?? 1;
       if (qty <= 0) return;
       totalSelected += 1;
-      blLinesFromOrder.push({ designation:`${tl.beer} — Tireuse`, qte:1, unite:'tireuse', lotRef:'' });
+      blLinesFromOrder.push({ designation: tireuseLabel(tl), qte:1, unite:'tireuse', lotRef:'' });
     });
 
     if (!totalSelected) { showToast('Sélectionnez au moins un article à livrer', true); return; }
@@ -12702,15 +12701,15 @@ function creerFactureDepuisCommande(dateKey, orderId) {
       if ((parseInt(l.fut20)||0)>0)     factLines.push({ desc:`${l.beer} — Fût 20L`,      qty:parseInt(l.fut20),     pu:parseFloat(l.prixFut20)||0     });
       if (parseInt(l.cartons)> 0) factLines.push({ desc:`${l.beer} — Carton`,   qty:parseInt(l.cartons), pu:parseFloat(l.prixCarton)||0 });
     });
-    // Tireuses (indépendantes des lignes de bière) : groupées par bière chargée
-    const tireuseParBiere = {}; // beer -> {qty, pu}
+    // Tireuses (indépendantes des lignes de bière, rattachées uniquement à la commande) :
+    // regroupées par prix unitaire pour ne pas dupliquer une ligne par unité identique
+    const tireuseParPrix = {}; // prix -> qty
     getOrderTireuseLines(o).forEach(tl => {
-      const beer = tl.beer || '—';
-      if (!tireuseParBiere[beer]) tireuseParBiere[beer] = { qty:0, pu:parseFloat(tl.prix)||0 };
-      tireuseParBiere[beer].qty += 1;
+      const pu = parseFloat(tl.prix)||0;
+      tireuseParPrix[pu] = (tireuseParPrix[pu]||0) + 1;
     });
-    Object.entries(tireuseParBiere).forEach(([beer, {qty, pu}]) => {
-      factLines.push({ desc:`${beer} — Tireuse`, qty, pu });
+    Object.entries(tireuseParPrix).forEach(([pu, qty]) => {
+      factLines.push({ desc:'Tireuse', qty, pu: parseFloat(pu) });
     });
 
     if (!factLines.length) { showToast('Aucun article dans la commande'); return; }
