@@ -3182,6 +3182,7 @@ let modalDateKey   = null;
 let editingRecipeId = null;
 let brewRecipeId    = null;
 let brewLotOverrides = {}; // nom ingrédient -> id de l'item/lot choisi manuellement
+let brewFromTask     = null; // { key, taskId } quand le brassin est lancé depuis une tâche de planning
 let lotPickerIngredient = null;
 let brewEffectiveLines = null; // lignes effectives du brassin en cours (copie modifiable de la recette)
 let subPickerIndex = null;     // index de la ligne en cours de substitution
@@ -5583,10 +5584,14 @@ function renderDashboard() {
     (tasks || []).forEach(t => {
       if (t.type !== 'brassin' || !t.beer) return;
       // Déjà lancé (ingrédients déjà déstockés) → ne pas recompter.
-      // Le champ n° de brassin est laissé vide par défaut au lancement (openBrewModal)
+      // Repère fiable en priorité : le lien explicite posé quand le brassin est lancé
+      // depuis le planning (bouton 🍺 sur la tâche → launchBrewFromTask/confirmBrew).
+      if (t.launched && t.historiqueId && historiqueData[t.historiqueId]) return;
+      // Repli heuristique pour les brassins lancés "à la main" depuis Recettes (pas de
+      // lien explicite posé) : le n° de brassin est laissé vide par défaut au lancement
       // et le champ cuve est souvent laissé "à définir" à la planification (planning sur
-      // plusieurs semaines, cuves occupées au moment de la saisie) : on ne peut donc pas
-      // toujours se fier à ces deux champs pour relier la tâche planifiée au brassin réel.
+      // plusieurs semaines, cuves occupées au moment de la saisie), donc on ne peut pas
+      // toujours se fier à ces deux champs seuls pour relier la tâche au brassin réel.
       // On matche successivement par :
       //  1) n° de brassin identique,
       //  2) cuve identique (si assignée à la tâche) + bière + lancé à partir du jour prévu,
@@ -8222,11 +8227,42 @@ function updateBrewStatut(id, statut) {
 
 let _lastDeletedBrew = null; // { id, data } pour l'annulation
 
+// Retire le lien "lancé" d'une tâche de planning quand le brassin qu'elle référence
+// est supprimé/annulé — la tâche redevient "à lancer" et le dashboard recommence à
+// réserver ses MP tant qu'elle n'est pas relancée.
+function unlinkPlanningTaskFromBrew(b) {
+  if (!b || !b.fromTask) return;
+  const { key, taskId } = b.fromTask;
+  const list = planningData[key];
+  if (!list) return;
+  const idx = list.findIndex(t => t.id === taskId);
+  if (idx < 0) return;
+  delete list[idx].launched;
+  delete list[idx].historiqueId;
+  savePlanning();
+  renderPlanning();
+}
+
+// Rétablit le lien "lancé" quand un brassin supprimé par erreur est restauré (undo)
+function relinkPlanningTaskToBrew(id, b) {
+  if (!b || !b.fromTask) return;
+  const { key, taskId } = b.fromTask;
+  const list = planningData[key];
+  if (!list) return;
+  const idx = list.findIndex(t => t.id === taskId);
+  if (idx < 0) return;
+  list[idx].launched = true;
+  list[idx].historiqueId = id;
+  savePlanning();
+  renderPlanning();
+}
+
 function deleteHistorique(id) {
   const b = historiqueData[id];
   if (!b) return;
   if (!confirm(`Supprimer définitivement le brassin ${b.lot || ''} (${b.recette || '?'}) de l'historique ?`)) return;
   _lastDeletedBrew = { id, data: JSON.parse(JSON.stringify(b)) };
+  unlinkPlanningTaskFromBrew(b);
   fbSet('historique/' + id, null); // supprime le nœud Firebase
   delete historiqueData[id];
   renderHistorique();
@@ -8242,6 +8278,7 @@ function undoDeleteHistorique() {
   const { id, data } = _lastDeletedBrew;
   historiqueData[id] = data;
   fbSet('historique/' + id, data);
+  relinkPlanningTaskToBrew(id, data);
   _lastDeletedBrew = null;
   document.getElementById('toast').classList.remove('show');
   renderHistorique();
@@ -8255,6 +8292,7 @@ function annulerBrassin(id) {
     ? `Annuler ce brassin (${b.recette}) ? Les MP seront remises en stock et la cuve ${b.cuve} reprendra l'état qu'elle avait avant ce lancement.`
     : `Annuler ce brassin (${b.recette}) ? Les MP seront remises en stock et la cuve ${b.cuve} sera vidée.`;
   if (!confirm(msg)) return;
+  unlinkPlanningTaskFromBrew(b);
   // Remettre les MP en stock si le brassin avait déstocké
   if (b.destocke && b.mpQty && b.mpQty.length) {
     const allItems = Object.values(MP_DATA).flat();
@@ -8577,6 +8615,10 @@ function renderPlanning() {
                 <span class="day-task-cat" style="background:${tt.color}22;color:${tt.color};flex-shrink:0;font-size:10px;padding:1px 4px">${tt.icon} ${tt.label}</span>
                 <span style="font-size:11px;color:var(--text-dim);overflow-wrap:anywhere;word-break:normal">${taskDetail(t)}</span>
               </div>
+              ${t.type === 'brassin' ? (t.launched
+                ? `<span onclick="event.stopPropagation();openBrewDetailModal('${t.historiqueId}')" title="Brassin lancé — voir dans l'historique" style="font-size:13px;cursor:pointer;flex-shrink:0">✅</span>`
+                : `<button onclick="event.stopPropagation();launchBrewFromTask('${key}','${t.id}')" title="Lancer ce brassin" style="background:none;border:none;color:var(--amber-lt);font-size:14px;cursor:pointer;padding:0;line-height:1;flex-shrink:0">🍺</button>`
+              ) : ''}
               <button onclick="deleteTask('${key}','${t.id}')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1;flex-shrink:0">×</button>
             </div>`;
           }).join('')
@@ -8920,6 +8962,9 @@ function saveTask() {
   const task = { id: editingTaskId || Date.now().toString(36), type, beer, fermId, eventName, brewNum, client, lieu, note };
   if (type === 'brassin') { task.dureeFerm = dureeFerm; task.dureeGarde = dureeGarde; }
   if (prevTask?.brassinId) task.brassinId = prevTask.brassinId;
+  // Conserver le lien vers le brassin lancé (posé par launchBrewFromTask/confirmBrew) :
+  // sans ça, la moindre édition de la tâche (ex: une note) effacerait la trace du lancement.
+  if (prevTask?.launched) { task.launched = true; task.historiqueId = prevTask.historiqueId; }
 
   if (!planningData[modalDateKey]) planningData[modalDateKey] = [];
 
@@ -10441,9 +10486,12 @@ function suggestBrewNumFromBeer() {
 }
 
 // ===== MODAL BRASSER =====
-function openBrewModal(id) {
+// taskRef: { key, taskId } optionnel — quand le brassin est lancé depuis une tâche du
+// planning (bouton 🍺 sur la tâche), pour garder une trace explicite du lien planning ↔ brassin.
+function openBrewModal(id, taskRef = null) {
   brewRecipeId = id;
   brewLotOverrides = {};
+  brewFromTask = taskRef;
   const r = recipesData[id];
   if (!r) return;
   // Construire la liste des lignes effectives (modifiable pour ce brassin, sans toucher la recette)
@@ -10453,10 +10501,13 @@ function openBrewModal(id) {
     ...(r.levures ||[]).map(l=>({ name:l.name, qty:parseFloat(l.qty)||0, unit:'pqt', cat:'levure',  moment:l.moment||'', orig:l.name })),
   ];
   document.getElementById('brew-recipe-name').textContent = r.name;
-  // Laisser le champ vide — l'utilisateur saisit son propre numéro
+  // Repris depuis la tâche de planning si on vient de là, sinon champ vide (saisie libre)
+  const taskLinked = taskRef ? (planningData[taskRef.key]||[]).find(x => x.id === taskRef.taskId) : null;
+  document.getElementById('brew-num').value = taskLinked?.brewNum || '';
   // Sélect fermenteurs
   const sel = document.getElementById('brew-ferm');
   sel.innerHTML = FERMENTERS.map(f=>`<option value="${f.id}">${f.id}${f.beer?' – '+f.beer:' (libre)'}</option>`).join('');
+  if (taskLinked?.fermId) sel.value = taskLinked.fermId;
   // Preview MP + alertes stock insuffisant
   renderBrewPreview(r);
   document.getElementById('brew-modal').classList.add('open');
@@ -10466,7 +10517,21 @@ function closeBrewModal() {
   document.getElementById('brew-modal').classList.remove('open');
   brewRecipeId = null;
   brewLotOverrides = {};
+  brewFromTask = null;
 }
+
+// Lance un brassin directement depuis une tâche planifiée : retrouve la recette
+// correspondant à la bière de la tâche et ouvre la modale de lancement pré-remplie,
+// avec un lien conservé pour marquer la tâche comme "lancée" une fois confirmée.
+function launchBrewFromTask(key, taskId) {
+  const t = (planningData[key]||[]).find(x => x.id === taskId);
+  if (!t) return;
+  const entry = Object.entries(recipesData).find(([, r]) => normBeerName(r.name) === normBeerName(t.beer));
+  if (!entry) { alert(`Recette introuvable pour "${t.beer}". Ouvre Recettes pour lancer ce brassin manuellement.`); return; }
+  openBrewModal(entry[0], { key, taskId });
+}
+
+
 
 // Retourne les items MP correspondant à un nom d'ingrédient, triés FIFO,
 // avec en tête le lot forcé manuellement (brewLotOverrides) s'il existe encore en stock.
@@ -10749,10 +10814,31 @@ function confirmBrew(skipDestock = false) {
     destocke: !skipDestock,
     mpQty: mpQtySnapshot,
     fermSnapshotAvant,
+    fromTask: brewFromTask ? { key: brewFromTask.key, taskId: brewFromTask.taskId } : null,
   };
   historiqueData[id] = entry;
   saveBrewEntry(id, entry);
   renderHistorique();
+
+  // Trace explicite planning ↔ brassin : marque la tâche planifiée comme lancée pour
+  // que le dashboard (alertes MP) et l'affichage du planning sachent que ce brassin
+  // n'est plus "à venir" mais bien en cours, sans avoir à deviner via une heuristique.
+  if (brewFromTask) {
+    const { key, taskId } = brewFromTask;
+    const list = planningData[key] || [];
+    const idx = list.findIndex(x => x.id === taskId);
+    if (idx >= 0) {
+      list[idx].launched = true;
+      list[idx].historiqueId = id;
+      // Reporte la cuve/numéro effectivement utilisés si la tâche avait été laissée
+      // "à définir" à la planification (cas fréquent : planning à plusieurs semaines,
+      // cuves occupées au moment de la saisie).
+      if (!list[idx].fermId && fermId) list[idx].fermId = fermId;
+      if (!list[idx].brewNum && brewNum) list[idx].brewNum = brewNum;
+      savePlanning();
+      renderPlanning();
+    }
+  }
 
   closeBrewModal();
   renderFermenters();
@@ -12737,7 +12823,7 @@ Object.assign(window, {
   openNoteModal, closeNoteModal, saveNote, deleteNote,
   openRecipeModal, closeRecipeModal, addRecipeLine, removeRecipeLine,
   updateRecipeLine, saveRecipe, deleteRecipe, duplicateRecipe,
-  openBrewModal, closeBrewModal, confirmBrew,
+  openBrewModal, closeBrewModal, confirmBrew, launchBrewFromTask,
   openClientModal, closeClientModal, saveClient, deleteClient,
   openClientDetailModal, closeClientDetailModal, addClientSuivi,
   switchClientRecapTab, changeClientRecapMoisYear,
