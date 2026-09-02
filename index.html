@@ -11798,7 +11798,7 @@ function updateStockFromBl(client, lines, delta) {
         });
     });
   } else if (delta < 0) {
-    // Annulation BL : remettre en stock par bière+format
+    // Annulation BL / retour client : remettre en stock par bière+format
     Object.values(toDestock).forEach(({ beer, fmt, qty: qtyNeeded }) => {
       const lots = Object.values(produitsData)
         .filter(p => p.format === fmt && (!beer || p.biere === beer))
@@ -11809,6 +11809,13 @@ function updateStockFromBl(client, lines, delta) {
         produitsData[p.id] = { ...p, qty: (p.qty||0) + qtyNeeded };
         tracerMouvProduit(p.id, avantBL, produitsData[p.id].qty, `↩ Annulation BL`);
         formatsModified.add(p.id);
+      } else if (beer) {
+        // Aucune ligne de stock existante pour cette bière+format (souvent supprimée quand
+        // elle était retombée à 0) : on en recrée une plutôt que de perdre le retour.
+        const id = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6);
+        produitsData[id] = { id, biere: beer, format: fmt, qty: qtyNeeded, ferm: '', lot: todayLot(), ts: Date.now() };
+        tracerMouvProduit(id, 0, qtyNeeded, `↩ Annulation BL (ligne recréée)`);
+        formatsModified.add(id);
       }
     });
   }
