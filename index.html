@@ -6764,13 +6764,14 @@ function openDhModal(fermId, today) {
               style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:700;padding:7px 8px;box-sizing:border-box;text-align:center" />
           </div>
           <div>
-            <div class="field-label" style="margin-bottom:3px">Lot à utiliser</div>
+            <div class="field-label" style="margin-bottom:3px">Lot prioritaire</div>
             <select id="dh-hop-lot-${i}"
               style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;padding:7px 6px;box-sizing:border-box">
               ${[...(MP_DATA.houblon||[]), ...(MP_DATA.autre||[])].filter(m => m.name === h.name && m.val > 0)
                 .map(m => `<option value="${m.id}">${m.lot||'Sans lot'} (${m.val.toFixed(2)} kg)</option>`)
                 .join('') || '<option value="">Aucun stock</option>'}
             </select>
+            <div style="font-size:10px;color:var(--muted);margin-top:3px">Complété automatiquement par d'autres lots si besoin</div>
           </div>
         </div>
       </div>`;
@@ -6833,21 +6834,36 @@ function saveDhModal() {
     const lotEl = document.getElementById(`dh-hop-lot-${i}`);
     const qtyEl = document.getElementById(`dh-hop-qty-${i}`);
     if (!lotEl || !lotEl.value) continue;
-    const qty = parseFloat(qtyEl?.value) || 0;
-    if (!qty) continue;
+    const qtyDemandee = parseFloat(qtyEl?.value) || 0;
+    if (!qtyDemandee) continue;
 
-    // Trouver l'item MP
-    const item = Object.values(MP_DATA).flat().find(m => m.id === lotEl.value);
-    if (!item) continue;
-    if (item.val < qty) { showToast(`Stock insuffisant pour ${item.name}`, true); return; }
+    const chosenItem = Object.values(MP_DATA).flat().find(m => m.id === lotEl.value);
+    if (!chosenItem) continue;
 
-    // Détocker
-    const valAvant = item.val;
-    item.val = Math.max(0, parseFloat((item.val - qty).toFixed(3)));
-    saveMp(item.id, item.val);
-    tracerSortieMP(item, valAvant, item.val, `🌿 Dry Hopping ${f.beer || ''}${brassin?.brewNum ? ' ('+brassin.brewNum+')' : ''}`.trim());
+    // Répartit sur plusieurs lots si le lot choisi ne suffit pas seul (lot choisi en
+    // priorité, puis les autres lots du même houblon par ordre FIFO).
+    const matchingItems = getSortedMatchingItems(chosenItem.name, lotEl.value);
+    const totalDispo = matchingItems.reduce((s, m) => s + (m.val || 0), 0);
+    if (totalDispo < qtyDemandee) {
+      showToast(`Stock insuffisant pour ${chosenItem.name} (dispo : ${totalDispo.toFixed(2)} kg, besoin : ${qtyDemandee.toFixed(2)} kg)`, true);
+      return;
+    }
 
-    dhLogs.push({ date: today, hop: item.name, lot: item.lot||'', qty, unit: item.unit||'kg' });
+    let remaining = qtyDemandee;
+    const lotsUtilises = [];
+    matchingItems.forEach(item => {
+      if (remaining <= 0) return;
+      const pris = Math.min(item.val, remaining);
+      if (pris <= 0) return;
+      const valAvant = item.val;
+      item.val = Math.max(0, parseFloat((item.val - pris).toFixed(3)));
+      saveMp(item.id, item.val);
+      tracerSortieMP(item, valAvant, item.val, `🌿 Dry Hopping ${f.beer || ''}${brassin?.brewNum ? ' ('+brassin.brewNum+')' : ''}`.trim());
+      remaining = parseFloat((remaining - pris).toFixed(3));
+      if (item.lot) lotsUtilises.push(item.lot);
+    });
+
+    dhLogs.push({ date: today, hop: chosenItem.name, lot: lotsUtilises.join(', ') || chosenItem.lot || '', qty: qtyDemandee, unit: chosenItem.unit || 'kg' });
   }
 
   // Activer la phase DH sur la cuve. Le DH se déroule PENDANT la garde (les deux
@@ -10538,8 +10554,8 @@ function launchBrewFromTask(key, taskId) {
 
 
 // Retourne les items MP correspondant à un nom d'ingrédient, triés FIFO,
-// avec en tête le lot forcé manuellement (brewLotOverrides) s'il existe encore en stock.
-function getSortedMatchingItems(name) {
+// avec en tête le lot forcé manuellement (overrideId, ou brewLotOverrides[name] par défaut) s'il existe encore en stock.
+function getSortedMatchingItems(name, overrideId) {
   const items = Object.values(MP_DATA).flat().filter(i => i.name === name);
   const sorted = items.slice().sort((a, b) => {
     if (!a.lot && !b.lot) return 0;
@@ -10547,9 +10563,9 @@ function getSortedMatchingItems(name) {
     if (!b.lot) return -1;
     return a.lot.localeCompare(b.lot);
   });
-  const overrideId = brewLotOverrides[name];
-  if (overrideId) {
-    const idx = sorted.findIndex(i => i.id === overrideId);
+  const ov = overrideId !== undefined ? overrideId : brewLotOverrides[name];
+  if (ov) {
+    const idx = sorted.findIndex(i => i.id === ov);
     if (idx > 0) {
       const [chosen] = sorted.splice(idx, 1);
       sorted.unshift(chosen);
