@@ -2097,7 +2097,7 @@
 
 <!-- ===== MODAL SIGNATURE ===== -->
 <div id="signature-modal" style="display:none;position:fixed;inset:0;background:#0f0c07;z-index:500;flex-direction:column">
-  <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+  <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
     <div>
       <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">Bon de livraison</div>
       <div id="sig-bl-ref" style="font-size:15px;font-weight:700;color:var(--foam)"></div>
@@ -2105,15 +2105,20 @@
     <button onclick="closeSignatureModal()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">×</button>
   </div>
 
-  <!-- Récap livraison -->
-  <div id="sig-recap" style="padding:12px 16px;border-bottom:1px solid var(--border);overflow-y:auto;max-height:30vh"></div>
+  <!-- Corps scrollable : récap + signature + boutons, pour que le récap ne soit jamais coupé -->
+  <div style="flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px 20px">
 
-  <!-- Zone de signature -->
-  <div style="padding:12px 16px 6px;flex:1;display:flex;flex-direction:column">
+    <!-- Récap livraison -->
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">
+      📦 Articles livrés
+    </div>
+    <div id="sig-recap" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:16px"></div>
+
+    <!-- Zone de signature -->
     <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">
       ✍️ Signature du réceptionnaire
     </div>
-    <div style="position:relative;flex:1;min-height:180px">
+    <div style="position:relative;height:220px">
       <canvas id="signature-canvas"
         style="background:#fff;border-radius:var(--radius);width:100%;height:100%;display:block;touch-action:none"></canvas>
       <div id="sig-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;color:#ccc;font-size:13px">
