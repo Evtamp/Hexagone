@@ -2516,19 +2516,11 @@
     </div>
 
     <!-- Empâtage -->
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#7ab4e8;margin:14px 0 8px">🌡 Empâtage</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div class="modal-field">
-        <label>Température (°C)</label>
-        <input id="recipe-temp-empatage" type="number" min="50" max="80" step="0.5" placeholder="ex: 65"
-          style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;width:100%"/>
-      </div>
-      <div class="modal-field">
-        <label>Durée (min)</label>
-        <input id="recipe-duree-empatage" type="number" min="0" step="5" placeholder="ex: 60"
-          style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:14px;font-weight:600;padding:9px 12px;width:100%"/>
-      </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#7ab4e8">🌡 Empâtage (paliers)</div>
+      <button onclick="addRecipePalier()" style="background:none;border:1px solid rgba(120,180,230,.4);border-radius:var(--radius-sm);color:#7ab4e8;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer">+ Palier</button>
     </div>
+    <div id="recipe-paliers-list"></div>
 
     <!-- Fermentation -->
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#4caf72;margin:14px 0 8px">🧫 Fermentation</div>
@@ -6041,8 +6033,9 @@ function printFicheSuivi(brassinId) {
   let recetteHtml = '<p style="color:#888;font-style:italic">Recette introuvable</p>';
   if (rec) {
     const paramsRec = [
-      rec.tempEmpatage ? `Empâtage : ${rec.tempEmpatage}°C` : '',
-      rec.dureeEmpatage ? `${rec.dureeEmpatage} min` : '',
+      rec.paliersEmpatage?.length
+        ? 'Empâtage : ' + rec.paliersEmpatage.map(p => `${esc(p.nom||'palier')} ${p.temp||'?'}°C${p.duree?' ('+p.duree+"')":''}`).join(', ')
+        : (rec.tempEmpatage ? `Empâtage : ${rec.tempEmpatage}°C${rec.dureeEmpatage ? ' ('+rec.dureeEmpatage+"')" : ''}` : ''),
       rec.ebullition ? `Ébullition : ${rec.ebullition} min` : '',
       rec.tempLevure ? `Mise en levure : ${rec.tempLevure}°C` : '',
       rec.tempFermentation ? `Fermentation : ${rec.tempFermentation}°C` : '',
@@ -10161,10 +10154,13 @@ function renderRecipes() {
           ${maltRows  ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--amber-lt);margin-bottom:4px">🌾 Malts</div>${maltRows}` : ''}
 
           <!-- Infos brassage -->
-          ${(r.tempEmpatage||r.dureeEmpatage||r.ebullition||r.tempLevure||r.tempFermentation) ? `
+          ${(r.paliersEmpatage?.length||r.tempEmpatage||r.dureeEmpatage||r.ebullition||r.tempLevure||r.tempFermentation) ? `
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 4px">
-            ${r.tempEmpatage ? `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#7ab4e8">🌡 ${r.tempEmpatage}°C</span>` : ''}
-            ${r.dureeEmpatage ? `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#7ab4e8">⏱ ${r.dureeEmpatage} min empâtage</span>` : ''}
+            ${r.paliersEmpatage?.length
+              ? r.paliersEmpatage.map(p => `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#7ab4e8">🌡 ${esc(p.nom||'Palier')} ${p.temp||'?'}°C${p.duree?' · '+p.duree+"'":''}</span>`).join('')
+              : `${r.tempEmpatage ? `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#7ab4e8">🌡 ${r.tempEmpatage}°C</span>` : ''}
+                 ${r.dureeEmpatage ? `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#7ab4e8">⏱ ${r.dureeEmpatage} min empâtage</span>` : ''}`
+            }
             ${r.ebullition ? `<span style="font-size:11px;background:rgba(200,128,10,.1);border:1px solid rgba(200,128,10,.25);border-radius:4px;padding:2px 8px;color:var(--amber-lt)">🔥 ${r.ebullition} min ébullition</span>` : ''}
             ${r.tempLevure ? `<span style="font-size:11px;background:rgba(76,175,114,.1);border:1px solid rgba(76,175,114,.25);border-radius:4px;padding:2px 8px;color:#4caf72">🧫 Levurage ${r.tempLevure}°C</span>` : ''}
             ${r.tempFermentation ? `<span style="font-size:11px;background:rgba(76,175,114,.1);border:1px solid rgba(76,175,114,.25);border-radius:4px;padding:2px 8px;color:#4caf72">🌡 Ferm. ${r.tempFermentation}°C</span>` : ''}
@@ -10239,6 +10235,49 @@ function calcCout(r) {
 }
 
 // ===== MODAL RECETTE =====
+let recipeDraftPaliers = []; // [{nom, temp, duree}] — paliers d'empâtage successifs (ex: empâtage 65°C 45', mash out 78°C 10')
+
+function addRecipePalier() {
+  recipeDraftPaliers.push({ nom:'', temp:'', duree:'' });
+  renderRecipePaliers();
+}
+function removeRecipePalier(i) {
+  recipeDraftPaliers.splice(i, 1);
+  renderRecipePaliers();
+}
+function updateRecipePalier(i, field, val) {
+  recipeDraftPaliers[i][field] = (field === 'nom') ? val : (parseFloat(val) || 0);
+}
+function renderRecipePaliers() {
+  const el = document.getElementById('recipe-paliers-list');
+  if (!el) return;
+  if (!recipeDraftPaliers.length) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:2px 0 4px">Aucun palier — "+ Palier" pour en ajouter (ex : empâtage 65°C 45', mash out 78°C 10').</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 70px 70px 22px;gap:6px;margin-bottom:4px">
+      <div class="field-label">Nom du palier</div>
+      <div class="field-label" style="text-align:center">°C</div>
+      <div class="field-label" style="text-align:center">min</div>
+      <div></div>
+    </div>
+    ${recipeDraftPaliers.map((p,i) => `
+    <div style="display:grid;grid-template-columns:1fr 70px 70px 22px;gap:6px;align-items:center;margin-bottom:6px">
+      <input type="text" placeholder="ex: Mash out" value="${esc(p.nom||'')}"
+        onchange="updateRecipePalier(${i},'nom',this.value)"
+        style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;padding:7px 8px;width:100%;box-sizing:border-box"/>
+      <input type="number" step="0.5" placeholder="65" value="${p.temp||p.temp===0?p.temp:''}"
+        onchange="updateRecipePalier(${i},'temp',this.value)"
+        style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;font-weight:600;padding:7px 4px;text-align:center;width:100%;box-sizing:border-box"/>
+      <input type="number" step="5" placeholder="60" value="${p.duree||p.duree===0?p.duree:''}"
+        onchange="updateRecipePalier(${i},'duree',this.value)"
+        style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;font-weight:600;padding:7px 4px;text-align:center;width:100%;box-sizing:border-box"/>
+      <button onclick="removeRecipePalier(${i})" style="background:none;border:none;color:var(--muted);font-size:17px;cursor:pointer;padding:0;line-height:1">×</button>
+    </div>`).join('')}
+  `;
+}
+
 function openRecipeModal(id) {
   editingRecipeId = id;
   const r = id ? recipesData[id] : null;
@@ -10246,11 +10285,19 @@ function openRecipeModal(id) {
   document.getElementById('recipe-name').value          = r ? (r.name||'')         : '';
   document.getElementById('recipe-abv').value           = r ? (r.abv||'')          : '';
   document.getElementById('recipe-ebullition').value    = r ? (r.ebullition||'')   : '';
-  document.getElementById('recipe-temp-empatage').value = r ? (r.tempEmpatage||'') : '';
-  document.getElementById('recipe-duree-empatage').value= r ? (r.dureeEmpatage||''): '';
   document.getElementById('recipe-temp-levure').value       = r ? (r.tempLevure||'')       : '';
   document.getElementById('recipe-temp-fermentation').value = r ? (r.tempFermentation||'') : '';
   document.getElementById('recipe-notes').value          = r ? (r.notes||'')        : '';
+  // Paliers d'empâtage : reprendre le nouveau format, ou migrer l'ancien champ unique
+  // (tempEmpatage/dureeEmpatage) en un premier palier éditable.
+  if (r?.paliersEmpatage?.length) {
+    recipeDraftPaliers = r.paliersEmpatage.map(p => ({...p}));
+  } else if (r?.tempEmpatage || r?.dureeEmpatage) {
+    recipeDraftPaliers = [{ nom:'', temp: r.tempEmpatage||'', duree: r.dureeEmpatage||'' }];
+  } else {
+    recipeDraftPaliers = [];
+  }
+  renderRecipePaliers();
   recipeDraftLines = {
     malt:      r ? (r.malts     ||[]).map(l=>({...l})) : [],
     houblon:   r ? (r.houblons  ||[]).map(l=>({...l})) : [],
@@ -10409,13 +10456,18 @@ function saveRecipe() {
   const id          = editingRecipeId || Date.now().toString(36);
   const abv         = parseFloat(document.getElementById('recipe-abv').value)            || 0;
   const ebullition  = parseFloat(document.getElementById('recipe-ebullition').value)     || 0;
-  const tempEmpatage = parseFloat(document.getElementById('recipe-temp-empatage').value) || 0;
-  const dureeEmpatage= parseFloat(document.getElementById('recipe-duree-empatage').value)|| 0;
+  const paliersEmpatage = recipeDraftPaliers
+    .map(p => ({ nom:(p.nom||'').trim(), temp:parseFloat(p.temp)||0, duree:parseFloat(p.duree)||0 }))
+    .filter(p => p.temp || p.duree);
+  // Champs conservés en repli pour le code existant (fiche de suivi, badges) qui n'a pas
+  // encore été mis à jour pour lire le tableau de paliers : reflètent le 1er palier.
+  const tempEmpatage  = paliersEmpatage[0]?.temp  || 0;
+  const dureeEmpatage = paliersEmpatage[0]?.duree || 0;
   const tempLevure       = parseFloat(document.getElementById('recipe-temp-levure').value)       || 0;
   const tempFermentation = parseFloat(document.getElementById('recipe-temp-fermentation').value) || 0;
   const notes        = (document.getElementById('recipe-notes')?.value || '').trim();
   recipesData[id] = {
-    id, name, abv, ebullition, tempEmpatage, dureeEmpatage, tempLevure, tempFermentation, notes,
+    id, name, abv, ebullition, paliersEmpatage, tempEmpatage, dureeEmpatage, tempLevure, tempFermentation, notes,
     malts:    recipeDraftLines.malt.map(l=>({...l, qty:parseFloat(l.qty)||0})),
     houblons: recipeDraftLines.houblon.map(l=>({...l, qty:parseFloat(l.qty)||0, moment:l.moment||"75'"})),
     levures:  recipeDraftLines.levure.map(l=>({...l, qty:parseFloat(l.qty)||0})),
@@ -12849,6 +12901,7 @@ Object.assign(window, {
   showConfirmCreation, closeConfirmCreation,
   openNoteModal, closeNoteModal, saveNote, deleteNote,
   openRecipeModal, closeRecipeModal, addRecipeLine, removeRecipeLine,
+  addRecipePalier, removeRecipePalier, updateRecipePalier,
   updateRecipeLine, saveRecipe, deleteRecipe, duplicateRecipe,
   openBrewModal, closeBrewModal, confirmBrew, launchBrewFromTask,
   openClientModal, closeClientModal, saveClient, deleteClient,
