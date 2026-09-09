@@ -9616,7 +9616,7 @@ function openOrderModal(key, focusOrderId) {
   orderModalKey = key;
   editOrderId   = null;
   orderListFocusId = focusOrderId || null;
-  draftLines    = [{ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, prixCarton:0 }];
+  draftLines    = [{ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, prixCarton:0, lots:{} }];
   draftTireuseLines = [];
   const d = new Date(key + 'T12:00:00');
   document.getElementById('order-modal-date').textContent =
@@ -9673,17 +9673,22 @@ function renderOrderList(key) {
     const totalT = tireuseLignes.length;
     const totalTireuseHT = tireuseLignes.reduce((a,tl)=>a+(parseFloat(tl.prix)||0),0);
     const totalHT = o.lines.reduce((a,l)=> a + (parseInt(l.cartons)||0)*(parseFloat(l.prixCarton)||0), 0) + totalTireuseHT;
+    const lotTag = (l, field) => {
+      const id = l.lots && l.lots[field];
+      const p = id ? produitsData[id] : null;
+      return p ? `<span style="font-size:9px;color:var(--muted)"> (lot ${esc(p.lot||'?')})</span>` : '';
+    };
     const linesHtml = o.lines.map(l => {
       const ligneHT = (parseInt(l.cartons)||0)*(parseFloat(l.prixCarton)||0);
       return `
       <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:12px;color:var(--amber-lt);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.beer||'—'}</span>
-        <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
-          ${(parseInt(l.fut30inox)||0)>0 ? `<span style="font-size:11px;color:var(--amber-lt)">🛢Inox×${l.fut30inox}</span>` : ''}
-          ${(parseInt(l.fut30kk)||0)>0   ? `<span style="font-size:11px;color:var(--amber-lt)">🛢KK×${l.fut30kk}</span>`   : ''}
-          ${(parseInt(l.fut30kktp)||0)>0 ? `<span style="font-size:11px;color:var(--amber-lt)">🛢KKTP×${l.fut30kktp}</span>` : ''}
-          ${(parseInt(l.fut20)||0)>0     ? `<span style="font-size:11px;color:var(--amber-lt)">🛢20L×${l.fut20}</span>`     : ''}
-          ${l.cartons ? `<span style="font-size:11px;color:var(--ok)">📦×${l.cartons}${l.prixCarton?' ('+parseFloat(l.prixCarton).toFixed(2)+'€)':''}</span>` : ''}
+        <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+          ${(parseInt(l.fut30inox)||0)>0 ? `<span style="font-size:11px;color:var(--amber-lt)">🛢Inox×${l.fut30inox}${lotTag(l,'fut30inox')}</span>` : ''}
+          ${(parseInt(l.fut30kk)||0)>0   ? `<span style="font-size:11px;color:var(--amber-lt)">🛢KK×${l.fut30kk}${lotTag(l,'fut30kk')}</span>`   : ''}
+          ${(parseInt(l.fut30kktp)||0)>0 ? `<span style="font-size:11px;color:var(--amber-lt)">🛢KKTP×${l.fut30kktp}${lotTag(l,'fut30kktp')}</span>` : ''}
+          ${(parseInt(l.fut20)||0)>0     ? `<span style="font-size:11px;color:var(--amber-lt)">🛢20L×${l.fut20}${lotTag(l,'fut20')}</span>`     : ''}
+          ${l.cartons ? `<span style="font-size:11px;color:var(--ok)">📦×${l.cartons}${lotTag(l,'cartons')}${l.prixCarton?' ('+parseFloat(l.prixCarton).toFixed(2)+'€)':''}</span>` : ''}
           ${ligneHT > 0 ? `<span style="font-size:11px;font-weight:700;color:var(--foam)">${ligneHT.toFixed(2)}€</span>` : ''}
         </div>
       </div>`;
@@ -9787,6 +9792,7 @@ function renderDraftLines() {
           style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:13px;padding:6px 4px;width:100%;text-align:center"/>
       </div>
     </div>
+    ${renderLotPickers(l, i)}
     ${totalLigne > 0 ? `<div style="text-align:right;margin-top:6px;font-size:12px;color:var(--amber-lt);font-weight:700">Total HT : ${totalLigne.toFixed(2)} €</div>` : ''}
   </div>`;
   }).join('');
@@ -9795,12 +9801,63 @@ function renderDraftLines() {
 function updateDraftLine(i, field, val) {
   const numFields = ['fut30inox','fut30kk','fut30kktp','fut20','cartons','prixCarton'];
   draftLines[i][field] = numFields.includes(field) ? (parseFloat(val)||0) : val;
+  if (field === 'beer') draftLines[i].lots = {}; // la bière change : les lots liés ne sont plus valides
   renderDraftLines();
 }
 
 function addOrderLine() {
-  draftLines.push({ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, prixCarton:0 });
+  draftLines.push({ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, prixCarton:0, lots:{} });
   renderDraftLines();
+}
+
+// ── Liaison commande → lot de stock (produitsData) ──
+// Formats de ligne de commande → format produitsData correspondant
+const ORDER_LOT_FIELDS = [
+  { field:'fut30inox', pFormat:'fut30inox', label:'🛢 Inox' },
+  { field:'fut30kk',   pFormat:'fut30kk',   label:'🛢 KK' },
+  { field:'fut30kktp', pFormat:'fut30kktp', label:'🛢 KKTP' },
+  { field:'fut20',     pFormat:'fut20',     label:'🛢 20L' },
+  { field:'cartons',   pFormat:'btl33',     label:'📦 Cartons' },
+];
+
+function getStockLotsFor(beer, pFormat) {
+  const beerNorm = normBeerName(beer);
+  return Object.values(produitsData)
+    .filter(p => normBeerName(p.biere) === beerNorm && p.format === pFormat && (p.qty||0) > 0)
+    .sort((a,b) => (a.ts||0) - (b.ts||0));
+}
+
+function updateDraftLineLot(i, field, val) {
+  if (!draftLines[i].lots) draftLines[i].lots = {};
+  draftLines[i].lots[field] = val;
+  renderDraftLines();
+}
+
+function renderLotPickers(l, i) {
+  const rows = ORDER_LOT_FIELDS.map(f => {
+    const qty = parseInt(l[f.field]) || 0;
+    if (qty <= 0) return '';
+    const lots = getStockLotsFor(l.beer, f.pFormat);
+    if (!lots.length) return '';
+    const sel = (l.lots && l.lots[f.field]) || '';
+    const options = lots.map(p => {
+      const label = (p.lot ? `Lot ${p.lot}` : 'Sans n° lot') + ` · ${p.qty} dispo${p.qty < qty ? ' ⚠' : ''}`;
+      return `<option value="${p.id}"${sel===p.id?' selected':''}>${esc(label)}</option>`;
+    }).join('');
+    return `
+    <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+      <span style="font-size:10px;color:var(--muted);flex-shrink:0;min-width:64px">${f.label}</span>
+      <select onchange="updateDraftLineLot(${i},'${f.field}',this.value)"
+        style="flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:11px;font-weight:600;padding:5px 6px">
+        <option value="">Auto (FIFO — pas de lot lié)</option>
+        ${options}
+      </select>
+    </div>`;
+  }).join('');
+  return rows ? `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
+      <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">🏷 Lier au lot en stock</div>
+      ${rows}
+    </div>` : '';
 }
 
 // --- Tireuses : indépendantes des lignes de bière, chacune associe une bière (celle
@@ -9916,7 +9973,8 @@ function editOrderForm(key, id) {
   draftLines = o.lines.map(l => ({
     beer: l.beer||getRecipeBeerNames()[0],
     fut30inox: l.fut30inox||0, fut30kk: l.fut30kk||0, fut30kktp: l.fut30kktp||0, fut20: l.fut20||0,
-    cartons: l.cartons||0, prixCarton: l.prixCarton||0
+    cartons: l.cartons||0, prixCarton: l.prixCarton||0,
+    lots: l.lots ? { ...l.lots } : {}
   }));
   draftTireuseLines = getOrderTireuseLines(o).map(tl => ({ tireuseId: tl.tireuseId || '', prix: tl.prix || 0 }));
   renderDraftLines();
@@ -9966,7 +10024,7 @@ function saveOrder() {
 
   saveOrders();
   editOrderId = null;
-  draftLines  = [{ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, prixCarton:0 }];
+  draftLines  = [{ beer: getRecipeBeerNames()[0], fut30inox:0, fut30kk:0, fut30kktp:0, fut20:0, cartons:0, prixCarton:0, lots:{} }];
   draftTireuseLines = [];
   document.getElementById('order-date').value   = newKey;
   document.getElementById('order-date-reprise').value = '';
@@ -11837,16 +11895,19 @@ function _detectFormat(designation) {
 function updateStockFromBl(client, lines, delta) {
   if (!lines || !lines.length) return;
 
-  // Regrouper les qtés à détocker par bière+format
-  const toDestock = {}; // { "beer|format": { beer, fmt, qty } }
+  // Regrouper les qtés à détocker par bière+format, en gardant la trace du lot
+  // explicitement lié (produitId) pour chaque ligne — voir liaison depuis les commandes.
+  const toDestock = {}; // { "beer|format": { beer, fmt, qty, entries:[{qty,produitId}] } }
   (lines||[]).forEach(l => {
     const fmt = _detectFormat(l.designation);
     if (!fmt) return;
     // Extraire le nom de la bière depuis la désignation : "Enfant Terrible — Fût 30L Inox"
     const beerMatch = (l.designation||'').split(' — ')[0].trim();
     const key = beerMatch + '|' + fmt;
-    if (!toDestock[key]) toDestock[key] = { beer: beerMatch, fmt, qty: 0 };
-    toDestock[key].qty += parseInt(l.qte)||0;
+    if (!toDestock[key]) toDestock[key] = { beer: beerMatch, fmt, qty: 0, entries: [] };
+    const q = parseInt(l.qte)||0;
+    toDestock[key].qty += q;
+    toDestock[key].entries.push({ qty: q, produitId: l.produitId || '' });
   });
 
   if (!Object.keys(toDestock).length) return;
@@ -11854,21 +11915,34 @@ function updateStockFromBl(client, lines, delta) {
   const formatsModified = new Set();
 
   if (delta > 0) {
-    // Livraison : déduire du stock FIFO par bière+format
-    Object.values(toDestock).forEach(({ beer, fmt, qty: qtyNeeded }) => {
-      let reste = qtyNeeded;
-      Object.values(produitsData)
-        .filter(p => p.format === fmt && (p.qty||0) > 0 && (!beer || p.biere === beer))
-        .sort((a,b) => (a.ts||0) - (b.ts||0))
-        .forEach(p => {
-          if (reste <= 0) return;
+    // Livraison : priorité au lot explicitement lié depuis la commande (s'il reste du stock),
+    // puis complément en FIFO par bière+format pour le reste
+    Object.values(toDestock).forEach(({ beer, fmt, entries }) => {
+      entries.forEach(({ qty: qtyNeeded, produitId }) => {
+        let reste = qtyNeeded;
+        if (produitId && produitsData[produitId] && (produitsData[produitId].qty||0) > 0) {
+          const p = produitsData[produitId];
           const pris = Math.min(reste, parseInt(p.qty)||0);
           const avantBL = p.qty;
           produitsData[p.id] = { ...p, qty: p.qty - pris };
-          tracerMouvProduit(p.id, avantBL, produitsData[p.id].qty, `📦 Livraison BL`);
+          tracerMouvProduit(p.id, avantBL, produitsData[p.id].qty, `📦 Livraison BL (lot lié)`);
           reste -= pris;
           formatsModified.add(p.id);
-        });
+        }
+        if (reste <= 0) return;
+        Object.values(produitsData)
+          .filter(p => p.format === fmt && (p.qty||0) > 0 && (!beer || p.biere === beer) && p.id !== produitId)
+          .sort((a,b) => (a.ts||0) - (b.ts||0))
+          .forEach(p => {
+            if (reste <= 0) return;
+            const pris = Math.min(reste, parseInt(p.qty)||0);
+            const avantBL = p.qty;
+            produitsData[p.id] = { ...p, qty: p.qty - pris };
+            tracerMouvProduit(p.id, avantBL, produitsData[p.id].qty, `📦 Livraison BL`);
+            reste -= pris;
+            formatsModified.add(p.id);
+          });
+      });
     });
   } else if (delta < 0) {
     // Annulation BL / retour client : remettre en stock par bière+format
@@ -12610,10 +12684,12 @@ function openBlPartielModal(dateKey, orderId) {
       if (qty <= 0) return;
       const stock = getProduitStockDispo(l.beer, f.field);
       const overStock = qty > stock;
+      const lotId = (l.lots && l.lots[f.field]) || '';
+      const lotObj = lotId ? produitsData[lotId] : null;
       rowsHtml += `
       <div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-          <div style="font-size:13px;color:var(--foam)">${esc(l.beer)} <span style="color:var(--muted);font-size:11px">— ${f.label}</span></div>
+          <div style="font-size:13px;color:var(--foam)">${esc(l.beer)} <span style="color:var(--muted);font-size:11px">— ${f.label}</span>${lotObj ? `<span style="color:var(--amber-lt);font-size:10px"> · 🏷 lot ${esc(lotObj.lot||'?')}</span>` : ''}</div>
           <div style="display:flex;align-items:center;gap:4px">
             <input type="number" min="0" max="${qty}" value="${qty}"
               data-li="${li}" data-field="${f.field}" data-stock="${stock}" class="bl-partiel-input"
@@ -12687,7 +12763,9 @@ function confirmCreerBlPartiel() {
         const qty = Math.min(max, selected[li]?.[f.field] ?? max);
         if (qty <= 0) return;
         totalSelected += qty;
-        blLinesFromOrder.push({ designation:`${l.beer} — ${f.label}`, qte:qty, unite:f.unite, lotRef:'' });
+        const lotId = (l.lots && l.lots[f.field]) || '';
+        const lotObj = lotId ? produitsData[lotId] : null;
+        blLinesFromOrder.push({ designation:`${l.beer} — ${f.label}`, qte:qty, unite:f.unite, lotRef: lotObj?.lot || '', produitId: lotId });
       });
     });
     const tireuseLignesOrder = getOrderTireuseLines(o);
@@ -12894,7 +12972,7 @@ Object.assign(window, {
   changeWeek, changePlanMonth, jumpToWeek, renderPlanningCalendar, openAddTask, openEditTask, closeModal, updateModalFields, saveTask, fillLieuFromClient, checkBrewNumLink,
   deleteTask,
   changePrevMonth, openOrderModal, closeOrderModal,
-  renderOrderList, addOrderLine, removeDraftLine, updateDraftLine,
+  renderOrderList, addOrderLine, removeDraftLine, updateDraftLine, updateDraftLineLot,
   editOrderForm, deleteOrder, saveOrder, showAllOrdersThisDay,
   onOrderClientSelect,
   openBlPartielModal, closeBlPartielModal, confirmCreerBlPartiel, checkBlPartielRow, creerFactureDepuisCommande,
