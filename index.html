@@ -6315,7 +6315,13 @@ function deleteDhLog(brassinId, idx) {
 function buildEnfutageRecap(brassinId) {
   const b = historiqueData[brassinId];
   if (!b) return '<div style="font-size:12px;color:var(--muted)">Aucun conditionnement enregistré</div>';
-  const entries = Object.values(produitsData).filter(p => p.biere === b.recette);
+  // Priorité aux lots explicitement liés à ce brassin par ID (fiable, indépendant d'un
+  // renommage ultérieur de la bière). Repli sur la correspondance par nom (normalisé) pour
+  // les lots créés avant l'introduction de ce lien.
+  const beerNorm = normBeerName(b.recette);
+  const entries = Object.values(produitsData).filter(p =>
+    p.brassinId ? p.brassinId === brassinId : normBeerName(p.biere) === beerNorm
+  );
   if (!entries.length) return '<div style="font-size:12px;color:var(--muted)">Aucun conditionnement enregistré pour ce brassin</div>';
   // Grouper par format
   const byFmt = {};
@@ -7018,6 +7024,17 @@ function saveEnfutage() {
   // Fermer le modal IMMÉDIATEMENT pour empêcher tout double-clic
   closeEnfutageModal();
 
+  // Retrouver le brassin concerné AVANT de créer les lots produits, pour pouvoir
+  // les lier par ID (fiable) plutôt que par nom de bière (peut être renommé ensuite
+  // dans la fiche du brassin, ce qui casse le récap "Enfûtage/Embouteillage").
+  // Priorité absolue à la CUVE enfûtée (fiable) ; le nom de bière n'est qu'un repli.
+  const actifsEnf = ['fermentation','garde','dh'];
+  const brassinCible =
+       Object.values(historiqueData).find(b => b.cuve === fermIdSaved && actifsEnf.includes(b.statut))
+    || Object.values(historiqueData).find(b => b.cuve === fermIdSaved)
+    || Object.values(historiqueData).find(b => normBeerName(b.recette) === normBeerName(beerName) && actifsEnf.includes(b.statut))
+    || Object.values(historiqueData).find(b => normBeerName(b.recette) === normBeerName(beerName));
+
   let saved = 0;
   let inoxUsed = 0, kkUsed = 0, kktpUsed = 0;
   validLines.forEach(line => {
@@ -7029,6 +7046,7 @@ function saveEnfutage() {
       qty: line.qty,
       ferm: fermIdSaved,
       lot: line.lot || todayLot(),
+      brassinId: brassinCible ? brassinCible.id : '',
       ts: Date.now()
     };
     produitsData[id] = entry;
@@ -7088,14 +7106,8 @@ function saveEnfutage() {
 
   renderProduits();
 
-  // Enregistrer dans le suivi du brassin.
-  // Priorité absolue à la CUVE enfûtée (fiable) ; le nom de bière n'est qu'un repli.
-  const actifs = ['fermentation','garde','dh'];
-  const brassin =
-       Object.values(historiqueData).find(b => b.cuve === fermIdSaved && actifs.includes(b.statut))
-    || Object.values(historiqueData).find(b => b.cuve === fermIdSaved)
-    || Object.values(historiqueData).find(b => normBeerName(b.recette) === normBeerName(beerName) && actifs.includes(b.statut))
-    || Object.values(historiqueData).find(b => normBeerName(b.recette) === normBeerName(beerName));
+  // Enregistrer dans le suivi du brassin (déjà identifié plus haut par cuve/nom, voir brassinCible).
+  const brassin = brassinCible;
   if (brassin && saved > 0) {
     const s = getSuivi(brassin.id);
     if (!s.enfutageLog) s.enfutageLog = [];
