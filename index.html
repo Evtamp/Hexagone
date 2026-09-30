@@ -12656,10 +12656,21 @@ const BL_PARTIEL_FORMATS = [
 ];
 let _blPartielDateKey = null, _blPartielOrderId = null;
 
-function getProduitStockDispo(beer, format) {
+function getProduitStockDispo(beer, field) {
   const beerNorm = normBeerName(beer);
+  // Les cartons ne sont pas un format de stock en soi : le stock produit est tenu
+  // en BOUTEILLES (format 'btl33'), tandis que les commandes/BL comptent en CARTONS.
+  // Sans cette conversion, la recherche `p.format === 'cartons'` ne trouvait jamais
+  // rien (0 dispo en permanence, même avec du stock réel).
+  if (field === 'cartons') {
+    const bouteilles = Object.values(produitsData)
+      .filter(p => normBeerName(p.biere) === beerNorm && p.format === 'btl33')
+      .reduce((s,p) => s + (p.qty||0), 0);
+    const cartonSize = beerConfig(beer).cartonSize || 12;
+    return Math.floor(bouteilles / cartonSize);
+  }
   return Object.values(produitsData)
-    .filter(p => normBeerName(p.biere) === beerNorm && p.format === format)
+    .filter(p => normBeerName(p.biere) === beerNorm && p.format === field)
     .reduce((s,p) => s + (p.qty||0), 0);
 }
 
