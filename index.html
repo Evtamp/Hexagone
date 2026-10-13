@@ -10001,10 +10001,16 @@ function editOrderForm(key, id) {
 }
 
 function deleteOrder(key, id) {
-  ordersData[key] = (ordersData[key]||[]).filter(o => o.id !== id);
-  if (!ordersData[key].length) delete ordersData[key];
+  // Firebase peut renvoyer un objet (et non un tableau) pour un jour donné : on normalise
+  const raw = ordersData[key];
+  const list = raw ? (Array.isArray(raw) ? raw : Object.values(raw)) : [];
+  const reste = list.filter(o => o && o.id !== id);
+  if (reste.length) ordersData[key] = reste; else delete ordersData[key];
+  if (orderListFocusId === id) orderListFocusId = null;
+  if (editOrderId === id) editOrderId = null;
   saveOrders();
   renderOrderList(key);
+  renderOrdersList(); // liste « Commandes à venir » (n'était pas rafraîchie → la commande restait affichée)
   renderPrevWeeks();
   renderPrevCalendar();
   renderProduits();
@@ -12391,19 +12397,36 @@ function envoyerBlMail(id) {
     </div>
   </div>`;
 
-  showToast('Envoi en cours…');
-  emailjs.send('service_ko27c19', 'template_nhbqtxc', {
-    to_email: email,
-    to_name:  b.client,
-    subject:  `Bon de livraison ${b.ref} — ${b.client}`,
-    message:  htmlMessage,
-    from_name: brassNom,
-  }).then(() => {
-    showToast(`✅ BL ${b.ref} envoyé à ${email}`);
-  }).catch(err => {
-    console.error('EmailJS error:', err);
-    showToast(`❌ Échec envoi : ${err?.text || err}`);
-  });
+  showToast('Génération du PDF et envoi en cours…');
+  const pdfName = `BL_${b.ref}_${b.client}.pdf`.replace(/[^a-zA-Z0-9_.-]/g,'_');
+  const shortMsg = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#333">
+    <p>Bonjour,</p>
+    <p>Veuillez trouver ci-joint votre bon de livraison <b>${b.ref}</b> du ${date}.</p>
+    <p>Cordialement,<br>${brassNom}${brasserieData.tel?'<br>'+brasserieData.tel:''}</p></div>`;
+  (async () => {
+    let pdfData = null;
+    try { pdfData = await htmlToPdfData(buildBlPrintHtml(b)); }
+    catch (e) { console.error('PDF BL error:', e); showToast('⚠️ PDF non généré — envoi du BL dans le corps du mail', true); }
+    const params = {
+      to_email: email,
+      to_name:  b.client,
+      subject:  `Bon de livraison ${b.ref} — ${b.client}`,
+      message:  pdfData ? shortMsg : htmlMessage,
+      from_name: brassNom,
+    };
+    if (pdfData) {
+      // Doit correspondre au nom du paramètre configuré dans le template EmailJS (onglet Attachments → Variable attachment)
+      params.pdf_attachment = pdfData.dataUri;
+      params.pdf_filename   = pdfName;
+    }
+    try {
+      await emailjs.send('service_ko27c19', 'template_nhbqtxc', params);
+      showToast(`✅ BL ${b.ref} envoyé à ${email}${pdfData?' (PDF joint)':''}`);
+    } catch (err) {
+      console.error('EmailJS error:', err);
+      showToast(`❌ Échec envoi : ${err?.text || err}`, true);
+    }
+  })();
 }
 
 function envoyerFactureMail(id) {
@@ -12495,14 +12518,9 @@ function envoyerFactureMail(id) {
 }
 
 // ===== APERÇU BL =====
-function openBlView(id) {
-  viewingBlViewId = id;
-  const b = blData[id];
-  if (!b) return;
-  document.getElementById('bl-view-title').textContent = `${b.ref} — ${b.client}`;
+function buildBlPrintHtml(b) {
   const date = b.date ? new Date(b.date+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}) : '—';
   const sigDate = b.sigDate ? new Date(b.sigDate).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-
   const linesHtml = (b.lines||[]).map(l=>`
     <tr>
       <td style="padding:8px 4px;border-bottom:1px solid #eee;font-size:13px">${l.designation||'—'}</td>
@@ -12510,8 +12528,7 @@ function openBlView(id) {
       <td style="padding:8px 4px;border-bottom:1px solid #eee;font-size:13px;text-align:center">${l.unite||''}</td>
       <td style="padding:8px 4px;border-bottom:1px solid #eee;font-size:12px;color:#888;font-family:monospace">${l.lotRef||''}</td>
     </tr>`).join('');
-
-  document.getElementById('bl-view-content').innerHTML = `
+  return `
   <div id="bl-print-zone" style="background:#fff;color:#222;padding:24px;font-family:Arial,sans-serif;font-size:13px;max-width:600px;margin:0 auto">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:12px;border-bottom:2px solid #c8800a">
       <div>
@@ -12565,6 +12582,25 @@ function openBlView(id) {
     </div>
     ${getRibHtml()}
   </div>`;
+}
+
+function openBlView(id) {
+  viewingBlViewId = id;
+  const b = blData[id];
+  if (!b) return;
+  document.getElementById('bl-view-title').textContent = `${b.ref} — ${b.client}`;
+  const date = b.date ? new Date(b.date+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}) : '—';
+  const sigDate = b.sigDate ? new Date(b.sigDate).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+
+  const linesHtml = (b.lines||[]).map(l=>`
+    <tr>
+      <td style="padding:8px 4px;border-bottom:1px solid #eee;font-size:13px">${l.designation||'—'}</td>
+      <td style="padding:8px 4px;border-bottom:1px solid #eee;font-size:13px;text-align:center;font-weight:700">${l.qte||0}</td>
+      <td style="padding:8px 4px;border-bottom:1px solid #eee;font-size:13px;text-align:center">${l.unite||''}</td>
+      <td style="padding:8px 4px;border-bottom:1px solid #eee;font-size:12px;color:#888;font-family:monospace">${l.lotRef||''}</td>
+    </tr>`).join('');
+
+  document.getElementById('bl-view-content').innerHTML = buildBlPrintHtml(b);
   document.getElementById('bl-view-modal').classList.add('open');
 }
 
@@ -12574,43 +12610,54 @@ function closeBlViewModal() {
 
 
 // ===== EXPORT PDF =====
+async function buildPdfFromZone(zone) {
+  const canvas = await html2canvas(zone, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+  const pageW  = pdf.internal.pageSize.getWidth();
+  const pageH  = pdf.internal.pageSize.getHeight();
+  const imgW   = pageW;
+  const imgH   = (canvas.height * imgW) / canvas.width;
+  if (imgH <= pageH) {
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgW, imgH);
+  } else {
+    let remaining = imgH, page = 0;
+    while (remaining > 0) {
+      if (page > 0) pdf.addPage();
+      const srcY = page * (pageH / imgH) * canvas.height;
+      const srcH = Math.min((pageH / imgH) * canvas.height, canvas.height - srcY);
+      const sliceCanvas = document.createElement('canvas');
+      sliceCanvas.width = canvas.width; sliceCanvas.height = srcH;
+      sliceCanvas.getContext('2d').drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+      pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgW, (srcH * imgW) / canvas.width);
+      remaining -= pageH; page++;
+    }
+  }
+  return pdf;
+}
+
+// Rend un fragment HTML hors écran, en fait un PDF et renvoie { dataUri, base64 }
+async function htmlToPdfData(html) {
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:700px;background:#fff;z-index:-1';
+  holder.innerHTML = html;
+  document.body.appendChild(holder);
+  try {
+    const pdf = await buildPdfFromZone(holder.firstElementChild || holder);
+    const dataUri = pdf.output('datauristring'); // data:application/pdf;filename=...;base64,XXXX
+    const base64 = dataUri.split('base64,')[1];
+    return { dataUri: 'data:application/pdf;base64,' + base64, base64 };
+  } finally {
+    holder.remove();
+  }
+}
+
 async function exportHtmlToPdf(zoneId, filename) {
   const zone = document.getElementById(zoneId);
   if (!zone) { showToast('Zone introuvable', true); return; }
   showToast('Génération du PDF…');
   try {
-    const canvas = await html2canvas(zone, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-    });
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
-    const pageW  = pdf.internal.pageSize.getWidth();
-    const pageH  = pdf.internal.pageSize.getHeight();
-    const imgW   = pageW;
-    const imgH   = (canvas.height * imgW) / canvas.width;
-    let posY = 0;
-    // Gérer les pages multiples
-    if (imgH <= pageH) {
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgW, imgH);
-    } else {
-      let remaining = imgH;
-      let page = 0;
-      while (remaining > 0) {
-        if (page > 0) pdf.addPage();
-        const srcY   = page * (pageH / imgH) * canvas.height;
-        const srcH   = Math.min((pageH / imgH) * canvas.height, canvas.height - srcY);
-        const sliceCanvas = document.createElement('canvas');
-        sliceCanvas.width  = canvas.width;
-        sliceCanvas.height = srcH;
-        sliceCanvas.getContext('2d').drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
-        pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgW, (srcH * imgW) / canvas.width);
-        remaining -= pageH;
-        page++;
-      }
-    }
+    const pdf = await buildPdfFromZone(zone);
     pdf.save(filename);
     showToast('✅ PDF téléchargé');
   } catch(e) {
