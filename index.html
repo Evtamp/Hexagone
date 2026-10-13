@@ -12397,36 +12397,19 @@ function envoyerBlMail(id) {
     </div>
   </div>`;
 
-  showToast('Génération du PDF et envoi en cours…');
-  const pdfName = `BL_${b.ref}_${b.client}.pdf`.replace(/[^a-zA-Z0-9_.-]/g,'_');
-  const shortMsg = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#333">
-    <p>Bonjour,</p>
-    <p>Veuillez trouver ci-joint votre bon de livraison <b>${b.ref}</b> du ${date}.</p>
-    <p>Cordialement,<br>${brassNom}${brasserieData.tel?'<br>'+brasserieData.tel:''}</p></div>`;
-  (async () => {
-    let pdfData = null;
-    try { pdfData = await htmlToPdfData(buildBlPrintHtml(b)); }
-    catch (e) { console.error('PDF BL error:', e); showToast('⚠️ PDF non généré — envoi du BL dans le corps du mail', true); }
-    const params = {
-      to_email: email,
-      to_name:  b.client,
-      subject:  `Bon de livraison ${b.ref} — ${b.client}`,
-      message:  pdfData ? shortMsg : htmlMessage,
-      from_name: brassNom,
-    };
-    if (pdfData) {
-      // Doit correspondre au nom du paramètre configuré dans le template EmailJS (onglet Attachments → Variable attachment)
-      params.pdf_attachment = pdfData.dataUri;
-      params.pdf_filename   = pdfName;
-    }
-    try {
-      await emailjs.send('service_ko27c19', 'template_nhbqtxc', params);
-      showToast(`✅ BL ${b.ref} envoyé à ${email}${pdfData?' (PDF joint)':''}`);
-    } catch (err) {
-      console.error('EmailJS error:', err);
-      showToast(`❌ Échec envoi : ${err?.text || err}`, true);
-    }
-  })();
+  showToast('Envoi en cours…');
+  emailjs.send('service_ko27c19', 'template_nhbqtxc', {
+    to_email: email,
+    to_name:  b.client,
+    subject:  `Bon de livraison ${b.ref} — ${b.client}`,
+    message:  htmlMessage,
+    from_name: brassNom,
+  }).then(() => {
+    showToast(`✅ BL ${b.ref} envoyé à ${email}`);
+  }).catch(err => {
+    console.error('EmailJS error:', err);
+    showToast(`❌ Échec envoi : ${err?.text || err}`);
+  });
 }
 
 function envoyerFactureMail(id) {
@@ -12634,22 +12617,6 @@ async function buildPdfFromZone(zone) {
     }
   }
   return pdf;
-}
-
-// Rend un fragment HTML hors écran, en fait un PDF et renvoie { dataUri, base64 }
-async function htmlToPdfData(html) {
-  const holder = document.createElement('div');
-  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:700px;background:#fff;z-index:-1';
-  holder.innerHTML = html;
-  document.body.appendChild(holder);
-  try {
-    const pdf = await buildPdfFromZone(holder.firstElementChild || holder);
-    const dataUri = pdf.output('datauristring'); // data:application/pdf;filename=...;base64,XXXX
-    const base64 = dataUri.split('base64,')[1];
-    return { dataUri: 'data:application/pdf;base64,' + base64, base64 };
-  } finally {
-    holder.remove();
-  }
 }
 
 async function exportHtmlToPdf(zoneId, filename) {
