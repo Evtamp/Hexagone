@@ -83,6 +83,13 @@ h3{font-size:15px;margin:0}
 .badge.ok{background:var(--green-soft);color:var(--green)}.badge.warn{background:var(--warn-soft);color:var(--warn)}
 .badge.acc{background:var(--accent-soft);color:var(--accent)}.badge.blue{background:var(--blue-soft);color:var(--blue)}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
+.check .shop-q{width:78px;text-align:right;padding:6px 8px}.check .shop-u{width:auto;padding:6px 8px}.check .txt{flex:1;min-width:0}
+.tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;align-items:start}
+.tool{display:flex;flex-direction:column;gap:12px;scroll-margin-top:80px}.tool-h{display:flex;gap:12px;align-items:flex-start}.tool-h h2{margin:0 0 2px}
+.tool-ic{flex:0 0 46px;height:46px;border-radius:12px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center}.tool-ic svg{width:26px;height:26px}
+.tool-in{display:flex;flex-direction:column;gap:8px}.tool-out{border-top:1px solid var(--line);padding-top:10px;min-height:40px}.tool-out .res{font-size:24px}
+.tool-row{display:flex;align-items:center;justify-content:space-between;gap:12px}.tool-row .swatch{width:56px;height:56px;margin:0}
+@media (max-width:420px){.tools{grid-template-columns:minmax(0,1fr)}}
 .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;font-size:13px;cursor:pointer}
 .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 .seg{display:inline-flex;background:var(--surface2);border-radius:999px;padding:3px;gap:2px;flex-wrap:wrap}
@@ -144,7 +151,7 @@ label.cb input{width:auto}
 .bar{height:8px;background:var(--surface2);border-radius:999px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--accent)}
 /* jour J */
-.check{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-top:1px solid var(--line)}
+.check{display:flex;gap:12px;align-items:center;padding:12px 14px;border-top:1px solid var(--line)}
 .check:first-child{border-top:0}
 .check input{width:22px;height:22px;margin-top:1px;flex:none;accent-color:var(--green)}
 .check.done .txt{color:var(--muted);text-decoration:line-through}
@@ -277,7 +284,7 @@ function calc(r){
   (r.malts||[]).forEach(m=>{const k=num(m.kg);const ext=m.extract===''||m.extract==null?78:num(m.extract);const sugar=ext>=90||/sucre|dextrose|miel|candi|sirop/i.test(m.name);
     if(!sugar)kg+=k;pts+=k*ext/100*384*(sugar?1:eff/100);const L=(num(m.ebc)*0.508+0.76)/1.3546;mcu+=k*2.20462*L/(V*0.264172)});
   const og=V>0?1+pts/V/1000:1;
-  const att=num(r.yeast?.att)||75;const fg=1+(og-1)*(1-att/100);const abv=(og-fg)*131.25;
+  const att=num(r.yeast?.att)||75;const fg=1+(og-1)*(1-att/100);const abv=abvHx(og,fg);
   const srm=mcu>0?1.4922*Math.pow(mcu,0.6859):0;const ebc=srm*1.97;
   let ibu=0;(r.hops||[]).forEach(h=>{if(h.use==='dry')return;const g=num(h.g),aa=num(h.aa)/100;let t,f=1;
     if(h.use==='fwh'){t=boil;f=1.1}else if(h.use==='boil')t=Math.min(num(h.time),boil);else{t=Math.max(5,Math.min(num(h.time)||10,30));f=0.5}
@@ -295,6 +302,9 @@ function ebcColor(ebc){const srm=ebc/1.97;const T=[[2,'#f8e08b'],[3,'#f3d36b'],[
   for(const [s,c] of T)if(srm<=s)return c;return '#1a0b06'}
 function carbSugar(vol,tempC,liters){const F=tempC*9/5+32;const resid=3.0378-0.050062*F+0.00026555*F*F;const gl=Math.max(0,(vol-resid)*3.82);return{gl,g:gl*liters,dextrose:gl*liters*1.05,resid}}
 function ogToPlato(og){return 259-259/og}
+/* formules reprises d'Hexagone */
+const abvHx=(di,df)=>di>0?133*(di-df)/di:0;
+const platoDC=sg=>135.997*sg**3-630.272*sg**2+1111.14*sg-616.868;   // De Clerck
 function brewDates(b){const r=b.recipe||{};let d=b.date;const steps=(r.ferm||[]).map(f=>{const s={...f,start:d};d=addDays(d,num(f.days));s.end=d;return s});
   const dry=(r.hops||[]).filter(h=>h.use==='dry').map(h=>({...h,date:addDays(b.date,num(h.time))}));
   return{brew:b.date,steps,fermEnd:d,dry}}
@@ -342,7 +352,7 @@ const ICONS={planning:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d=
 const VIEWS=[['brasserie','Brasserie'],['brassins','Brassins'],['planning','Planning'],['recettes','Recettes'],['grenier','Grenier'],['stock','Stock bière'],['commandes','Commandes'],['bl','BL'],['clients','Clients'],['courses','Courses'],['equipement','Équipement'],['outils','Outils']];
 const BOTTOM=['brasserie','planning','brassins','commandes','menu'];
 let R={view:'brasserie',a:'',b:''};
-const ui={fam:'Tous',q:'',brewTab:'jour',tool:'alcool',draft:null};
+const ui={fam:'Tous',q:'',brewTab:'jour',tool:'',draft:null};
 const ic=k=>`<svg class="i" viewBox="0 0 24 24">${ICONS[k]}</svg>`;
 function parse(){const h=location.hash.replace(/^#\/?/,'').split('/');R={view:h[0]||'brasserie',a:h[1]||'',b:h[2]||''}}
 function nav(){const BV=[...VIEWS,['menu','Plus']];$('#tabs').innerHTML=VIEWS.map(([k,l])=>`<a href="#/${k}" class="${R.view===k?'on':''}">${l}</a>`).join('');
@@ -443,7 +453,7 @@ function brewDay(b,c){const st=brewSteps(b,c);b.checks=b.checks||{};const n=st.f
     <tr><td>Densité avant ébullition (approx.)</td><td class="n">${sg(1+(c.og-1)*c.V/Math.max(1,c.preboil))}</td></tr></table></div>
     ${!started?`<div class="note" style="margin-top:12px">Quand tu termines le brassage, les ingrédients peuvent être déduits du grenier automatiquement.</div>`:''}</div></div>`}
 function brewFerm(b,c,d){const rd=(b.readings||[]).slice().sort((a,x)=>a.date<x.date?-1:1);const og=num(b.og)||c.og;const cur=lastSg(b);
-  const abv=cur&&og?(og-cur)*131.25:0,att=cur&&og>1?(og-cur)/(og-1)*100:0;
+  const abv=cur&&og?abvHx(og,cur):0,att=cur&&og>1?(og-cur)/(og-1)*100:0;
   return `<div class="two"><div>
    <div class="fr" style="margin-bottom:12px"><div class="stat"><b>${sg(og)}</b><span>DI${b.og?'':' (prévue)'}</span></div><div class="stat"><b>${cur?sg(cur):'—'}</b><span>Dernière densité</span></div><div class="stat"><b>${abv?fx(abv)+' %':'—'}</b><span>Alcool actuel</span></div><div class="stat"><b>${att?Math.round(att)+' %':'—'}</b><span>Atténuation (visée ${Math.round(c.att)} %)</span></div></div>
    <div class="card">${chart(b,og,c.fg)}</div>
@@ -575,10 +585,10 @@ V.courses=()=>{const low=S.ingredients.filter(isLow);const plan=S.brews.filter(b
     <div class="actions" style="margin-top:10px"><button class="btn" data-act="shopFromRecipe">Ajouter ce qui manque</button><button class="btn" data-act="shopFromPlan" ${plan.length?'':'disabled'}>Préparer mes ${plan.length} prochain(s) brassin(s)</button>${low.length?`<button class="btn" data-act="shopFromLow">+ ${low.length} sous le seuil</button>`:''}</div>
     <div class="fr" style="margin-top:12px"><input id="shopName" placeholder="Article"><input id="shopQty" inputmode="decimal" placeholder="Qté"><select id="shopUnit">${UNITS.map(u=>`<option>${u}</option>`).join('')}</select><button class="btn" data-act="shopAdd">Ajouter</button></div></div>
   </div><div>
-   ${S.shopping.length?`<div class="rows">${S.shopping.map(s=>`<div class="check ${s.done?'done':''}"><input type="checkbox" data-shop="${s.id}" ${s.done?'checked':''} aria-label="Acheté"><div class="txt"><b>${esc(s.name)}</b> <span class="muted">${fN(num(s.qty))} ${esc(s.unit)}</span></div><button class="btn sm" data-act="shopDel" data-id="${s.id}">×</button></div>`).join('')}</div>
+   ${S.shopping.length?`<div class="rows">${S.shopping.map(s=>`<div class="check ${s.done?'done':''}"><input type="checkbox" data-shop="${s.id}" ${s.done?'checked':''} aria-label="Acheté"><div class="txt"><b>${esc(s.name)}</b></div><input class="shop-q" data-shopq="${s.id}" inputmode="decimal" value="${fN(num(s.qty))}" aria-label="Quantité"><select class="shop-u" data-shopu="${s.id}" aria-label="Unité">${UNITS.map(u=>`<option ${u===s.unit?'selected':''}>${u}</option>`).join('')}</select><button class="btn sm" data-act="shopDel" data-id="${s.id}">×</button></div>`).join('')}</div>
     <div class="actions" style="margin-top:10px"><button class="btn pri" data-act="shopToStock">Ranger les articles cochés au grenier</button><button class="btn" data-act="shopClear">Vider la liste</button></div>`
    :emptyBox('Ta liste est vide','Choisis une recette à gauche : je la compare à ton grenier et j\'ajoute ce qui manque.')}</div></div>`};
-V.courses.after=()=>{$$('[data-shop]').forEach(cb=>cb.onchange=()=>{const s=S.shopping.find(x=>x.id===cb.dataset.shop);s.done=cb.checked;save();cb.closest('.check').classList.toggle('done',cb.checked)})};
+V.courses.after=()=>{$$('[data-shopq]').forEach(i=>i.onchange=()=>{const s=S.shopping.find(x=>x.id===i.dataset.shopq);const q=num(i.value);if(s&&q>0){s.qty=Math.round(q*100)/100;save();toast('Quantité modifiée')}else if(s)i.value=fN(num(s.qty))});$$('[data-shopu]').forEach(i=>i.onchange=()=>{const s=S.shopping.find(x=>x.id===i.dataset.shopu);if(s){s.unit=i.value;save()}});$$('[data-shop]').forEach(cb=>cb.onchange=()=>{const s=S.shopping.find(x=>x.id===cb.dataset.shop);s.done=cb.checked;save();cb.closest('.check').classList.toggle('done',cb.checked)})};
 function addShop(list){let n=0;list.forEach(x=>{if(x.qty<=0)return;const ex=S.shopping.find(s=>norm(s.name)===norm(x.name)&&s.unit===x.unit&&!s.done);if(ex)ex.qty=Math.max(num(ex.qty),x.qty);else{S.shopping.push({id:uid(),name:x.name,qty:Math.round(x.qty*100)/100,unit:x.unit,fam:x.fam||'Autres',done:false});n++}});save();toast(n?`${n} article(s) ajouté(s)`:'Rien à ajouter');render()}
 
 /* ---------- Équipement ---------- */
@@ -586,37 +596,44 @@ V.equipement=()=>{const groups=[['system','Systèmes de brassage','Déclare ta c
   return `<div class="head"><div><div class="kicker">${S.equipment.length} équipement(s)</div><h1>Mon équipement</h1></div><div class="actions"><button class="btn pri" data-act="newEq">Ajouter un équipement</button></div></div>
   ${groups.map(([t,l,help])=>{const L=S.equipment.filter(e=>e.type===t);return `<div class="sec"><div class="sec-h"><h2>${l}</h2><button class="btn sm" data-act="newEq" data-t="${t}">+ Ajouter</button></div>${L.length?`<div class="rows">${L.map(e=>`<div class="row click" data-act="editEq" data-id="${e.id}"><div class="main"><b>${esc(e.name)}</b><span class="small muted">${t==='system'?`${fN(num(e.volume))} L en fermenteur · rendement ${fN(num(e.efficiency))} % · évaporation ${fN(num(e.evap))} L/h · pertes ${fN(num(e.loss))} L`:t==='fermenter'?`${fN(num(e.capacity))} L`:t==='tireuse'?tapStatus(e):esc(e.brand||'')}</span></div>${t==='tireuse'?tapBadge(e):''}</div>`).join('')}</div>`:`<div class="note">${help}</div>`}</div>`}).join('')}`};
 
-/* ---------- Outils ---------- */
-const TOOLS=[['alcool','Alcool'],['ibu','Amertume'],['ebc','Couleur'],['empatage','Empâtage'],['dilution','Dilution'],['densimetre','Densimètre'],['levure','Levure'],['carbo','Carbonatation']];
-V.outils=()=>{const t=ui.tool;const F=(id,l,v,ph='')=>`<label class="f">${l}<input id="${id}" inputmode="decimal" value="${v}" placeholder="${ph}"></label>`;
+/* ---------- Outils : tous sur une page ---------- */
+const TI=p=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const TOOLS=[
+ ['alcool','Alcool','Degré, atténuations et extrait réel à partir des densités (formules d\'Hexagone).',TI('<path d="M8 3h8l-1 6a3 3 0 0 1-6 0z"/><path d="M12 12v8M8 21h8"/><path d="M9.3 6h5.4"/>')],
+ ['ibu','Amertume','IBU d\'un ajout de houblon (Tinseth).',TI('<path d="M12 3c3 2 5 5 5 9a5 5 0 0 1-10 0c0-4 2-7 5-9z"/><path d="M12 7l-3 3M12 7l3 3M12 11l-3 3M12 11l3 3M12 3v18"/>')],
+ ['ebc','Couleur','Couleur de la bière en EBC selon les malts (Morey).',TI('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none" opacity=".35"/>')],
+ ['empatage','Empâtage','Température de l\'eau pour atteindre le palier.',TI('<path d="M10 14V5a2 2 0 0 1 4 0v9a4 4 0 1 1-4 0z"/><path d="M12 9v7"/>')],
+ ['dilution','Dilution','Eau à ajouter pour atteindre une densité.',TI('<path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/><path d="M9 14a3 3 0 0 0 3 3"/>')],
+ ['densimetre','Densimètre et réfractomètre','Correction de température et lecture au réfractomètre.',TI('<path d="M10 3h4v8l2 3v5a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-5l2-3z"/><path d="M10 7h2M10 10h2"/>')],
+ ['levure','Levure','Cellules nécessaires et nombre de sachets.',TI('<circle cx="9" cy="10" r="4"/><circle cx="16" cy="15" r="3.5"/><circle cx="16.5" cy="6.5" r="2"/>')],
+ ['carbo','Carbonatation','Sucre de refermentation en bouteille, pression en fût.',TI('<circle cx="8" cy="16" r="3"/><circle cx="15" cy="10" r="2.5"/><circle cx="10" cy="7" r="1.6"/><circle cx="17" cy="17" r="1.6"/>')]];
+V.outils=()=>{const F=(id,l,v,ph='')=>`<label class="f">${l}<input data-i="${id}" inputmode="decimal" value="${v}" placeholder="${ph}"></label>`;
   const body={
-   alcool:`<div class="fr">${F('t_og','Densité initiale','1,050')}${F('t_fg','Densité finale','1,010')}</div>`,
-   ibu:`<div class="fr">${F('t_v','Volume (L)','20')}${F('t_bg','Densité à l\'ébullition','1,045')}</div><div class="fr" style="margin-top:10px">${F('t_g','Houblon (g)','30')}${F('t_aa','Alpha %','12')}${F('t_min','Minutes','60')}</div>`,
-   ebc:`<div class="fr">${F('t_v','Volume final (L)','20')}</div><div class="fr" style="margin-top:10px">${F('t_k1','Malt 1 (kg)','4')}${F('t_e1','EBC','4')}</div><div class="fr">${F('t_k2','Malt 2 (kg)','0,5')}${F('t_e2','EBC','60')}</div><div class="fr">${F('t_k3','Malt 3 (kg)','')}${F('t_e3','EBC','')}</div>`,
-   empatage:`<div class="fr">${F('t_kg','Grain (kg)','5')}${F('t_r','Ratio eau/grain (L/kg)','3')}${F('t_tm','Palier visé (°C)','67')}${F('t_tg','Grain (°C)','20')}</div>`,
-   dilution:`<div class="fr">${F('t_sg','Densité actuelle','1,060')}${F('t_v','Volume (L)','20')}${F('t_tg','Densité visée','1,050')}</div>`,
-   densimetre:`<div class="fr">${F('t_sg','Densité lue','1,050')}${F('t_t','Température (°C)','30')}${F('t_c','Étalonnage (°C)','20')}</div><div class="fr" style="margin-top:10px">${F('t_bi','Brix initial','')}${F('t_bf','Brix final','')}</div>`,
-   levure:`<div class="fr">${F('t_og','Densité initiale','1,060')}${F('t_v','Volume (L)','20')}${F('t_via','Viabilité (%)','90')}</div><div class="fr" style="margin-top:10px"><label class="f">Type<select id="t_type"><option value="0.75">Ale</option><option value="1.5">Lager</option></select></label></div>`,
-   carbo:`<div class="fr">${F('t_co','CO₂ visé (volumes)','2,4')}${F('t_v','Volume (L)','20')}${F('t_t','Fermentation max (°C)','20')}</div>`
-  }[t];
+   alcool:`<div class="fr">${F('og','Densité initiale (DI)','1,050')}${F('fg','Densité finale (DF)','1,010')}</div>`,
+   ibu:`<div class="fr">${F('v','Volume (L)','20')}${F('bg','Densité ébullition','1,045')}</div><div class="fr">${F('g','Houblon (g)','30')}${F('aa','Alpha %','12')}${F('min','Minutes','60')}</div>`,
+   ebc:`<div class="fr">${F('v','Volume final (L)','20')}</div><div class="fr">${F('k1','Malt 1 (kg)','4')}${F('e1','EBC','4')}</div><div class="fr">${F('k2','Malt 2 (kg)','0,5')}${F('e2','EBC','60')}</div><div class="fr">${F('k3','Malt 3 (kg)','')}${F('e3','EBC','')}</div>`,
+   empatage:`<div class="fr">${F('kg','Grain (kg)','5')}${F('r','Eau/grain (L/kg)','3')}</div><div class="fr">${F('tm','Palier visé (°C)','67')}${F('tg','Grain (°C)','20')}</div>`,
+   dilution:`<div class="fr">${F('sg','Densité actuelle','1,060')}${F('v','Volume (L)','20')}${F('tg','Densité visée','1,050')}</div>`,
+   densimetre:`<div class="fr">${F('sg','Densité lue','1,050')}${F('t','Température (°C)','30')}${F('c','Étalonnage (°C)','20')}</div><div class="fr">${F('bi','Brix initial','')}${F('bf','Brix final','')}</div>`,
+   levure:`<div class="fr">${F('og','Densité initiale','1,060')}${F('v','Volume (L)','20')}${F('via','Viabilité (%)','90')}</div><div class="fr"><label class="f">Type<select data-i="type"><option value="0.75">Ale</option><option value="1.5">Lager</option></select></label></div>`,
+   carbo:`<div class="fr">${F('co','CO₂ visé (vol.)','2,4')}${F('v','Volume (L)','20')}${F('t','Fermentation max (°C)','20')}</div>`};
   return `<div class="head"><div><div class="kicker">Les résultats se mettent à jour pendant la saisie</div><h1>Outils de calcul</h1></div></div>
-  <div class="chips" style="margin-bottom:14px">${TOOLS.map(([k,l])=>`<button class="chip ${t===k?'on':''}" data-act="tool" data-v="${k}">${l}</button>`).join('')}</div>
-  <div class="two"><div class="card" id="toolForm">${body}</div><div class="card"><div id="toolRes"></div></div></div>`};
-V.outils.after=()=>{const g=id=>num($('#'+id)?.value);const t=ui.tool;const out=$('#toolRes');
-  const run=()=>{let h='';
-   if(t==='alcool'){const og=g('t_og'),fg=g('t_fg');const abv=(og-fg)*131.25,att=og>1?(og-fg)/(og-1)*100:0;const hi=(76.08*(og-fg)/(1.775-og))*(fg/0.794);h=`<div class="res">${fx(abv)} %</div><div class="muted">alcool</div><table class="tbl" style="margin-top:10px"><tr><td>Atténuation</td><td class="n">${Math.round(att)} %</td></tr><tr><td>Formule haute densité</td><td class="n">${fx(hi)} %</td></tr><tr><td>Densité initiale en Plato</td><td class="n">${fx(ogToPlato(og))} °P</td></tr></table>`}
-   if(t==='ibu'){const v=g('t_v'),bg=g('t_bg'),gr=g('t_g'),aa=g('t_aa')/100,m=g('t_min');const u=1.65*Math.pow(0.000125,bg-1)*(1-Math.exp(-0.04*m))/4.15;const ibu=v?u*aa*gr*1000/v:0;h=`<div class="res">${Math.round(ibu)} IBU</div><div class="muted">méthode Tinseth · utilisation ${fx(u*100)} %</div><div class="note" style="margin-top:10px">Un ajout à 0 minute (dry hop) ne compte pas dans l'amertume.</div>`}
-   if(t==='ebc'){const v=g('t_v');let mcu=0;[1,2,3].forEach(i=>{const k=g('t_k'+i),e=g('t_e'+i);const L=(e*0.508+0.76)/1.3546;if(v)mcu+=k*2.20462*L/(v*0.264172)});const ebc=mcu>0?1.4922*Math.pow(mcu,0.6859)*1.97:0;h=`<div class="res">${Math.round(ebc)} EBC</div><div class="swatch" style="background:${ebcColor(ebc)}"></div>`}
-   if(t==='empatage'){const kg=g('t_kg'),r=g('t_r'),tm=g('t_tm'),tg=g('t_tg');const tw=r?tm+0.41/r*(tm-tg):0;h=`<div class="res">${fx(tw)} °C</div><div class="muted">température de l'eau d'empâtage</div><table class="tbl" style="margin-top:10px"><tr><td>Volume d'eau</td><td class="n">${fx(kg*r)} L</td></tr></table>`}
-   if(t==='dilution'){const s=g('t_sg'),v=g('t_v'),tg=g('t_tg');const add=tg>1?v*(s-1)/(tg-1)-v:0;h=add>=0?`<div class="res">${fx(add)} L</div><div class="muted">d'eau à ajouter</div>`:`<div class="res">${fx(-add)} L</div><div class="muted">à évaporer (densité visée plus haute)</div>`}
-   if(t==='densimetre'){const s=g('t_sg'),T=g('t_t')*9/5+32,C=g('t_c')*9/5+32;const k=x=>1.00130346-0.000134722124*x+0.00000204052596*x*x-0.00000000232820948*x*x*x;const corr=s*k(T)/k(C);
-     const bi=g('t_bi'),bf=g('t_bf'),wcf=1.04;const ogR=bi?1+(bi/wcf)/(258.6-((bi/wcf)/258.2)*227.1):0;const fgR=bi&&bf?1.0000-0.0044993*bi/wcf+0.011774*bf/wcf+0.00027581*(bi/wcf)**2-0.0012717*(bf/wcf)**2-0.0000072800*(bi/wcf)**3+0.000063293*(bf/wcf)**3:0;
-     h=`<div class="res">${sg(corr)}</div><div class="muted">densité corrigée</div><table class="tbl" style="margin-top:10px"><tr><td>Réfractomètre : densité initiale</td><td class="n">${ogR?sg(ogR):'—'}</td></tr><tr><td>Réfractomètre : densité finale</td><td class="n">${fgR?sg(fgR):'—'}</td></tr></table>`}
-   if(t==='levure'){const og=g('t_og'),v=g('t_v'),via=g('t_via')/100,rate=num($('#t_type')?.value)||0.75;const need=rate*v*1000*ogToPlato(og)/1000;const per=100*via;const n=per?Math.ceil(need/per):0;h=`<div class="res">${Math.round(need)} milliards</div><div class="muted">de cellules nécessaires</div><table class="tbl" style="margin-top:10px"><tr><td>Un sachet sec de 11 g (≈ ${Math.round(per)} milliards viables)</td><td class="n">${n} sachet(s)</td></tr></table>`}
-   if(t==='carbo'){const cs=carbSugar(g('t_co'),g('t_t'),g('t_v'));h=`<div class="res">${Math.round(cs.g)} g</div><div class="muted">de sucre blanc (${fx(cs.gl)} g/L)</div><table class="tbl" style="margin-top:10px"><tr><td>Dextrose (glucose)</td><td class="n">${Math.round(cs.dextrose)} g</td></tr><tr><td>Miel</td><td class="n">${Math.round(cs.g*1.25)} g</td></tr><tr><td>Extrait de malt sec</td><td class="n">${Math.round(cs.g*1.47)} g</td></tr><tr><td>CO₂ déjà dissous</td><td class="n">${fx(cs.resid,2)} vol.</td></tr><tr><td>En fût, au CO₂ à 4 °C</td><td class="n">${fx(Math.max(0,(g('t_co')-1)*0.75))} bar</td></tr></table>`}
-   out.innerHTML=h};
-  $('#toolForm').oninput=$('#toolForm').onchange=run;run()};
-
+  <div class="tools">${TOOLS.map(([k,l,d,ic])=>`<section class="card tool" id="tool-${k}" data-tool="${k}"><div class="tool-h"><span class="tool-ic">${ic}</span><div><h2>${l}</h2><p class="small muted">${d}</p></div></div><div class="tool-in">${body[k]}</div><div class="tool-out" data-out></div></section>`).join('')}</div>`};
+const TOOL_RUN={
+ alcool:g=>{const di=g('og'),df=g('fg');if(!(di>1)||!df)return '';const Pi=platoDC(di),Pf=platoDC(df);const AA=(1-Pf/Pi)*100,ER=0.1808*Pi+0.8192*Pf,AR=(1-ER/Pi)*100;const pM=(Pi-ER)/(2.0665-0.010665*Pi),pV=pM*df/0.791;
+   return `<div class="res">${fx(abvHx(di,df),2)} %</div><div class="muted">ABV : 133 × (DI − DF) / DI</div><table class="tbl" style="margin-top:8px"><tr><td>°Plato initial</td><td class="n">${fx(Pi)} °P</td></tr><tr><td>°Plato final</td><td class="n">${fx(Pf)} °P</td></tr><tr><td>Atténuation apparente</td><td class="n">${fx(AA)} %</td></tr><tr><td>Extrait réel</td><td class="n">${fx(ER,2)} °P</td></tr><tr><td>Atténuation réelle</td><td class="n">${fx(AR)} %</td></tr><tr><td>% masse alcool</td><td class="n">${fx(pM,2)} %</td></tr><tr><td>% vol. alcool</td><td class="n">${fx(pV,2)} %</td></tr></table>`},
+ ibu:g=>{const v=g('v'),bg=g('bg'),gr=g('g'),aa=g('aa')/100,m=g('min');const u=1.65*Math.pow(0.000125,bg-1)*(1-Math.exp(-0.04*m))/4.15;const ibu=v?u*aa*gr*1000/v:0;return `<div class="res">${Math.round(ibu)} IBU</div><div class="muted">utilisation ${fx(u*100)} % · un dry hop ne compte pas</div>`},
+ ebc:g=>{const v=g('v');let mcu=0;[1,2,3].forEach(i=>{const k=g('k'+i),e=g('e'+i);const L=(e*0.508+0.76)/1.3546;if(v)mcu+=k*2.20462*L/(v*0.264172)});const ebc=mcu>0?1.4922*Math.pow(mcu,0.6859)*1.97:0;return `<div class="tool-row"><div><div class="res">${Math.round(ebc)} EBC</div></div><div class="swatch" style="background:${ebcColor(ebc)}"></div></div>`},
+ empatage:g=>{const kg=g('kg'),r=g('r'),tm=g('tm'),tg=g('tg');const tw=r?tm+0.41/r*(tm-tg):0;return `<div class="res">${fx(tw)} °C</div><div class="muted">eau d'empâtage · ${fx(kg*r)} L</div>`},
+ dilution:g=>{const sv=g('sg'),v=g('v'),tg=g('tg');const add=tg>1?v*(sv-1)/(tg-1)-v:0;return add>=0?`<div class="res">${fx(add)} L</div><div class="muted">d'eau à ajouter</div>`:`<div class="res">${fx(-add)} L</div><div class="muted">à évaporer</div>`},
+ densimetre:g=>{const sv=g('sg'),T=g('t')*9/5+32,C=g('c')*9/5+32;const k=x=>1.00130346-0.000134722124*x+0.00000204052596*x*x-0.00000000232820948*x*x*x;const corr=sv*k(T)/k(C);
+   const bi=g('bi'),bf=g('bf'),w=1.04;const ogR=bi?1+(bi/w)/(258.6-((bi/w)/258.2)*227.1):0;const fgR=bi&&bf?1.0000-0.0044993*bi/w+0.011774*bf/w+0.00027581*(bi/w)**2-0.0012717*(bf/w)**2-0.0000072800*(bi/w)**3+0.000063293*(bf/w)**3:0;
+   return `<div class="res">${sg(corr)}</div><div class="muted">densité corrigée</div>${bi?`<table class="tbl" style="margin-top:8px"><tr><td>Réfracto : DI</td><td class="n">${sg(ogR)}</td></tr><tr><td>Réfracto : DF</td><td class="n">${fgR?sg(fgR):'—'}</td></tr>${fgR?`<tr><td>Alcool</td><td class="n">${fx(abvHx(ogR,fgR),2)} %</td></tr>`:''}</table>`:''}`},
+ levure:g=>{const og=g('og'),v=g('v'),via=g('via')/100,rate=g('type')||0.75;const need=rate*v*1000*ogToPlato(og)/1000;const per=100*via;const n=per?Math.ceil(need/per):0;return `<div class="res">${Math.round(need)} milliards</div><div class="muted">de cellules · ${n} sachet(s) sec de 11 g</div>`},
+ carbo:g=>{const cs=carbSugar(g('co'),g('t'),g('v'));return `<div class="res">${Math.round(cs.g)} g</div><div class="muted">de sucre blanc (${fx(cs.gl)} g/L)</div><table class="tbl" style="margin-top:8px"><tr><td>Dextrose</td><td class="n">${Math.round(cs.dextrose)} g</td></tr><tr><td>Miel</td><td class="n">${Math.round(cs.g*1.25)} g</td></tr><tr><td>Extrait de malt sec</td><td class="n">${Math.round(cs.g*1.47)} g</td></tr><tr><td>En fût, CO₂ à 4 °C</td><td class="n">${fx(Math.max(0,(g('co')-1)*0.75))} bar</td></tr></table>`}};
+V.outils.after=()=>{$$('.tool').forEach(card=>{const k=card.dataset.tool;const g=id=>num(card.querySelector(`[data-i="${id}"]`)?.value);const out=card.querySelector('[data-out]');
+  const run=()=>{let h='';try{h=TOOL_RUN[k](g)}catch(e){h=''}out.innerHTML=h};card.querySelector('.tool-in').oninput=card.querySelector('.tool-in').onchange=run;run()});
+  if(ui.tool){const el=$('#tool-'+ui.tool);ui.tool='';if(el)el.scrollIntoView({block:'start'})}};
 
 /* ---------- Import des matières premières d'Hexagone ---------- */
 const HX_SCHEMA={malt:[['pilsen','Pilsen','kg'],['pale_ale','Pale Ale','kg'],['ble','Blé','kg'],['acide','Malt Acide','kg'],['flocon_orge',"Flocon d'orge",'kg'],['flocon_mais','Flocon de Maïs','kg'],['crystal240','Crystal 240','kg']],
@@ -1116,7 +1133,7 @@ V.reglages=()=>`<div class="head"><h1>Réglages</h1></div><div class="grid">
   <div class="card"><h2>Ma brasserie</h2><label class="f" style="margin-top:10px">Nom affiché<input id="bName" value="${esc(S.brewery)}" placeholder="Ma brasserie"></label>
    <p class="small muted" style="margin-top:10px">En-tête des bons de livraison :</p>
    ${[['adresse','Adresse'],['cp','Code postal'],['ville','Ville'],['tel','Téléphone'],['email','E-mail'],['siret','SIRET']].map(([k,l])=>`<label class="f" style="margin-top:6px">${l}<input id="co_${k}" value="${esc((S.company||{})[k]||'')}"></label>`).join('')}<div class="actions" style="margin-top:10px"><button class="btn pri" data-act="saveName">Enregistrer</button></div></div>
-  <div class="card"><h2>Synchronisation</h2><p class="small" id="syncSt">${syncTxt()}</p><p class="small muted">Ouvre l'appli à la même adresse sur ton téléphone, ta tablette ou ton ordinateur : les recettes, brassins, stock, commandes, BL et le planning sont partagés.</p></div>
+  <div class="card"><h2>Synchronisation <span id="syncDot" class="sync-dot ${SY.state}"></span></h2><p class="small" id="syncSt">${syncTxt()}</p>${SY.on?'<div class="actions"><button class="btn sm" data-act="syncNow">Envoyer maintenant</button></div>':''}<p class="small muted">Ouvre l'appli à la même adresse sur ton téléphone, ta tablette ou ton ordinateur : les recettes, brassins, stock, commandes, BL et le planning sont partagés.</p></div>
   <div class="card"><h2>Sauvegarde</h2><p class="small muted">Exporte régulièrement une copie de sécurité (.json). Elle sert aussi à revenir en arrière.</p><div class="actions"><button class="btn pri" data-act="export">Exporter (.json)</button><label class="btn">Importer<input type="file" id="importFile" accept=".json,application/json" hidden></label></div></div>
   <div class="card"><h2>Reprendre les données d'Hexagone</h2><p class="small muted">Dans Hexagone : Paramètres → « Exporter toutes les données (JSON) ». Choisis ensuite ce fichier ici. Fais-le dans l'ordre : MP, puis recettes, puis cuves et brassins en cours. Chaque étape reprend les données de la précédente.</p><div class="actions"><label class="btn pri">Importer les MP<input type="file" id="hxFile" accept=".json,application/json" hidden></label><label class="btn pri">Importer les recettes<input type="file" id="hxRecFile" accept=".json,application/json" hidden></label><label class="btn pri">Importer cuves et brassins en cours<input type="file" id="hxFermFile" accept=".json,application/json" hidden></label><label class="btn pri">Importer le stock de bière<input type="file" id="hxStockFile" accept=".json,application/json" hidden></label><label class="btn pri">Importer clients, commandes et BL<input type="file" id="hxSalesFile" accept=".json,application/json" hidden></label><label class="btn pri">Importer le planning<input type="file" id="hxPlanFile" accept=".json,application/json" hidden></label></div></div>
   <div class="card"><h2>Données</h2><p class="small muted">Charger l'exemple remplace les données actuelles.</p><div class="actions"><button class="btn" data-act="demo">Charger un exemple</button><button class="btn danger" data-act="reset">Tout effacer</button></div></div></div>`;
@@ -1264,7 +1281,8 @@ const ACT={
    S.shopping=S.shopping.filter(s=>!s.done);save();render();toast(n+' article(s) rangé(s) au grenier')},
  copyShop:()=>{const txt='Liste de courses\n'+S.shopping.filter(s=>!s.done).map(s=>`- ${s.name} : ${fN(num(s.qty))} ${s.unit}`).join('\n');(navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>toast('Liste copiée'),()=>download('courses.txt',txt,'text/plain'))},
  newEq:el=>eqForm(null,el.dataset.t),editEq:el=>eqForm(byId('equipment',el.dataset.id)),
- tool:el=>{ui.tool=el.dataset.v;render()},
+ syncNow:()=>{Object.keys(empty()).filter(k=>k!=='v').forEach(k=>SY.dirty[k]=1);SY.err='';syncStatus('wait');syncFlush()},
+ tool:el=>{ui.tool=el.dataset.v;go('/outils')},
  ics:()=>{const ev=[];const d=s=>s.replace(/-/g,'');const add=(date,t,u)=>ev.push(`BEGIN:VEVENT\r\nUID:${u}@brassage\r\nDTSTAMP:${d(today())}T000000Z\r\nDTSTART;VALUE=DATE:${d(date)}\r\nDTEND;VALUE=DATE:${d(addDays(date,1))}\r\nSUMMARY:${t.replace(/[,;\\]/g,' ')}\r\nEND:VEVENT`);
    S.brews.filter(b=>b.status!=='done').forEach(b=>{const x=brewDates(b);add(b.date,'Brassage '+b.name,b.id+'b');x.dry.forEach((h,i)=>add(h.date,`Dry hop ${b.name} (${h.name})`,b.id+'d'+i));add(x.fermEnd,'Fin de fermentation '+b.name,b.id+'f');add(b.readyDate||addDays(x.fermEnd,14),b.name+' prête à boire',b.id+'r')});
    download('brassins.ics',`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Brassage//FR\r\n${ev.join('\r\n')}\r\nEND:VCALENDAR`,'text/calendar');toast('Fichier agenda téléchargé')},
