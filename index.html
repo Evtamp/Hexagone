@@ -42,6 +42,7 @@ nav.bottom a.on{color:var(--accent)}
 .wk-h{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--muted);font-weight:650}.wk-h b{font-size:17px;color:var(--ink)}
 .ev{border-left:3px solid var(--c,var(--accent));background:color-mix(in srgb,var(--c,var(--accent)) 9%,#fff);border-radius:6px;padding:4px 6px;font-size:12.5px;line-height:1.3;cursor:pointer;color:var(--ink);text-decoration:none;display:block}
 .ev.mv{touch-action:pan-y;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.ev.drag-src{opacity:.35}.ev-ghost{position:fixed;z-index:200;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.18);transform:rotate(-2deg);opacity:.95}.wk-d.drop{border-color:var(--accent);background:var(--accent-soft)}
+.sync-dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:#c9c0b4;margin-left:6px;vertical-align:middle}.sync-dot.ok{background:#2f8a4a}.sync-dot.err{background:#b3261e}.sync-dot.offline,.sync-dot.wait{background:#d79a2b}
 .ev small{display:block;color:var(--muted);font-size:11.5px}.ev.done{opacity:.5;text-decoration:line-through}
 .wk-add{margin-top:auto;border:1px dashed var(--line);background:none;border-radius:8px;color:var(--muted);font-size:12px;padding:3px;cursor:pointer}
 .legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted)}.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:4px;background:var(--c)}
@@ -226,7 +227,40 @@ const KEY='brassage.v1';
 const empty=()=>({v:1,brewery:'',equipment:[],ingredients:[],recipes:[],brews:[],shopping:[],moves:[],stock:[],stockMoves:[],clients:[],orders:[],bls:[],company:{},tasks:[]});
 let S=load();
 function load(){try{const j=JSON.parse(lsGet(KEY));if(j&&j.v===1)return Object.assign(empty(),j)}catch(e){}return empty()}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Sauvegarde impossible sur cet appareil')}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Sauvegarde impossible sur cet appareil')}syncPush()}
+/* ================= synchro entre appareils (Firebase, nœud « brassage ») =================
+   Chaque collection est stockée en texte JSON sous brassage/<clé>. Une modification locale
+   envoie seulement les collections qui ont changé ; une modification venue d'un autre appareil
+   remplace la collection locale. Hors ligne, les collections modifiées sont marquées « à envoyer »
+   et partent au retour du réseau, avant d'accepter la version distante. */
+const SYNC_DIRTY='brassage.dirty';
+const SY={on:false,state:'off',sent:{},dirty:{},first:true,t:0,pending:false,err:''};
+try{SY.dirty=JSON.parse(lsGet(SYNC_DIRTY))||{}}catch(e){SY.dirty={}}
+const syncKeys=()=>Object.keys(empty()).filter(k=>k!=='v');
+syncKeys().forEach(k=>{SY.sent[k]=JSON.stringify(S[k]===undefined?empty()[k]:S[k])});
+function syncSaveDirty(){try{localStorage.setItem(SYNC_DIRTY,JSON.stringify(SY.dirty))}catch(e){}}
+function syncPush(){syncKeys().forEach(k=>{const j=JSON.stringify(S[k]===undefined?empty()[k]:S[k]);if(SY.sent[k]!==j){SY.dirty[k]=1;SY.sent[k]=j}});syncSaveDirty();
+  if(!SY.on||SY.first)return;clearTimeout(SY.t);SY.t=setTimeout(syncFlush,300)}
+function syncFlush(){if(!SY.on)return;const C=window.CLOUD;Object.keys(SY.dirty).forEach(k=>{const j=SY.sent[k];
+  C.set('brassage/'+k,j).then(()=>{if(SY.sent[k]===j){delete SY.dirty[k];syncSaveDirty()}syncStatus('ok')}).catch(e=>{SY.err=String(e&&e.code||e);syncStatus('err')})})}
+function syncBusy(){const a=document.activeElement;return (typeof dlg!=='undefined'&&dlg&&dlg.open)||(a&&a.matches&&a.matches('#app input,#app textarea,#app select'))||!!DND}
+function syncRender(){if(syncBusy()){SY.pending=true;return}SY.pending=false;render()}
+setInterval(()=>{if(SY.pending&&!syncBusy())syncRender()},800);
+function syncStatus(st){SY.state=st;const el=$('#syncSt');if(el)el.innerHTML=syncTxt();const d=$('#syncDot');if(d)d.className='sync-dot '+st}
+const syncTxt=()=>({off:'Synchronisation non disponible (fichier ouvert hors du site, ou pas de réseau au démarrage). Les données restent sur cet appareil.',wait:'Connexion à la synchronisation…',ok:'Synchronisée : tes données sont les mêmes sur tous tes appareils.',err:'Synchronisation en échec ('+esc(SY.err)+'). Les modifications sont gardées sur cet appareil et repartiront plus tard.',offline:'Hors ligne : les modifications partiront au retour du réseau.'})[SY.state]||'';
+window.cloudReady=()=>{const C=window.CLOUD;SY.on=true;syncStatus('wait');
+  C.onConnected(c=>{if(SY.state!=='err')syncStatus(c?'ok':'offline');if(c&&!SY.first)syncFlush()});
+  C.listen('brassage',val=>{val=val||{};let changed=false;
+    if(SY.first){SY.first=false;const remoteEmpty=!syncKeys().some(k=>val[k]!=null);
+      if(remoteEmpty){syncKeys().forEach(k=>SY.dirty[k]=1)}  // premier appareil : il envoie tout
+      syncKeys().forEach(k=>{if(remoteEmpty||SY.dirty[k]||val[k]==null)return;let v;try{v=JSON.parse(val[k])}catch(e){return}
+        if(JSON.stringify(S[k])!==val[k]){S[k]=v;changed=true}SY.sent[k]=val[k]});
+      try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}syncSaveDirty();syncFlush();if(changed)syncRender();syncStatus('ok');return}
+    syncKeys().forEach(k=>{if(val[k]==null||val[k]===SY.sent[k])return;let v;try{v=JSON.parse(val[k])}catch(e){return}
+      S[k]=v;SY.sent[k]=val[k];delete SY.dirty[k];changed=true});
+    if(changed){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}syncSaveDirty();syncRender()}},
+    e=>{SY.err=String(e&&e.code||e);syncStatus('err')})};
+window.cloudFailed=e=>{SY.err=String(e&&e.code||e||'');syncStatus('off')};
 const byId=(a,id)=>S[a].find(x=>x.id===id);
 const systems=()=>S.equipment.filter(e=>e.type==='system');
 const fermenters=()=>S.equipment.filter(e=>e.type==='fermenter');
@@ -1082,7 +1116,8 @@ V.reglages=()=>`<div class="head"><h1>Réglages</h1></div><div class="grid">
   <div class="card"><h2>Ma brasserie</h2><label class="f" style="margin-top:10px">Nom affiché<input id="bName" value="${esc(S.brewery)}" placeholder="Ma brasserie"></label>
    <p class="small muted" style="margin-top:10px">En-tête des bons de livraison :</p>
    ${[['adresse','Adresse'],['cp','Code postal'],['ville','Ville'],['tel','Téléphone'],['email','E-mail'],['siret','SIRET']].map(([k,l])=>`<label class="f" style="margin-top:6px">${l}<input id="co_${k}" value="${esc((S.company||{})[k]||'')}"></label>`).join('')}<div class="actions" style="margin-top:10px"><button class="btn pri" data-act="saveName">Enregistrer</button></div></div>
-  <div class="card"><h2>Sauvegarde</h2><p class="small muted">Les données restent sur cet appareil. Exporte-les régulièrement, ou pour passer sur un autre appareil.</p><div class="actions"><button class="btn pri" data-act="export">Exporter (.json)</button><label class="btn">Importer<input type="file" id="importFile" accept=".json,application/json" hidden></label></div></div>
+  <div class="card"><h2>Synchronisation</h2><p class="small" id="syncSt">${syncTxt()}</p><p class="small muted">Ouvre l'appli à la même adresse sur ton téléphone, ta tablette ou ton ordinateur : les recettes, brassins, stock, commandes, BL et le planning sont partagés.</p></div>
+  <div class="card"><h2>Sauvegarde</h2><p class="small muted">Exporte régulièrement une copie de sécurité (.json). Elle sert aussi à revenir en arrière.</p><div class="actions"><button class="btn pri" data-act="export">Exporter (.json)</button><label class="btn">Importer<input type="file" id="importFile" accept=".json,application/json" hidden></label></div></div>
   <div class="card"><h2>Reprendre les données d'Hexagone</h2><p class="small muted">Dans Hexagone : Paramètres → « Exporter toutes les données (JSON) ». Choisis ensuite ce fichier ici. Fais-le dans l'ordre : MP, puis recettes, puis cuves et brassins en cours. Chaque étape reprend les données de la précédente.</p><div class="actions"><label class="btn pri">Importer les MP<input type="file" id="hxFile" accept=".json,application/json" hidden></label><label class="btn pri">Importer les recettes<input type="file" id="hxRecFile" accept=".json,application/json" hidden></label><label class="btn pri">Importer cuves et brassins en cours<input type="file" id="hxFermFile" accept=".json,application/json" hidden></label><label class="btn pri">Importer le stock de bière<input type="file" id="hxStockFile" accept=".json,application/json" hidden></label><label class="btn pri">Importer clients, commandes et BL<input type="file" id="hxSalesFile" accept=".json,application/json" hidden></label><label class="btn pri">Importer le planning<input type="file" id="hxPlanFile" accept=".json,application/json" hidden></label></div></div>
   <div class="card"><h2>Données</h2><p class="small muted">Charger l'exemple remplace les données actuelles.</p><div class="actions"><button class="btn" data-act="demo">Charger un exemple</button><button class="btn danger" data-act="reset">Tout effacer</button></div></div></div>`;
 V.reglages.after=()=>{const h=$('#hxFile');if(h)h.onchange=()=>{const file=h.files[0];if(!file)return;file.text().then(t=>{const items=hexagoneMP(JSON.parse(t));if(!items)throw 0;if(!items.length){toast('Aucune matière première dans ce fichier');return}hexagoneDialog(items)}).catch(()=>toast('Ce n\'est pas une sauvegarde Hexagone'));h.value=''};
@@ -1235,8 +1270,8 @@ const ACT={
    download('brassins.ics',`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Brassage//FR\r\n${ev.join('\r\n')}\r\nEND:VCALENDAR`,'text/calendar');toast('Fichier agenda téléchargé')},
  saveName:()=>{S.brewery=$('#bName').value.trim();S.company=S.company||{};S.company.nom=S.brewery;['adresse','cp','ville','tel','email','siret'].forEach(k=>{const e=$('#co_'+k);if(e)S.company[k]=e.value.trim()});save();toast('Enregistré')},
  export:()=>download(`brassage-${today()}.json`,JSON.stringify(S,null,1),'application/json'),
- demo:()=>{if((S.recipes.length||S.brews.length)&&!confirm('Remplacer tes données par l\'exemple ?'))return;demo();go('/brasserie');toast('Exemple chargé')},
- reset:()=>{if(!confirm('Effacer définitivement toutes les données de cet appareil ?'))return;S=empty();save();render()}
+ demo:()=>{if((S.recipes.length||S.brews.length)&&!confirm('Remplacer tes données par l\'exemple'+(SY.on?' sur TOUS tes appareils synchronisés':'')+' ?'))return;demo();go('/brasserie');toast('Exemple chargé')},
+ reset:()=>{if(!confirm('Effacer définitivement toutes les données'+(SY.on?' sur TOUS tes appareils synchronisés':' de cet appareil')+' ?'))return;S=empty();save();render()}
 };
 function download(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
 document.addEventListener('click',e=>{const a=e.target.closest('[data-act]');if(a&&ACT[a.dataset.act]){if(a.tagName==='INPUT')return;e.preventDefault();e.stopPropagation();ACT[a.dataset.act](a);return}
@@ -1263,6 +1298,19 @@ function demo(){const t=today();
 
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
 render();
+</script>
+<script type="module">
+// Synchro : même base Firebase qu'Hexagone, nœud séparé « brassage » (les données d'Hexagone ne sont pas touchées).
+if(location.protocol.startsWith('http')){
+ try{
+  const V='10.12.2',B='https://www.gstatic.com/firebasejs/'+V+'/';
+  const [{initializeApp},{getDatabase,ref,onValue,set},{getAuth,signInAnonymously}]=await Promise.all([import(B+'firebase-app.js'),import(B+'firebase-database.js'),import(B+'firebase-auth.js')]);
+  const app=initializeApp({apiKey:"AIzaSyAq500vgqaBAcEbYX2JU0f2um1mCzDWUhI",authDomain:"microbrasserie-68711.firebaseapp.com",databaseURL:"https://microbrasserie-68711-default-rtdb.europe-west1.firebasedatabase.app",projectId:"microbrasserie-68711",storageBucket:"microbrasserie-68711.firebasestorage.app",messagingSenderId:"283742745286",appId:"1:283742745286:web:adb0c22e219a5de2d35dc7"});
+  const db=getDatabase(app);await signInAnonymously(getAuth(app));
+  window.CLOUD={set:(p,v)=>set(ref(db,p),v),listen:(p,cb,err)=>onValue(ref(db,p),s=>cb(s.val()),err),onConnected:cb=>onValue(ref(db,'.info/connected'),s=>cb(!!s.val()))};
+  window.cloudReady();
+ }catch(e){console.error('Synchro indisponible',e);window.cloudFailed&&window.cloudFailed(e)}
+}
 </script>
 </body>
 </html>
