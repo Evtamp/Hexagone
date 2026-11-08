@@ -389,11 +389,18 @@ V.brasserie=()=>{const t=today(),todo=todos();const sys=systems(),ferms=fermente
     :emptyBox('Ma cuve de brassage','Déclare ton installation (volume, rendement, évaporation) : les volumes d\'eau et les calculs s\'y adapteront.','<a class="btn pri" href="#/equipement">Déclarer mon installation</a>')}</div>
   <div class="sec"><div class="step-h"><span class="step-n">2</span><h2>Fermentation</h2><span class="small muted">Fermentation et garde</span></div>
    ${ferms.length?`<div class="grid">${ferms.map(fermCard).join('')}</div>`:emptyBox('Mes fermenteurs','Déclare tes fermenteurs : tu verras ici lesquels sont libres, réservés ou occupés.','<a class="btn pri" href="#/equipement">Ajouter un fermenteur</a>')}</div>
-  <div class="sec"><div class="step-h"><span class="step-n">3</span><h2>Cave</h2><span class="small muted">Bouteilles et fûts</span></div>
-   ${cave.length?`<div class="rows">${cave.map(b=>`<div class="row click" data-href="#/brassins/${b.id}"><div class="main"><b>${esc(b.name)}</b><span class="small muted">${esc(b.lot)} · ${esc(b.packType||'')} ${b.packQty?'· '+fN(num(b.packQty))+' '+(b.packType==='Fût'?'fût(s)':'bouteilles'):''}</span></div>${brewBadge(b)}<span class="small muted">${brewStatus(b)==='ready'?'prête':'prête '+rel(b.readyDate)}</span></div>`).join('')}</div>`
-    :emptyBox('Rien en cave','Tes bières mises en bouteille ou en fût apparaîtront ici, avec la date à laquelle elles seront prêtes à boire.')}
-   ${(()=>{const L=stk().filter(l=>num(l.qty)>0);if(!L.length)return '';const be=[...new Set(L.map(l=>l.beer))].sort();const T=stockTotals(L);
-     return `<div class="sec-h" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;gap:8px"><h3>Stock de bière · ${totTxt(T)}</h3><a class="btn sm" href="#/stock">Voir le stock</a></div><div class="chips" style="margin-top:8px">${be.map(x=>`<a class="chip" href="#/stock" style="text-decoration:none">${esc(x)} · ${totTxt(stockTotals(L.filter(l=>l.beer===x)))}</a>`).join('')}</div>`})()}</div>
+  <div class="sec"><div class="step-h"><span class="step-n">3</span><h2>Cave</h2><span class="small muted">Bouteilles et fûts prêts ou en refermentation</span></div>
+   ${(()=>{const L=stk().filter(l=>num(l.qty)>0);const G={};
+     L.forEach(l=>{const k=norm(l.beer);(G[k]=G[k]||{beer:l.beer,lines:[],brews:[]}).lines.push(l)});
+     cave.forEach(b=>{const k=norm(b.name);(G[k]=G[k]||{beer:b.name,lines:[],brews:[]}).brews.push(b)});
+     const rows=Object.values(G).sort((a,b)=>a.beer.localeCompare(b.beer,'fr'));
+     if(!rows.length)return emptyBox('Rien en cave','Tes bières mises en bouteille ou en fût apparaîtront ici, avec leur stock et la date à laquelle elles seront prêtes.','<a class="btn" href="#/stock">Entrée en stock</a>');
+     const T=stockTotals(L);
+     return `<div class="small muted" style="margin:-4px 0 10px">${totTxt(T)}${T.L?' · '+fN(Math.round(T.L))+' L':''} · <a href="#/stock">Voir le stock détaillé</a></div><div class="rows">${rows.map(g=>{
+       const byF={};g.lines.forEach(l=>{byF[l.format]=(byF[l.format]||0)+num(l.qty)});
+       const lots=[...new Set(g.lines.map(l=>l.lot).filter(Boolean))];
+       const wait=g.brews.filter(b=>brewStatus(b)!=='ready');const one=!g.lines.length&&g.brews.length===1?g.brews[0]:null;
+       return `<div class="row click" data-href="${one?'#/brassins/'+one.id:'#/stock'}"><div class="main"><b>${esc(g.beer)}</b><span class="small muted">${Object.entries(byF).map(([f,q])=>fN(q)+' × '+esc(fmtOf(f)[1])).join(' · ')||esc(g.brews.map(b=>(b.packType||'')+(b.packQty?' · '+fN(num(b.packQty)):'')).join(', '))}${lots.length?' · lot '+esc(lots.join(', ')):''}</span></div>${wait.length?`<span class="badge warn">${g.lines.length?'Un lot en refermentation':'En refermentation'}</span><span class="small muted">prête ${rel(wait[0].readyDate)}</span>`:`<span class="badge ok">Prête</span>`}</div>`}).join('')}</div>`})()}</div>
   <div class="sec"><div class="sec-h"><h2>Mon grenier</h2><a class="btn sm" href="#/grenier">Voir le grenier</a></div>
    ${S.ingredients.length?(low.length?`<div class="note warn">${low.length} article(s) à racheter : ${low.slice(0,6).map(i=>esc(i.name)).join(', ')}${low.length>6?'…':''}</div>`:`<div class="note ok">${S.ingredients.length} articles en stock, rien sous le seuil d'alerte.</div>`)
     :emptyBox('Grenier vide','Note ce que tu as en stock : tu verras ici ce qu\'il faut racheter.','<a class="btn" href="#/grenier">Remplir le grenier</a>')}</div>
