@@ -4,10 +4,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <meta name="theme-color" content="#1a1208" />
+  <meta name="theme-color" content="#ffffff" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="MicroBrasserie" />
   <title>Microbrasserie</title>
   <link rel="manifest" href="manifest.json" />
@@ -34,18 +34,19 @@
   <style>
     /* ===== TOKENS ===== */
     :root {
-      --bg:        #0f0c07;
-      --surface:   #1c1710;
-      --surface2:  #26201a;
-      --border:    #3a3020;
-      --amber:     #c8800a;
-      --amber-lt:  #f0a830;
-      --foam:      #f5e8c0;
-      --muted:     #7a6e5a;
+      --bg:        #ffffff;
+      --surface:   #ffffff;
+      --surface2:  #f8f6f2;
+      --border:    #e7e2d9;
+      --amber:     #c27a0a;
+      --amber-lt:  #a5640a;
+      --foam:      #2a2118;
+      --muted:     #8a7f70;
       --danger:    #c0391b;
-      --ok:        #4a9e5c;
-      --text:      #f0e8d8;
-      --text-dim:  #a89880;
+      --ok:        #2f8a4a;
+      --text:      #2a2118;
+      --text-dim:  #6b5f50;
+      --shadow:    0 1px 2px rgba(42,33,24,.05), 0 6px 18px rgba(42,33,24,.05);
       --radius:    12px;
       --radius-sm: 6px;
       --nav-h:     64px;
@@ -669,8 +670,8 @@
     .mp-input:focus { outline: none; border-color: var(--amber); }
     .mp-unit-label { font-size: 11px; color: var(--muted); }
     .badge.ferm  { background: rgba(74,158,92,.2);   color: var(--ok);   border: 1px solid rgba(74,158,92,.4); }
-    .badge.garde { background: rgba(100,160,220,.2); color: #7ab4e8;     border: 1px solid rgba(100,160,220,.4); }
-    .badge.dh    { background: rgba(180,100,220,.2); color: #c47ae8;     border: 1px solid rgba(180,100,220,.4); }
+    .badge.garde { background: rgba(100,160,220,.2); color: #2f6fa8;     border: 1px solid rgba(100,160,220,.4); }
+    .badge.dh    { background: rgba(180,100,220,.2); color: #8a3fb0;     border: 1px solid rgba(180,100,220,.4); }
 
     .ferm-phases { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
     .phase-btn {
@@ -686,8 +687,8 @@
     }
     .phase-btn.active-idle  { background: rgba(122,110,90,.2); color: var(--muted); border-color: var(--border); }
     .phase-btn.active-ferm  { background: rgba(74,158,92,.2);  color: var(--ok);   border-color: rgba(74,158,92,.5); }
-    .phase-btn.active-garde { background: rgba(100,160,220,.2);color: #7ab4e8;     border-color: rgba(100,160,220,.5); }
-    .phase-btn.active-dh    { background: rgba(180,100,220,.2);color: #c47ae8;     border-color: rgba(180,100,220,.5); }
+    .phase-btn.active-garde { background: rgba(100,160,220,.2);color: #2f6fa8;     border-color: rgba(100,160,220,.5); }
+    .phase-btn.active-dh    { background: rgba(180,100,220,.2);color: #8a3fb0;     border-color: rgba(180,100,220,.5); }
 
     .ferm-edit-panel {
       border-top: 1px solid var(--border);
@@ -742,7 +743,7 @@
       border-radius: 10px; text-transform: uppercase; letter-spacing: .5px;
     }
     .facture-status.devis    { background:rgba(122,110,90,.2);  color:var(--muted); }
-    .facture-status.envoyee  { background:rgba(100,160,220,.2); color:#7ab4e8; }
+    .facture-status.envoyee  { background:rgba(100,160,220,.2); color:#2f6fa8; }
     .facture-status.payee    { background:rgba(74,158,92,.2);   color:var(--ok); }
     .facture-status.impayee  { background:rgba(192,57,27,.2);   color:var(--danger); }
 
@@ -1084,6 +1085,88 @@
     text-align: center;
   }
   #user-badge button:hover { color: var(--danger); border-color: var(--danger); }
+
+  /* =========================================================
+     THÈME CLAIR + NAVIGATION EN HAUT (refonte 2026-11)
+     ========================================================= */
+  html, body { background: var(--bg); }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  header { background: rgba(255,255,255,.92); backdrop-filter: blur(8px); }
+  #menu-overlay { background: rgba(42,33,24,.35) !important; }
+
+  /* cartes : coins arrondis, bordure fine, ombre douce */
+  .beer-card, .ferm-card, .prev-card, .kpi, .mp-list, #dashboard-content > div, .modal-box {
+    border-radius: 14px !important;
+    border-color: var(--border) !important;
+  }
+  .ferm-card, .prev-card, .kpi, #dashboard-content > div { box-shadow: var(--shadow); background: var(--surface); }
+  .modal-box { box-shadow: 0 24px 60px rgba(42,33,24,.25); }
+  .modal-overlay { background: rgba(42,33,24,.35) !important; }
+
+  /* onglets secondaires en pastilles */
+  .sub-tabs { background: var(--bg) !important; border-bottom: 1px solid var(--border); gap: 6px; padding: 10px 16px !important; }
+  .sub-tabs button { border-radius: 999px !important; border-bottom: none !important; padding: 7px 14px !important; }
+  .sub-tabs button.active { background: rgba(194,122,10,.12) !important; color: var(--amber-lt) !important; }
+
+  /* champs de saisie */
+  input, select, textarea { color: var(--text); }
+  input::placeholder, textarea::placeholder { color: #b0a796; }
+
+  /* titres de section */
+  .section-title { color: var(--text-dim); letter-spacing: .6px; }
+
+  /* en-tête d'accueil */
+  .dash-hero { padding: 18px 16px 2px; }
+  .dash-kicker { font-size: 13px; color: var(--muted); }
+  .dash-kicker::first-letter { text-transform: uppercase; }
+  .dash-title { font-size: 26px; font-weight: 800; letter-spacing: -.02em; color: var(--text); margin-top: 2px; }
+
+  /* le logo est déjà dans le menu : on retire le doublon ajouté en pseudo-élément */
+  nav#main-nav::before { content: none !important; display: none !important; }
+
+  /* cartes de l'accueil en blanc */
+  #dashboard-content > div { background: var(--surface) !important; border: 1px solid var(--border); }
+  #dashboard-content, .dash-hero { max-width: 1100px; margin-left: auto; margin-right: auto; }
+
+  /* menu latéral clair */
+  nav#main-nav { background: var(--surface); }
+  nav#main-nav button:hover { background: var(--surface2); color: var(--text); }
+  nav#main-nav button.active { background: rgba(194,122,10,.12); color: var(--amber-lt); }
+
+  /* écran de connexion */
+  #login-screen { background: var(--surface2) !important; }
+
+  /* ===== ORDINATEUR : barre de navigation horizontale en haut ===== */
+  @media (min-width: 1100px) {
+    #app { flex-direction: column !important; }
+    nav#main-nav {
+      position: sticky !important; top: 0; z-index: 50;
+      width: 100% !important; height: auto !important;
+      flex-direction: row !important; align-items: center;
+      border-right: none !important; border-bottom: 1px solid var(--border);
+      padding: 0 24px; gap: 18px;
+      background: rgba(255,255,255,.95);
+    }
+    nav#main-nav > div:first-child { border-bottom: none !important; padding: 12px 0 !important; flex-shrink: 0; }
+    nav#main-nav > div:first-child > div:last-child { display: none; }
+    nav#main-nav > div:nth-child(2) {
+      display: flex; flex-direction: row; align-items: center; flex-wrap: wrap;
+      overflow: visible !important; padding: 8px 0 !important; gap: 2px;
+    }
+    nav#main-nav .nav-group-label { display: none; }
+    nav#main-nav button {
+      width: auto !important; margin: 0 !important;
+      padding: 7px 12px !important; border-radius: 999px !important;
+      font-size: 14px; gap: 6px; white-space: nowrap;
+    }
+    nav#main-nav button .nav-icon { display: none; }
+    #user-badge { margin: 0 0 0 auto !important; padding: 6px 10px !important; border-radius: 999px !important; white-space: nowrap; }
+    #user-badge button { display: inline !important; width: auto !important; padding: 0 0 0 6px !important; margin: 0 !important; font-size: 11px; }
+    main { height: auto !important; flex: 1 1 auto; min-height: 0; }
+    main > .page { max-width: 1180px; margin: 0 auto; padding-left: 8px; padding-right: 8px; }
+    .dash-hero { padding-top: 26px; }
+    .dash-title { font-size: 30px; }
+  }
   </style>
 </head>
 <body>
@@ -1220,7 +1303,7 @@
 
     <!-- ===== PAGE DASHBOARD ===== -->
     <div class="page active" id="page-dashboard">
-      <div style="padding:12px 16px 0"><div class="section-title">Dashboard</div></div>
+      <div class="dash-hero"><div class="dash-kicker" id="dash-kicker"></div><h2 class="dash-title" id="dash-title">Ma brasserie</h2></div>
       <div id="dashboard-content" style="padding:12px 16px 100px;display:flex;flex-direction:column;gap:12px"></div>
     </div>
 
@@ -1414,7 +1497,7 @@
       </div>
       <div style="padding:0 16px 6px;font-size:11px;color:var(--muted)">
         <span style="color:var(--ok)">■</span> stock projeté fin de semaine ·
-        <span style="color:#7ec87e">+n</span> production disponible (enfûtage + 1 sem. de refermentation) ·
+        <span style="color:#2f8a4a">+n</span> production disponible (enfûtage + 1 sem. de refermentation) ·
         <span style="color:var(--amber-lt)">−n</span> besoins (commandes)
       </div>
       <div style="padding:0 16px 6px">
@@ -1535,7 +1618,7 @@
 
         <!-- Charges variables -->
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px">
-          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#7ab4e8;margin-bottom:4px">🔁 Charges variables annuelles</div>
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#2f6fa8;margin-bottom:4px">🔁 Charges variables annuelles</div>
           <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Montant annuel — sera divisé par le nombre de brassins</div>
           <div id="params-var-list"></div>
           <button onclick="addParamLine('variable')" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:8px;cursor:pointer;margin-top:6px">+ Ajouter une charge variable</button>
@@ -2148,7 +2231,7 @@
     <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1">
       <div id="bl-view-title" style="font-size:14px;font-weight:700;color:var(--foam)"></div>
       <div style="display:flex;gap:8px">
-        <button onclick="envoyerBlMail(viewingBlViewId)" style="background:none;border:1px solid rgba(100,160,220,.4);border-radius:var(--radius-sm);color:#7ab4e8;font-size:12px;font-weight:700;padding:6px 10px;cursor:pointer">📧</button>
+        <button onclick="envoyerBlMail(viewingBlViewId)" style="background:none;border:1px solid rgba(100,160,220,.4);border-radius:var(--radius-sm);color:#2f6fa8;font-size:12px;font-weight:700;padding:6px 10px;cursor:pointer">📧</button>
         <button onclick="printBl()" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">🖨️</button>
         <button onclick="exportBlPdf()" style="background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">📄 PDF</button>
         <button onclick="closeBlViewModal()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">×</button>
@@ -2339,7 +2422,7 @@
     <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1">
       <div id="facture-view-title" style="font-size:14px;font-weight:700;color:var(--foam)"></div>
       <div style="display:flex;gap:8px">
-        <button id="btn-facture-mail" onclick="" style="background:none;border:1px solid rgba(100,160,220,.4);border-radius:var(--radius-sm);color:#7ab4e8;font-size:12px;font-weight:700;padding:6px 10px;cursor:pointer">📧</button>
+        <button id="btn-facture-mail" onclick="" style="background:none;border:1px solid rgba(100,160,220,.4);border-radius:var(--radius-sm);color:#2f6fa8;font-size:12px;font-weight:700;padding:6px 10px;cursor:pointer">📧</button>
         <button onclick="printFacture()" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">🖨️</button>
         <button onclick="exportFacturePdf()" style="background:var(--amber);border:none;border-radius:var(--radius-sm);color:var(--bg);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer">📄 PDF</button>
         <button onclick="closeFactureViewModal()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">×</button>
@@ -2519,8 +2602,8 @@
 
     <!-- Empâtage -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#7ab4e8">🌡 Empâtage (paliers)</div>
-      <button onclick="addRecipePalier()" style="background:none;border:1px solid rgba(120,180,230,.4);border-radius:var(--radius-sm);color:#7ab4e8;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer">+ Palier</button>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#2f6fa8">🌡 Empâtage (paliers)</div>
+      <button onclick="addRecipePalier()" style="background:none;border:1px solid rgba(120,180,230,.4);border-radius:var(--radius-sm);color:#2f6fa8;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer">+ Palier</button>
     </div>
     <div id="recipe-paliers-list"></div>
 
@@ -2545,22 +2628,22 @@
     <button onclick="addRecipeLine('malt')" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:7px;cursor:pointer;margin-bottom:4px">+ Ajouter un malt</button>
 
     <!-- HOUBLONS -->
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#7ec87e;margin:14px 0 8px">🌿 Houblons</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#2f8a4a;margin:14px 0 8px">🌿 Houblons</div>
     <div id="recipe-houblons"></div>
     <button onclick="addRecipeLine('houblon')" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:7px;cursor:pointer;margin-bottom:4px">+ Ajouter un houblon</button>
 
     <!-- LEVURES -->
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#c47ae8;margin:14px 0 8px">🧫 Levures</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#8a3fb0;margin:14px 0 8px">🧫 Levures</div>
     <div id="recipe-levures"></div>
     <button onclick="addRecipeLine('levure')" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:7px;cursor:pointer;margin-bottom:4px">+ Ajouter une levure</button>
 
     <!-- SELS MINÉRAUX -->
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#7ab4e8;margin:14px 0 8px">🧂 Sels minéraux</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#2f6fa8;margin:14px 0 8px">🧂 Sels minéraux</div>
     <div id="recipe-sels"></div>
     <button onclick="addRecipeLine('sel')" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:7px;cursor:pointer;margin-bottom:14px">+ Ajouter un sel minéral</button>
 
     <!-- PRODUITS DE NETTOYAGE -->
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#e0a840;margin:14px 0 8px">🧴 Produits de nettoyage</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#a5700a;margin:14px 0 8px">🧴 Produits de nettoyage</div>
     <div id="recipe-nettoyages"></div>
     <button onclick="addRecipeLine('nettoyage')" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;padding:7px;cursor:pointer;margin-bottom:14px">+ Ajouter un produit de nettoyage</button>
 
@@ -2933,6 +3016,23 @@ function getRoleActuel() {
 }
 
 Object.assign(window, { tentativeConnexion, seDeconnecter, getRoleActuel });
+
+// ===== En-tête d'accueil =====
+function majEnteteAccueil() {
+  try {
+    const k = document.getElementById('dash-kicker');
+    const t = document.getElementById('dash-title');
+    const sess = (typeof verifierSession === 'function') ? verifierSession() : null;
+    const date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    if (k) k.textContent = date + (sess ? ' · Bonjour ' + sess.user.charAt(0).toUpperCase() + sess.user.slice(1) : '');
+    const nom = (typeof brasserieData !== 'undefined' && brasserieData && brasserieData.nom) ? brasserieData.nom : 'Ma brasserie';
+    if (t) t.textContent = nom;
+  } catch (e) {}
+}
+majEnteteAccueil();
+setTimeout(majEnteteAccueil, 1500);
+window.majEnteteAccueil = majEnteteAccueil;
+
 
 // Vérification au démarrage
 const _session = verifierSession();
@@ -3685,6 +3785,7 @@ function switchPage(page, btn) {
   const nameEl = document.getElementById('header-page-name');
   if (nameEl) nameEl.textContent = PAGE_NAMES[page] || page;
   if (page === 'projection') renderProjection();
+  if (page === 'dashboard' && window.majEnteteAccueil) majEnteteAccueil();
 }
 
 function switchSub(group, id) {
@@ -4281,7 +4382,7 @@ function renderProjection() {
       html += `<td style="padding:6px 4px;text-align:center;border-bottom:1px solid var(--border);${courant<0?'background:rgba(192,57,27,.08)':''}">
         <div style="font-size:15px;font-weight:700;color:${col}">${courant}</div>
         <div style="font-size:10px;line-height:1.35">
-          ${p ? `<span style="color:#7ec87e">+${p}</span>` : ''}${p&&b?' ':''}${b ? `<span style="color:var(--amber-lt)">−${b}</span>` : ''}
+          ${p ? `<span style="color:#2f8a4a">+${p}</span>` : ''}${p&&b?' ':''}${b ? `<span style="color:var(--amber-lt)">−${b}</span>` : ''}
           ${!p && !b ? '<span style="color:var(--muted)">—</span>' : ''}
         </div>
       </td>`;
@@ -4552,11 +4653,11 @@ function renderProduits() {
 
     const uniteLabel = isFutsTab ? 'fût' : 'btl';
     const stockLine = hasEngagement ? `
-    <div style="padding:4px 2px 2px;font-size:13px;color:#ddd">
+    <div style="padding:4px 2px 2px;font-size:13px;color:var(--text)">
       <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:${reservationsHtml?'4px':'0'}">
         ${totalQty ? `<span>📦 ${totalQty} ${uniteLabel}${totalQty>1?'s':''}</span>` : ''}
         ${isFutsTab && eng.futs ? `<span style="color:var(--amber-lt)">−${eng.futs} réservé${eng.futs>1?'s':''}</span>` : ''}
-        ${isFutsTab && eng.tireuses ? `<span style="color:#7ab4e8">−${eng.tireuses} tireuse${eng.tireuses>1?'s':''}</span>` : ''}
+        ${isFutsTab && eng.tireuses ? `<span style="color:#2f6fa8">−${eng.tireuses} tireuse${eng.tireuses>1?'s':''}</span>` : ''}
         ${!isFutsTab && eng.cartons ? `<span style="color:var(--amber-lt)">−${eng.cartons} carton${eng.cartons>1?'s':''}</span>` : ''}
         <span style="color:${dispoApresRes<0?'var(--danger)':dispoApresRes===0?'#c08a20':'var(--ok)'}">= ${dispoApresRes} libre${dispoApresRes>1?'s':''}</span>
         ${alerteTxt}
@@ -4570,7 +4671,7 @@ function renderProduits() {
       if ((p.qty||0) > 0) byFmt[p.format] = (byFmt[p.format]||0) + (p.qty||0);
     });
     const totalBadges = Object.entries(byFmt)
-      .map(([fmt, qty]) => `<span style="font-size:13px;color:#ddd;background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:2px 7px">${qty}×${FORMAT_LABELS[fmt]||fmt}</span>`)
+      .map(([fmt, qty]) => `<span style="font-size:13px;color:var(--text);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:2px 7px">${qty}×${FORMAT_LABELS[fmt]||fmt}</span>`)
       .join('');
 
     // Production en cours (brassins pas encore enfûtés) pour cette bière — onglet Fûts uniquement
@@ -4580,7 +4681,7 @@ function renderProduits() {
       if (prod.entries.length === 1) {
         const e = prod.entries[0];
         const readyTxt = e.dateEnfutage ? ` · prêt vers le ${fmtDateFr(e.dateEnfutage)}` : '';
-        prodHtml = `<div style="font-size:12px;color:#7ec87e;margin-top:2px">🍺 +${prod.volumeTotal}L en cours (≈${Math.floor(prod.volumeTotal/30)} fûts)${readyTxt}</div>`;
+        prodHtml = `<div style="font-size:12px;color:#2f8a4a;margin-top:2px">🍺 +${prod.volumeTotal}L en cours (≈${Math.floor(prod.volumeTotal/30)} fûts)${readyTxt}</div>`;
         if (!e.dateEnfutage) {
           prodHtml += `<div style="font-size:10px;color:#c08a20;margin-top:2px">⚠️ Pas de date d'enfûtage planifiée</div>`;
         }
@@ -4599,9 +4700,9 @@ function renderProduits() {
             ? `prêt vers le ${fmtDateFr(e.dateEnfutage)}`
             : `<span style="color:#c08a20">pas de date planifiée</span>`;
           const num = e.brewNum && e.brewNum !== '—' ? `${e.brewNum} · ` : '';
-          return `<div style="font-size:11px;color:#7ec87e;margin-top:1px">🍺 ${num}${e.volume}L (≈${Math.floor(e.volume/30)} fûts) · ${readyTxt}</div>`;
+          return `<div style="font-size:11px;color:#2f8a4a;margin-top:1px">🍺 ${num}${e.volume}L (≈${Math.floor(e.volume/30)} fûts) · ${readyTxt}</div>`;
         }).join('');
-        prodHtml = `<div style="font-size:12px;color:#7ec87e;margin-top:2px;font-weight:600">+${prod.volumeTotal}L en cours au total (≈${Math.floor(prod.volumeTotal/30)} fûts)</div>${lignes}`;
+        prodHtml = `<div style="font-size:12px;color:#2f8a4a;margin-top:2px;font-weight:600">+${prod.volumeTotal}L en cours au total (≈${Math.floor(prod.volumeTotal/30)} fûts)</div>${lignes}`;
       }
     }
 
@@ -5289,7 +5390,7 @@ function renderMP() {
             <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dc};flex-shrink:0"></span>
             <div class="mp-name" style="cursor:pointer" onclick="openIngredientRecipes('${nameAttr}')" title="Voir les recettes utilisant cet ingrédient">${name}</div>
             ${item.lot ? `<span style="font-size:10px;color:var(--amber-lt);background:rgba(200,128,10,.15);border:1px solid rgba(200,128,10,.25);border-radius:3px;padding:1px 5px;font-family:monospace">${item.lot}</span>` : ''}
-            ${item.aa ? `<span style="font-size:10px;color:#7ab4e8;background:rgba(122,180,232,.1);border:1px solid rgba(122,180,232,.25);border-radius:3px;padding:1px 5px;font-weight:700">${item.aa}%AA</span>` : ''}
+            ${item.aa ? `<span style="font-size:10px;color:#2f6fa8;background:rgba(122,180,232,.1);border:1px solid rgba(122,180,232,.25);border-radius:3px;padding:1px 5px;font-weight:700">${item.aa}%AA</span>` : ''}
           </div>
           <div class="mp-bar-wrap"><div class="mp-bar ${bc}" style="width:${pct}%"></div></div>
         </div>
@@ -5318,7 +5419,7 @@ function renderMP() {
             <div style="display:flex;align-items:center;gap:5px">
               <span style="font-size:10px;color:var(--muted)">↳</span>
               <div class="mp-name" style="font-size:12px">${item.lot || 'Lot sans n°'}</div>
-              ${item.aa ? `<span style="font-size:10px;color:#7ab4e8;background:rgba(122,180,232,.1);border:1px solid rgba(122,180,232,.25);border-radius:3px;padding:1px 5px;font-weight:700">${item.aa}%AA</span>` : ''}
+              ${item.aa ? `<span style="font-size:10px;color:#2f6fa8;background:rgba(122,180,232,.1);border:1px solid rgba(122,180,232,.25);border-radius:3px;padding:1px 5px;font-weight:700">${item.aa}%AA</span>` : ''}
             </div>
           </div>
           <div class="mp-row-qty">
@@ -5427,7 +5528,7 @@ function renderMpSorties() {
     const date = new Date(s.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const isOut = s.delta < 0;
     const isBrassin = s.raison && (s.raison.toLowerCase().includes('brassin') || s.raison.toLowerCase().includes('dh brassin'));
-    const raisonColor = isBrassin ? '#7ab4e8' : 'var(--muted)';
+    const raisonColor = isBrassin ? '#2f6fa8' : 'var(--muted)';
     const raisonIcon  = isBrassin ? '🍺' : isOut ? '↓' : '↑';
     const decimals = s.mpUnit === 'kg' ? 3 : s.mpUnit === 'pqt' ? 2 : 0;
     const deltaStrFmt = (isOut ? '' : '+') + s.delta.toFixed(decimals) + ' ' + (s.mpUnit||'');
@@ -5689,9 +5790,9 @@ function renderDashboard() {
     </div>`),
   ...alertsOrder.map(i =>
     `<div onclick="openIngredientRecipes('${esc(i.name).replace(/'/g,"\\'")}')" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border);cursor:pointer">
-      <div style="width:7px;height:7px;border-radius:50%;background:#EF9F27;flex-shrink:0"></div>
+      <div style="width:7px;height:7px;border-radius:50%;background:#c27a0a;flex-shrink:0"></div>
       <span style="font-size:13px;color:var(--foam);flex:1">${esc(i.name)}</span>
-      <span style="font-size:12px;color:#EF9F27">${fmtQty(i.dispoNet)} ${i.unit} · à commander${reserveNote(i)}</span>
+      <span style="font-size:12px;color:#c27a0a">${fmtQty(i.dispoNet)} ${i.unit} · à commander${reserveNote(i)}</span>
       <span style="font-size:11px;color:var(--muted);flex-shrink:0">›</span>
     </div>`)
   ].join('') || `<div style="font-size:13px;color:var(--muted);padding:8px 0">Aucune alerte · stocks OK</div>`;
@@ -5717,8 +5818,8 @@ function renderDashboard() {
   const echeance = new Date(now.getFullYear(), currentQ * 3 + 3, 10);
   const joursRestants = Math.ceil((echeance - now) / 86400000);
   const acciseBanner = (joursRestants <= 15)
-    ? `<div class="dash-full" style="background:rgba(239,159,39,.12);border:1px solid #EF9F27;border-radius:var(--radius-sm);padding:10px 12px">
-        <div style="font-size:12px;font-weight:700;color:#EF9F27">🏛️ Échéance accises</div>
+    ? `<div class="dash-full" style="background:rgba(239,159,39,.12);border:1px solid #c27a0a;border-radius:var(--radius-sm);padding:10px 12px">
+        <div style="font-size:12px;font-weight:700;color:#c27a0a">🏛️ Échéance accises</div>
         <div style="font-size:12px;color:var(--foam);margin-top:2px">Déclaration du trimestre T${currentQ+1} à faire avant le ${echeance.toLocaleDateString('fr-FR',{day:'numeric',month:'long'})} — dans ${joursRestants} jour${joursRestants>1?'s':''}.</div>
       </div>`
     : '';
@@ -5953,7 +6054,7 @@ function renderSuiviPhaseLog(brassinId) {
     el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px 0">Aucun changement enregistré</div>';
     return;
   }
-  const phaseColors = { fermentation:'var(--ok)', garde:'#7ab4e8', dh:'#c47ae8', idle:'var(--muted)' };
+  const phaseColors = { fermentation:'var(--ok)', garde:'#2f6fa8', dh:'#8a3fb0', idle:'var(--muted)' };
   const phaseNoms   = { fermentation:'Fermentation', garde:'Garde', dh:'Dry Hopping', idle:'Conditionné / Libéré' };
   el.innerHTML = s.phaseLog.map((e, i) => {
     const next = s.phaseLog[i + 1];
@@ -6240,7 +6341,7 @@ function buildCalculs(brassinId, s) {
     ${attLevure > 0 ? sep('Prévisionnel') : ''}
     ${attLevure > 0 ? row('Atténuation levure', attLevure.toFixed(0), '%') : ''}
     ${attLevure > 0 && dfPrevSG ? row('Df prévisionnelle', dfPrevSG.toFixed(3) + ' <span style="font-size:11px;color:var(--amber-lt)">(' + dfPrevP.toFixed(1) + ' °P)</span>') : ''}
-    ${attLevure > 0 && abvPrev  ? row('ABV prévisionnel', abvPrev.toFixed(2), '%', '#7ab4e8') : ''}
+    ${attLevure > 0 && abvPrev  ? row('ABV prévisionnel', abvPrev.toFixed(2), '%', '#2f6fa8') : ''}
     ${!hasDf ? '<div style="font-size:11px;color:var(--muted);padding:8px 0;font-style:italic">Saisissez Df pour les résultats réels</div>' : ''}
     ${realBlock}
   </div>`;
@@ -6388,7 +6489,7 @@ function renderOrderStockPanel() {
       const res   = eng[fmt]||0;
       const libre = Math.max(0, total - res);
       if (total === 0 && res === 0) return '';
-      const libreColor = libre === 0 ? 'var(--danger)' : libre < total ? '#EF9F27' : 'var(--ok)';
+      const libreColor = libre === 0 ? 'var(--danger)' : libre < total ? '#c27a0a' : 'var(--ok)';
       return `
         <div style="display:flex;align-items:center;gap:6px;padding:3px 0">
           <span style="font-size:11px;color:var(--muted);min-width:60px">${label}</span>
@@ -6514,8 +6615,8 @@ function renderFutsPage() {
         <div style="font-size:28px;font-weight:800;color:${chezCli>0?'var(--foam)':'var(--muted)'}">${chezCli}</div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center">
-        <div style="font-size:10px;color:#EF9F27;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">À nettoyer</div>
-        <div style="font-size:28px;font-weight:800;color:${aNet>0?'#EF9F27':'var(--muted)'}">${aNet}</div>
+        <div style="font-size:10px;color:#c27a0a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">À nettoyer</div>
+        <div style="font-size:28px;font-weight:800;color:${aNet>0?'#c27a0a':'var(--muted)'}">${aNet}</div>
       </div>
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
@@ -6600,9 +6701,9 @@ function openFutsInitModal() {
         style="width:80px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:18px;font-weight:700;padding:8px;text-align:center;box-sizing:border-box"/>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px">
-      <span style="font-size:13px;font-weight:600;color:#EF9F27">🧴 À nettoyer</span>
+      <span style="font-size:13px;font-weight:600;color:#c27a0a">🧴 À nettoyer</span>
       <input type="number" min="0" step="1" id="fut-init-nettoyer" value="${futsData.aNettoyer||0}"
-        style="width:80px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:#EF9F27;font-size:18px;font-weight:700;padding:8px;text-align:center;box-sizing:border-box"/>
+        style="width:80px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:#c27a0a;font-size:18px;font-weight:700;padding:8px;text-align:center;box-sizing:border-box"/>
     </div>`;
   document.getElementById('futs-init-modal').style.display = 'flex';
 }
@@ -7152,7 +7253,7 @@ function buildFermCardHtml(f, cardKey, phaseKeyOverride) {
   } else if (ph.fermentation.active) { phaseKey='fermentation'; phaseLabel='Fermentation'; }
   else if (ph.dh.active)      { phaseKey='dh';           phaseLabel='Dry Hopping'; }
   else if (ph.garde.active)   { phaseKey='garde';        phaseLabel='Garde'; }
-  const phaseColors = { fermentation:'#4caf72', garde:'#7ab4e8', dh:'#c47ae8', idle:'#555' };
+  const phaseColors = { fermentation:'#4caf72', garde:'#2f6fa8', dh:'#8a3fb0', idle:'#555' };
   const col = phaseColors[phaseKey];
 
   // Avancement de la phase affichée (pour le remplissage du dessin)
@@ -7939,7 +8040,7 @@ function renderHistorique() {
           </div>`).join('')
       : `<div style="font-size:11px;color:var(--muted);font-style:italic">Numéros de lots non renseignés</div>`;
 
-    const statutColors = { fermentation:'var(--ok)', garde:'#7ab4e8', dh:'#c47ae8', conditionne:'var(--amber-lt)', termine:'var(--muted)' };
+    const statutColors = { fermentation:'var(--ok)', garde:'#2f6fa8', dh:'#8a3fb0', conditionne:'var(--amber-lt)', termine:'var(--muted)' };
     const statColor = statutColors[b.statut] || 'var(--ok)';
 
     return `
@@ -8477,13 +8578,13 @@ const DAYS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 
 const TASK_TYPES = {
   brassin:      { label:'Brassin',           icon:'🍺', color:'#c8800a', needsBeer:true,  needsFerm:true,  needsBrewNum:true },
-  garde:        { label:'Mise en garde',     icon:'❄️',  color:'#7ab4e8', needsBeer:true, needsFerm:true,  needsBrewNum:true },
-  dh:           { label:'Dry Hopping',       icon:'🌿', color:'#7ec87e', needsBeer:true, needsFerm:true,  needsBrewNum:true },
+  garde:        { label:'Mise en garde',     icon:'❄️',  color:'#2f6fa8', needsBeer:true, needsFerm:true,  needsBrewNum:true },
+  dh:           { label:'Dry Hopping',       icon:'🌿', color:'#2f8a4a', needsBeer:true, needsFerm:true,  needsBrewNum:true },
   enfutage:     { label:'Enfûtage',          icon:'🛢️',  color:'#4a9e5c', needsBeer:true, needsFerm:true,  needsBrewNum:true },
   embout:       { label:'Embouteillage',     icon:'🍾', color:'#4a9e5c', needsBeer:false, needsFerm:true  },
   nett_enzy:    { label:'Nett. enzymatique', icon:'🧴', color:'#a0785a', needsBeer:false, needsFerm:true  },
   nett_neutro:  { label:'Nett. Neutro',      icon:'⚗️',  color:'#a0785a', needsBeer:false, needsFerm:true  },
-  cip:          { label:'CIP',               icon:'🔄', color:'#c47ae8', needsBeer:false, needsFerm:true  },
+  cip:          { label:'CIP',               icon:'🔄', color:'#8a3fb0', needsBeer:false, needsFerm:true  },
   livraison:    { label:'Livraison',         icon:'🚚', color:'#5aa9e6', needsBeer:false, needsFerm:false, needsClient:true, needsLieu:true },
   marche:       { label:'Marché',            icon:'🏪', color:'#e8a84a', needsBeer:false, needsFerm:false },
   festival:     { label:'Festival',          icon:'🎪', color:'#e84a9a', needsBeer:false, needsFerm:false },
@@ -9403,7 +9504,7 @@ function renderOrdersList() {
         style="font-size:11px;color:var(--foam);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 7px;cursor:pointer"
         title="Voir le détail">${beer} <b style="color:var(--amber-lt)">${qty}</b></span>`)
       .join('') + (totalTireusesWeek > 0
-        ? `<span style="font-size:11px;color:#7ab4e8;background:rgba(122,180,232,.1);border:1px solid rgba(122,180,232,.3);border-radius:3px;padding:1px 7px">🍺 Tireuses <b>${totalTireusesWeek}</b></span>`
+        ? `<span style="font-size:11px;color:#2f6fa8;background:rgba(122,180,232,.1);border:1px solid rgba(122,180,232,.3);border-radius:3px;padding:1px 7px">🍺 Tireuses <b>${totalTireusesWeek}</b></span>`
         : '');
 
     const rows = orders.map(({ k, date, o }) => {
@@ -9579,7 +9680,7 @@ function renderPrevCalendar() {
       <div style="display:flex;flex-direction:column;gap:1px;margin-top:2px">
         ${totalF  ? `<div style="font-size:8px;color:var(--amber-lt);font-weight:700;line-height:1">🛢${totalF}</div>`  : ''}
         ${totalC  ? `<div style="font-size:8px;color:var(--ok);font-weight:700;line-height:1">📦${totalC}</div>`        : ''}
-        ${totalT  ? `<div style="font-size:8px;color:#7ab4e8;font-weight:700;line-height:1">🍺${totalT}</div>`          : ''}
+        ${totalT  ? `<div style="font-size:8px;color:#2f6fa8;font-weight:700;line-height:1">🍺${totalT}</div>`          : ''}
       </div>` : '';
 
         const clickAction = isPast && hasOrders ? `openPastOrdersModal('${k}')` : !isPast ? `openOrderModal('${k}')` : '';
@@ -9708,9 +9809,9 @@ function renderOrderList(key) {
       </div>`;
     }).join('') + (totalT ? `
       <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
-        <span style="font-size:12px;color:#7ab4e8;flex:1">🍺 Tireuses</span>
+        <span style="font-size:12px;color:#2f6fa8;flex:1">🍺 Tireuses</span>
         <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
-          ${tireuseLignes.map(tl => `<span style="font-size:11px;color:#7ab4e8">${tireuseLabel(tl)}${tl.prix?' ('+parseFloat(tl.prix).toFixed(2)+'€)':''}</span>`).join('')}
+          ${tireuseLignes.map(tl => `<span style="font-size:11px;color:#2f6fa8">${tireuseLabel(tl)}${tl.prix?' ('+parseFloat(tl.prix).toFixed(2)+'€)':''}</span>`).join('')}
           ${totalTireuseHT > 0 ? `<span style="font-size:11px;font-weight:700;color:var(--foam)">${totalTireuseHT.toFixed(2)}€</span>` : ''}
         </div>
       </div>` : '');
@@ -10235,9 +10336,9 @@ function renderRecipes() {
           ${(r.paliersEmpatage?.length||r.tempEmpatage||r.dureeEmpatage||r.ebullition||r.tempLevure||r.tempFermentation) ? `
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 4px">
             ${r.paliersEmpatage?.length
-              ? r.paliersEmpatage.map(p => `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#7ab4e8">🌡 ${esc(p.nom||'Palier')} ${p.temp||'?'}°C${p.duree?' · '+p.duree+"'":''}</span>`).join('')
-              : `${r.tempEmpatage ? `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#7ab4e8">🌡 ${r.tempEmpatage}°C</span>` : ''}
-                 ${r.dureeEmpatage ? `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#7ab4e8">⏱ ${r.dureeEmpatage} min empâtage</span>` : ''}`
+              ? r.paliersEmpatage.map(p => `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#2f6fa8">🌡 ${esc(p.nom||'Palier')} ${p.temp||'?'}°C${p.duree?' · '+p.duree+"'":''}</span>`).join('')
+              : `${r.tempEmpatage ? `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#2f6fa8">🌡 ${r.tempEmpatage}°C</span>` : ''}
+                 ${r.dureeEmpatage ? `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#2f6fa8">⏱ ${r.dureeEmpatage} min empâtage</span>` : ''}`
             }
             ${r.ebullition ? `<span style="font-size:11px;background:rgba(200,128,10,.1);border:1px solid rgba(200,128,10,.25);border-radius:4px;padding:2px 8px;color:var(--amber-lt)">🔥 ${r.ebullition} min ébullition</span>` : ''}
             ${r.tempLevure ? `<span style="font-size:11px;background:rgba(76,175,114,.1);border:1px solid rgba(76,175,114,.25);border-radius:4px;padding:2px 8px;color:#4caf72">🧫 Levurage ${r.tempLevure}°C</span>` : ''}
@@ -10245,10 +10346,10 @@ function renderRecipes() {
           </div>` : ''}
 
           ${r.notes ? `<div style="margin:8px 0 4px;font-size:12px;color:var(--muted);background:var(--surface2);border-left:2px solid var(--border);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:6px 10px;white-space:pre-wrap">📝 ${r.notes}</div>` : ''}
-          ${houbRows  ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#7ec87e;margin:8px 0 4px">🌿 Houblons</div>${houbRows}` : ''}
-          ${levRows   ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#c47ae8;margin:8px 0 4px">🧫 Levures</div>${levRows}` : ''}
-          ${selRows   ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#7ab4e8;margin:8px 0 4px">🧂 Sels minéraux</div>${selRows}` : ''}
-          ${nettoyageRows ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#e0a840;margin:8px 0 4px">🧴 Produits de nettoyage</div>${nettoyageRows}` : ''}
+          ${houbRows  ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#2f8a4a;margin:8px 0 4px">🌿 Houblons</div>${houbRows}` : ''}
+          ${levRows   ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#8a3fb0;margin:8px 0 4px">🧫 Levures</div>${levRows}` : ''}
+          ${selRows   ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#2f6fa8;margin:8px 0 4px">🧂 Sels minéraux</div>${selRows}` : ''}
+          ${nettoyageRows ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#a5700a;margin:8px 0 4px">🧴 Produits de nettoyage</div>${nettoyageRows}` : ''}
           <!-- Détail des coûts -->
           <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
             <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:6px">Détail coûts</div>
@@ -10740,8 +10841,8 @@ function renderBrewPreview(r) {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
         <span style="font-size:13px;color:var(--foam);flex:1;min-width:0">
           ${esc(l.name)}
-          ${substitué ? `<span style="font-size:9px;color:#7ec87e;background:rgba(126,200,126,.12);border-radius:3px;padding:1px 4px;margin-left:4px">substitué</span>` : ''}
-          ${l.moment==='DH' ? `<span style="font-size:9px;color:#c47ae8;margin-left:2px">DH</span>` : ''}
+          ${substitué ? `<span style="font-size:9px;color:#2f8a4a;background:rgba(126,200,126,.12);border-radius:3px;padding:1px 4px;margin-left:4px">substitué</span>` : ''}
+          ${l.moment==='DH' ? `<span style="font-size:9px;color:#8a3fb0;margin-left:2px">DH</span>` : ''}
         </span>
         <input type="number" value="${needed}" min="0" step="0.1" onchange="updateBrewLineQty(${idx}, this.value)"
           style="width:56px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--foam);font-size:12px;font-weight:600;padding:3px 5px;text-align:right" />
@@ -11408,7 +11509,7 @@ function renderDae() {
   const statutStyle = {
     brouillon:{ label:'Brouillon', bg:'rgba(122,110,90,.2)',  color:'var(--muted)' },
     valide:   { label:'Validé',    bg:'rgba(74,158,92,.2)',    color:'var(--ok)' },
-    en_cours: { label:'En cours',  bg:'rgba(100,160,220,.2)',  color:'#7ab4e8' },
+    en_cours: { label:'En cours',  bg:'rgba(100,160,220,.2)',  color:'#2f6fa8' },
     clos:     { label:'Clos',      bg:'rgba(74,158,92,.15)',   color:'var(--ok)' },
     annule:   { label:'Annulé',    bg:'rgba(192,57,27,.15)',   color:'var(--danger)' },
   };
@@ -11798,7 +11899,7 @@ function renderBl() {
         <button onclick="openBlView('${b.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:4px 10px;cursor:pointer">👁 Voir</button>
         <button onclick="openRetourBlModal('${b.id}')" style="background:none;border:1px solid rgba(200,128,10,.4);border-radius:var(--radius-sm);color:var(--amber-lt);font-size:11px;padding:4px 10px;cursor:pointer">↩ Retour fûts</button>
         ${!signe ? `<button onclick="openBlModal('${b.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:4px 10px;cursor:pointer">✏️</button>` : ''}
-        ${signe ? `<button onclick="envoyerBlMail('${b.id}')" style="background:none;border:1px solid rgba(100,160,220,.4);border-radius:var(--radius-sm);color:#7ab4e8;font-size:11px;padding:4px 10px;cursor:pointer">📧 Email</button>` : ''}
+        ${signe ? `<button onclick="envoyerBlMail('${b.id}')" style="background:none;border:1px solid rgba(100,160,220,.4);border-radius:var(--radius-sm);color:#2f6fa8;font-size:11px;padding:4px 10px;cursor:pointer">📧 Email</button>` : ''}
         <button onclick="deleteBl('${b.id}')" style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:11px;padding:4px 10px;cursor:pointer">×</button>
       </div>
     </div>`;
