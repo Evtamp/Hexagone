@@ -397,9 +397,9 @@
     .mp-name { font-size: 13px; font-weight: 600; color: var(--foam); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     /* Stock produits : police agrandie et plus lisible */
-    #list-produits .mp-name { font-size: 14px; color: #fff; }
+    #list-produits .mp-name { font-size: 14px; color:var(--text); }
     #list-produits .mp-lot { font-size: 11px; }
-    #list-produits .mp-unit-label { font-size: 13px; color: #bbb; }
+    #list-produits .mp-unit-label { font-size: 13px; color: var(--muted); }
     #list-produits .mp-input { font-size: 15px; }
     .mp-lot  { font-size: 10px; color: var(--muted); margin-top: 1px; }
     .mp-bar-wrap {
@@ -570,7 +570,7 @@
       background: rgba(200,128,10,.2);
       color: var(--amber-lt);
     }
-    .day-empty { font-size: 12px; color: var(--border); font-style: italic; }
+    .day-empty { font-size: 12px; color:var(--muted); font-style: italic; }
 
     .add-task-btn {
       width: 100%;
@@ -2608,7 +2608,7 @@
     <div id="recipe-paliers-list"></div>
 
     <!-- Fermentation -->
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#4caf72;margin:14px 0 8px">🧫 Fermentation</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#2f8a4a;margin:14px 0 8px">🧫 Fermentation</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="modal-field">
         <label>T° mise en levure (°C)</label>
@@ -4364,7 +4364,7 @@ function renderProjection() {
     const biere = canonMap[key] || key;
     let courant = stock[key] || 0;
     html += `<tr>
-      <td style="padding:8px 6px;font-size:13px;font-weight:600;color:#fff;border-bottom:1px solid var(--border);position:sticky;left:0;background:var(--bg)">
+      <td style="padding:8px 6px;font-size:13px;font-weight:600;color:var(--text);border-bottom:1px solid var(--border);position:sticky;left:0;background:var(--bg)">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
           <div>
             ${esc(biere)}
@@ -4621,12 +4621,12 @@ function renderProduits() {
         <div class="mp-row-left">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dot};flex-shrink:0"></span>
-            <span style="font-size:14px;color:#fff">${FORMAT_LABELS[p.format]||p.format}</span>
+            <span style="font-size:14px;color:var(--text)">${FORMAT_LABELS[p.format]||p.format}</span>
             <span style="font-size:12px;color:var(--amber-lt);background:rgba(200,128,10,.15);border:1px solid rgba(200,128,10,.25);border-radius:3px;padding:1px 6px;font-family:monospace">${p.lot}</span>
             ${p.ferm?`<span style="font-size:12px;color:var(--muted)">← ${p.ferm}</span>`:''}
             ${reservedBadge}
           </div>
-          ${reserved > 0 ? `<div style="font-size:12px;color:var(--muted);margin-top:3px">Libre : <strong style="color:${libre===0?'#c08a20':'#fff'}">${libre}</strong> · Réservé : <span style="color:rgba(180,180,180,.7)">${reserved}</span></div>` : ''}
+          ${reserved > 0 ? `<div style="font-size:12px;color:var(--muted);margin-top:3px">Libre : <strong style="color:${libre===0?'#c08a20':'var(--text)'}">${libre}</strong> · Réservé : <span style="color:var(--text-dim)">${reserved}</span></div>` : ''}
         </div>
         <div class="mp-row-qty">
           <button class="qty-btn" onclick="adjustProduitQty('${p.id}',-1)" style="width:26px;height:26px;font-size:14px">−</button>
@@ -4648,7 +4648,7 @@ function renderProduits() {
       ? `<span style="color:var(--danger);font-weight:700;margin-left:8px">⚠ stock insuffisant</span>` : '';
 
     const reservationsHtml = (eng.reservations||[]).map(r =>
-      `<div style="font-size:12px;color:rgba(200,200,200,.85);padding:2px 0">🔒 ${r.client} · ${r.date} · ${r.fmts.join(', ')}</div>`
+      `<div style="font-size:12px;color:var(--text-dim);padding:2px 0">🔒 ${r.client} · ${r.date} · ${r.fmts.join(', ')}</div>`
     ).join('');
 
     const uniteLabel = isFutsTab ? 'fût' : 'btl';
@@ -4711,7 +4711,7 @@ function renderProduits() {
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px 4px;flex-wrap:wrap;gap:4px">
         <div style="display:flex;align-items:center;gap:6px">
           <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0"></span>
-          <div style="font-size:15px;font-weight:700;color:#fff">${biere}</div>
+          <div style="font-size:15px;font-weight:700;color:var(--text)">${biere}</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
           <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
@@ -4720,7 +4720,7 @@ function renderProduits() {
           </div>
           ${reserve > 0 ? `
           <div onclick="goToCommandesForBeer('${biere.replace(/'/g,"\'")}')" style="cursor:pointer;text-align:right">
-            <div style="font-size:12px;color:rgba(200,200,200,.9);text-decoration:underline;text-underline-offset:2px">🔒 ${reserve} réservé${reserve>1?'s':''}</div>
+            <div style="font-size:12px;color:var(--text-dim);text-decoration:underline;text-underline-offset:2px">🔒 ${reserve} réservé${reserve>1?'s':''}</div>
           </div>` : ''}
           ${prodHtml}
         </div>
@@ -4793,7 +4793,7 @@ function renderCartons() {
         <div class="beer-name" style="display:flex;align-items:center;gap:4px">${beer}${formatBadge}</div>
         <div class="beer-qty" style="display:flex;align-items:center;gap:8px">
           <span><strong style="color:var(--foam)">${cartons}</strong> carton${cartons>1?'s':''} ×${cfg.cartonSize}</span>
-          <span style="color:var(--border)">·</span>
+          <span style="color:var(--muted)">·</span>
           <span style="color:var(--muted)">${bouteilles} btl</span>
           ${alertMsg}
         </div>
@@ -5008,7 +5008,7 @@ function renderNettoyage() {
       <div class="mp-row-left">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dot};flex-shrink:0"></span>
-          <span style="font-size:14px;color:#fff">${esc(item.name)}</span>
+          <span style="font-size:14px;color:var(--text)">${esc(item.name)}</span>
           ${low > 0 && item.val <= low ? `<span style="font-size:11px;color:#c08a20">⚠ seuil ${low}${item.unit}</span>` : ''}
         </div>
       </div>
@@ -5094,7 +5094,7 @@ function renderEtiquettes() {
 
   el.innerHTML = Object.entries(grouped).map(([biere, list]) => `
     <div style="margin-bottom:14px">
-      <div style="font-size:15px;font-weight:700;color:#fff;padding:6px 2px 4px">${esc(biere)}</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);padding:6px 2px 4px">${esc(biere)}</div>
       <div class="mp-list">${list.map(item => {
         const low = item.low || 0;
         const dot = (item.qty||0) === 0 ? 'var(--danger)' : (low > 0 && item.qty <= low) ? '#c08a20' : 'var(--ok)';
@@ -5103,7 +5103,7 @@ function renderEtiquettes() {
           <div class="mp-row-left">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dot};flex-shrink:0"></span>
-              <span style="font-size:14px;color:#fff">${ETIQ_FORMATS[item.format]||item.format}</span>
+              <span style="font-size:14px;color:var(--text)">${ETIQ_FORMATS[item.format]||item.format}</span>
               ${low > 0 && item.qty <= low ? `<span style="font-size:11px;color:#c08a20">⚠ seuil ${low}</span>` : ''}
             </div>
           </div>
@@ -5805,8 +5805,8 @@ function renderDashboard() {
         if (s.btl75) parts.push(s.btl75 + ' × 75cL');
         const vide = parts.length === 0;
         return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:0.5px solid var(--border)">
-          <span style="font-size:13px;color:#fff">${biere}</span>
-          <span style="font-size:12px;color:${vide?'#E24B4A':'#fff'}">${vide ? 'Stock vide' : parts.join(' · ')}</span>
+          <span style="font-size:13px;color:var(--text)">${biere}</span>
+          <span style="font-size:12px;color:${vide?'#E24B4A':'var(--text)'}">${vide ? 'Stock vide' : parts.join(' · ')}</span>
         </div>`;
       }).join('')
     : `<div style="font-size:13px;color:var(--muted);padding:8px 0">Aucun produit en stock</div>`;
@@ -6495,7 +6495,7 @@ function renderOrderStockPanel() {
           <span style="font-size:11px;color:var(--muted);min-width:60px">${label}</span>
           <span style="font-size:13px;font-weight:700;color:var(--foam);min-width:20px;text-align:right">${total}</span>
           ${res > 0 ? `
-            <span style="font-size:10px;color:rgba(160,160,160,.6)">− ${res} 🔒</span>
+            <span style="font-size:10px;color:var(--text-dim)">− ${res} 🔒</span>
             <span style="font-size:12px;font-weight:700;color:${libreColor};margin-left:2px">= ${libre} libre${libre>1?'s':''}</span>
           ` : `<span style="font-size:11px;color:var(--ok);margin-left:4px">✓ libre</span>`}
         </div>`;
@@ -6507,7 +6507,7 @@ function renderOrderStockPanel() {
     const resHtml = reservations.length
       ? `<div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">${
           reservations.map(r =>
-            `<div style="font-size:10px;color:rgba(160,160,160,.6);padding:1px 0">🔒 ${r.client} · ${r.date} · ${r.fmts.join(', ')}</div>`
+            `<div style="font-size:10px;color:var(--text-dim);padding:1px 0">🔒 ${r.client} · ${r.date} · ${r.fmts.join(', ')}</div>`
           ).join('')
         }</div>` : '';
 
@@ -7253,7 +7253,7 @@ function buildFermCardHtml(f, cardKey, phaseKeyOverride) {
   } else if (ph.fermentation.active) { phaseKey='fermentation'; phaseLabel='Fermentation'; }
   else if (ph.dh.active)      { phaseKey='dh';           phaseLabel='Dry Hopping'; }
   else if (ph.garde.active)   { phaseKey='garde';        phaseLabel='Garde'; }
-  const phaseColors = { fermentation:'#4caf72', garde:'#2f6fa8', dh:'#8a3fb0', idle:'#555' };
+  const phaseColors = { fermentation:'#2f8a4a', garde:'#2f6fa8', dh:'#8a3fb0', idle:'#555' };
   const col = phaseColors[phaseKey];
 
   // Avancement de la phase affichée (pour le remplissage du dessin)
@@ -7286,7 +7286,7 @@ function buildFermCardHtml(f, cardKey, phaseKeyOverride) {
       <line x1="50" y1="94" x2="53" y2="104" stroke="#666" stroke-width="2"/>
       <!-- petit robinet -->
       <line x1="40" y1="96" x2="40" y2="102" stroke="#888" stroke-width="2"/>
-      ${anyActive ? `<text x="40" y="42" text-anchor="middle" font-size="13" font-weight="bold" fill="#fff">J${jours}</text>` : ''}
+      ${anyActive ? `<text x="40" y="42" text-anchor="middle" font-size="13" font-weight="bold" fill="#2a2118" stroke="#ffffff" stroke-width="3" paint-order="stroke">J${jours}</text>` : ''}
     </svg>`;
 
   // Panneau détails (déplié au clic) : temp, volume, boutons de phase, enfûtage, édition
@@ -7661,7 +7661,7 @@ function renderClientRecapParAnnee(events) {
 
   const cell = (v) => v && (v.futs || v.bouteilles)
     ? `<span style="color:var(--amber-lt);font-weight:700">${v.futs ? v.futs+'🛢' : ''}${v.futs && v.bouteilles ? ' · ' : ''}${v.bouteilles ? v.bouteilles+'🍾' : ''}</span>`
-    : `<span style="color:var(--border)">—</span>`;
+    : `<span style="color:var(--muted)">—</span>`;
 
   return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:${150 + years.length*76}px">
     <thead><tr>
@@ -7707,7 +7707,7 @@ function renderClientRecapParMois(events) {
 
   const cell = (v) => v && (v.futs || v.bouteilles)
     ? `<span style="color:var(--amber-lt);font-weight:700">${v.futs ? v.futs+'🛢' : ''}${v.futs && v.bouteilles ? '·' : ''}${v.bouteilles ? v.bouteilles+'🍾' : ''}</span>`
-    : `<span style="color:var(--border)">—</span>`;
+    : `<span style="color:var(--muted)">—</span>`;
 
   return selectHtml + `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:${150 + 12*54}px">
     <thead><tr>
@@ -8531,7 +8531,7 @@ function renderNotes() {
         </button>
       </div>
       <div style="font-size:13px;color:var(--text-dim);white-space:pre-wrap;line-height:1.5">${n.content||''}</div>
-      ${date ? `<div style="font-size:10px;color:var(--border);margin-top:8px">${date}</div>` : ''}
+      ${date ? `<div style="font-size:10px;color:var(--muted);margin-top:8px">${date}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -8580,16 +8580,16 @@ const TASK_TYPES = {
   brassin:      { label:'Brassin',           icon:'🍺', color:'#c8800a', needsBeer:true,  needsFerm:true,  needsBrewNum:true },
   garde:        { label:'Mise en garde',     icon:'❄️',  color:'#2f6fa8', needsBeer:true, needsFerm:true,  needsBrewNum:true },
   dh:           { label:'Dry Hopping',       icon:'🌿', color:'#2f8a4a', needsBeer:true, needsFerm:true,  needsBrewNum:true },
-  enfutage:     { label:'Enfûtage',          icon:'🛢️',  color:'#4a9e5c', needsBeer:true, needsFerm:true,  needsBrewNum:true },
-  embout:       { label:'Embouteillage',     icon:'🍾', color:'#4a9e5c', needsBeer:false, needsFerm:true  },
-  nett_enzy:    { label:'Nett. enzymatique', icon:'🧴', color:'#a0785a', needsBeer:false, needsFerm:true  },
-  nett_neutro:  { label:'Nett. Neutro',      icon:'⚗️',  color:'#a0785a', needsBeer:false, needsFerm:true  },
+  enfutage:     { label:'Enfûtage',          icon:'🛢️',  color:'#2f8a4a', needsBeer:true, needsFerm:true,  needsBrewNum:true },
+  embout:       { label:'Embouteillage',     icon:'🍾', color:'#2f8a4a', needsBeer:false, needsFerm:true  },
+  nett_enzy:    { label:'Nett. enzymatique', icon:'🧴', color:'#7d5536', needsBeer:false, needsFerm:true  },
+  nett_neutro:  { label:'Nett. Neutro',      icon:'⚗️',  color:'#7d5536', needsBeer:false, needsFerm:true  },
   cip:          { label:'CIP',               icon:'🔄', color:'#8a3fb0', needsBeer:false, needsFerm:true  },
-  livraison:    { label:'Livraison',         icon:'🚚', color:'#5aa9e6', needsBeer:false, needsFerm:false, needsClient:true, needsLieu:true },
-  marche:       { label:'Marché',            icon:'🏪', color:'#e8a84a', needsBeer:false, needsFerm:false },
-  festival:     { label:'Festival',          icon:'🎪', color:'#e84a9a', needsBeer:false, needsFerm:false },
-  tto:          { label:'TTO',               icon:'🏆', color:'#a0c4ff', needsBeer:false, needsFerm:false },
-  cp:           { label:'Congés payés',       icon:'🌴', color:'#5db8a0', needsBeer:false, needsFerm:false },
+  livraison:    { label:'Livraison',         icon:'🚚', color:'#2a78b8', needsBeer:false, needsFerm:false, needsClient:true, needsLieu:true },
+  marche:       { label:'Marché',            icon:'🏪', color:'#a5640a', needsBeer:false, needsFerm:false },
+  festival:     { label:'Festival',          icon:'🎪', color:'#b8306f', needsBeer:false, needsFerm:false },
+  tto:          { label:'TTO',               icon:'🏆', color:'#3d6fc4', needsBeer:false, needsFerm:false },
+  cp:           { label:'Congés payés',       icon:'🌴', color:'#2a8a72', needsBeer:false, needsFerm:false },
 };
 
 function getMonday(offset) {
@@ -8741,7 +8741,7 @@ function renderPlanning() {
             return `<div class="day-task"
               data-task-id="${t.id}" data-from-key="${key}"
               style="display:flex;align-items:center;justify-content:space-between;gap:4px">
-              <span class="day-task-handle" style="flex-shrink:0;align-self:stretch;display:flex;align-items:center;justify-content:center;width:30px;font-size:17px;color:var(--border);cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;margin-left:-4px">⠿</span>
+              <span class="day-task-handle" style="flex-shrink:0;align-self:stretch;display:flex;align-items:center;justify-content:center;width:30px;font-size:17px;color:var(--muted);cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;margin-left:-4px">⠿</span>
               <div onclick="openEditTask('${key}','${t.id}')" style="display:flex;align-items:center;gap:4px;min-width:0;flex:1;cursor:pointer">
                 <span class="day-task-cat" style="background:${tt.color}22;color:${tt.color};flex-shrink:0;font-size:10px;padding:1px 4px">${tt.icon} ${tt.label}</span>
                 <span style="font-size:11px;color:var(--text-dim);overflow-wrap:anywhere;word-break:normal">${taskDetail(t)}</span>
@@ -9632,7 +9632,7 @@ function renderPrevWeeks() {
           <div style="font-size:22px;font-weight:800;color:${totalTireuses>0?'var(--amber-lt)':'var(--border)'}">${totalTireuses}</div>
         </div>
       </div>
-      ${beerRows ? `<div style="padding:0 14px 10px">${beerRows}</div>` : '<div style="padding:6px 14px 10px;font-size:11px;color:var(--border)">Aucune commande</div>'}
+      ${beerRows ? `<div style="padding:0 14px 10px">${beerRows}</div>` : '<div style="padding:6px 14px 10px;font-size:11px;color:var(--muted)">Aucune commande</div>'}
       ${orderCount > 0 ? `<div style="padding:0 14px 8px;font-size:11px;color:var(--muted);text-align:right">${orderCount} bon${orderCount>1?'s':''} de commande</div>` : ''}
     </div>`);
   }
@@ -10341,8 +10341,8 @@ function renderRecipes() {
                  ${r.dureeEmpatage ? `<span style="font-size:11px;background:rgba(120,180,230,.1);border:1px solid rgba(120,180,230,.25);border-radius:4px;padding:2px 8px;color:#2f6fa8">⏱ ${r.dureeEmpatage} min empâtage</span>` : ''}`
             }
             ${r.ebullition ? `<span style="font-size:11px;background:rgba(200,128,10,.1);border:1px solid rgba(200,128,10,.25);border-radius:4px;padding:2px 8px;color:var(--amber-lt)">🔥 ${r.ebullition} min ébullition</span>` : ''}
-            ${r.tempLevure ? `<span style="font-size:11px;background:rgba(76,175,114,.1);border:1px solid rgba(76,175,114,.25);border-radius:4px;padding:2px 8px;color:#4caf72">🧫 Levurage ${r.tempLevure}°C</span>` : ''}
-            ${r.tempFermentation ? `<span style="font-size:11px;background:rgba(76,175,114,.1);border:1px solid rgba(76,175,114,.25);border-radius:4px;padding:2px 8px;color:#4caf72">🌡 Ferm. ${r.tempFermentation}°C</span>` : ''}
+            ${r.tempLevure ? `<span style="font-size:11px;background:rgba(76,175,114,.1);border:1px solid rgba(76,175,114,.25);border-radius:4px;padding:2px 8px;color:#2f8a4a">🧫 Levurage ${r.tempLevure}°C</span>` : ''}
+            ${r.tempFermentation ? `<span style="font-size:11px;background:rgba(76,175,114,.1);border:1px solid rgba(76,175,114,.25);border-radius:4px;padding:2px 8px;color:#2f8a4a">🌡 Ferm. ${r.tempFermentation}°C</span>` : ''}
           </div>` : ''}
 
           ${r.notes ? `<div style="margin:8px 0 4px;font-size:12px;color:var(--muted);background:var(--surface2);border-left:2px solid var(--border);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:6px 10px;white-space:pre-wrap">📝 ${r.notes}</div>` : ''}
