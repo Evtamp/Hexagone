@@ -1176,7 +1176,7 @@
     <div style="text-align:center;font-size:36px">🍺</div>
     <div class="login-title">Microbrasserie</div>
     <div class="login-subtitle">Accès réservé</div>
-    <input id="login-user" class="login-input" type="text" placeholder="Utilisateur" autocomplete="username" />
+    <input id="login-user" class="login-input" type="email" placeholder="E-mail" autocomplete="username" />
     <input id="login-mdp" class="login-input" type="password" placeholder="Mot de passe" autocomplete="current-password" />
     <button id="login-btn" class="login-btn">Se connecter</button>
     <div id="login-error" class="login-error">Identifiants incorrects</div>
@@ -2940,17 +2940,13 @@ console.log('=== MODULE JS CHARGÉ ===');
 // =========================================================
 // GESTION DES ACCÈS
 // =========================================================
-const UTILISATEURS = {
-  "admin":    { mdp: "brasserie2024", role: "admin"   },
-  "mickael":  { mdp: "houblon42",     role: "admin"   },
-  "employe1": { mdp: "cuve01",        role: "lecteur" },
-  "employe2": { mdp: "cuve02",        role: "lecteur" }
-};
+// Les accès sont gérés par Firebase Authentication (e-mail + mot de passe).
+const UTILISATEURS = {};
 
 function verifierSession() {
   try {
     const s = JSON.parse(localStorage.getItem("sessionBrasserie") || "null");
-    if (s && UTILISATEURS[s.user]) return s;
+    if (s && s.user) return s;
   } catch(e) {}
   return null;
 }
@@ -2972,42 +2968,20 @@ function tentativeConnexion() {
   const user = (document.getElementById("login-user").value || "").trim().toLowerCase();
   const mdp  = document.getElementById("login-mdp").value || "";
   const err  = document.getElementById("login-error");
-
-  // Diagnostic visible
-  console.log('Login attempt:', user, '| UTILISATEURS:', typeof UTILISATEURS, Object.keys(UTILISATEURS||{}));
-
-  if (!UTILISATEURS) {
-    err.textContent = 'Erreur init — rechargez la page';
-    err.style.display = "block";
-    return;
-  }
-
-  if (UTILISATEURS[user] && UTILISATEURS[user].mdp === mdp) {
-    const role = UTILISATEURS[user].role;
-    localStorage.setItem("sessionBrasserie", JSON.stringify({ user, role }));
-    document.getElementById("login-screen").classList.add("hidden");
-    document.getElementById("badge-username").textContent = user + (role === "admin" ? " 👑" : "");
-    document.getElementById("user-badge").style.display = "block";
-    err.style.display = "none";
-    // Connexion Firebase anonyme puis lancement
-    if (typeof signInAnonymously === 'function' && auth) {
-      signInAnonymously(auth)
-        .then(() => initApp())
-        .catch(() => initApp());
-    } else {
-      initApp();
-    }
-  } else {
-    err.textContent = 'Identifiants incorrects';
+  err.style.display = "none";
+  signInWithEmailAndPassword(auth, user, mdp).then(() => {
+    // la suite (session, initApp) est faite par onAuthStateChanged
+  }).catch(e => {
+    err.textContent = (e && /network/i.test(e.code||'')) ? 'Pas de réseau' : 'Identifiants incorrects';
     err.style.display = "block";
     document.getElementById("login-mdp").value = "";
     document.getElementById("login-mdp").focus();
-  }
+  });
 }
 
 function seDeconnecter() {
   localStorage.removeItem("sessionBrasserie");
-  location.reload();
+  signOut(auth).finally(() => location.reload());
 }
 
 function getRoleActuel() {
@@ -3050,7 +3024,7 @@ if (_session) {
 import { initializeApp }            from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getDatabase, ref, onValue, set, update, get }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-import { getAuth, signInAnonymously }
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
@@ -13170,14 +13144,21 @@ setTimeout(() => {
 }, 0);
 
 // Lancer l'app seulement si déjà connecté
-if (verifierSession()) {
-  signInAnonymously(auth)
-    .then(() => initApp())
-    .catch(err => {
-      console.error("Erreur Firebase Auth:", err);
-      initApp(); // tente quand même si réseau KO
-    });
-}
+// Lancer l'app seulement quand Firebase confirme la connexion
+let _appLancee = false;
+onAuthStateChanged(auth, u => {
+  if (u) {
+    const sess = { user: (u.email || '').split('@')[0], role: 'admin' };
+    localStorage.setItem("sessionBrasserie", JSON.stringify(sess));
+    document.getElementById("login-screen").classList.add("hidden");
+    document.getElementById("badge-username").textContent = sess.user + " 👑";
+    document.getElementById("user-badge").style.display = "block";
+    if (!_appLancee) { _appLancee = true; initApp(); }
+  } else {
+    localStorage.removeItem("sessionBrasserie");
+    afficherLogin();
+  }
+});
 
 </script>
 </body>
