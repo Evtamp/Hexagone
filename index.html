@@ -479,7 +479,7 @@ function brewFerm(b,c,d){const rd=(b.readings||[]).slice().sort((a,x)=>a.date<x.
    <div class="sec-h sec"><h2>Relevés</h2><button class="btn sm pri" data-act="addReading" data-id="${b.id}">+ Relevé</button></div>
    ${rd.length?`<div class="rows">${rd.map((x,i)=>`<div class="row"><div class="main"><b>${sg(num(x.sg))}</b><span class="small muted">${fD(x.date)}${x.temp?' · '+fN(num(x.temp))+' °C':''}${x.note?' · '+esc(x.note):''}</span></div><button class="btn sm" data-act="delReading" data-id="${b.id}" data-i="${(b.readings||[]).indexOf(x)}">Retirer</button></div>`).join('')}</div>`:emptyBox('Aucun relevé','Note la densité et la température régulièrement pour suivre la courbe.')}
   </div><div><h2 style="margin-bottom:10px">Profil de fermentation</h2>${(()=>{if(b.status!=='fermenting')return '';const ph=fermPhase(b);
-    return `<div class="note" style="margin-bottom:10px"><div style="margin-bottom:8px">Phase actuelle : <b>${esc(ph.label)}</b>${ph.manual?'':' <span class="small muted">(d\'après les dates prévues)</span>'}</div>
+    return `<div class="note" style="margin-bottom:10px"><div style="margin-bottom:8px">Phase actuelle : <b>${esc(ph.label)}</b>${ph.manual?` depuis le ${fD(b.phase.since)} <button class="btn sm" data-act="setPhase" data-id="${b.id}" data-v="${ph.k}">Modifier la date</button>`:' <span class="small muted">(d\'après les dates prévues)</span>'}</div>
      <div class="seg" style="flex-wrap:wrap">${PHASES.map(([k,l])=>`<button data-act="setPhase" data-id="${b.id}" data-v="${k}" class="${ph.k===k?'on':''}">${l}</button>`).join('')}</div>
      ${ph.k==='topack'?`<div style="margin-top:8px"><button class="btn sm pri" data-act="brewTab" data-v="cond">Conditionner</button></div>`:''}</div>`})()}<div class="rows">
    ${d.steps.map(s=>`<div class="row"><div class="main"><b>${esc(s.name)}</b><span class="small muted">${fD(s.start)} → ${fD(s.end)} · ${num(s.days)} j</span></div><span class="qty">${fN(num(s.temp))} °C</span></div>`).join('')||'<div class="row muted">Aucune étape</div>'}
@@ -1288,11 +1288,15 @@ const ACT={
  delReading:el=>{const b=byId('brews',el.dataset.id);b.readings.splice(num(el.dataset.i),1);save();render()},
  pack:el=>{const b=byId('brews',el.dataset.id);const date=$('#pkDate').value||today();const fmt=$('#pkFmt').value;const type=isKeg(fmt)?'Fût':'Bouteilles';const vol=num($('#pkVol').value);const cs=carbSugar(num($('#pkCo2').value),num($('#pkT').value),vol);
    Object.assign(b,{status:'packaged',packDate:date,packType:type,packVolume:vol,packQty:num($('#pkQty').value)||Math.floor(vol/(fmtOf(fmt)[2]||1)),packFormat:fmt,packSugar:type==='Fût'?0:Math.round(cs.g),readyDate:addDays(date,num($('#pkDays').value)||14)});if(b.packQty){const n={id:uid(),beer:b.name,format:fmt,qty:b.packQty,lot:b.lot||'',date,ddm:'',note:'',brewId:b.id};stk().push(n);stockMove(n,b.packQty,'Conditionnement')}save();render();toast('Conditionné : '+fN(b.packQty)+' '+unitOf(fmt,b.packQty)+' ajouté(e)s au stock')},
- setPhase:el=>{const b=byId('brews',el.dataset.id);const k=el.dataset.v,t=today();if(b.phase?.k===k)return;
-   b.phase={k,since:t};
-   // garder le calendrier cohérent : la fermentation s'arrête aujourd'hui quand on passe en garde
-   if(k==='garde'&&b.recipe?.ferm?.length>1){const f0=b.recipe.ferm[0];if(t>b.date)f0.days=Math.max(1,diff(b.date,t))}
-   save();render();toast((PHASES.find(p=>p[0]===k)||[])[1]+' depuis aujourd\'hui')},
+ setPhase:el=>{const b=byId('brews',el.dataset.id);const k=el.dataset.v,t=today();const same=b.phase?.k===k;const lab=(PHASES.find(p=>p[0]===k)||[])[1];
+   openDlg({title:(same?'Date du passage en ':'Passer en ')+lab.toLowerCase(),submit:same?'Enregistrer':'Valider',
+    body:`<label class="f">Depuis le<input type="date" name="d" value="${same&&b.phase.since||t}" min="${b.date}" max="${t}" required></label><p class="small muted">Change la date si tu as oublié de le noter le jour même. Le calendrier du brassin et le planning suivent.</p>`,
+    onSubmit:f=>{let d=fv(f,'d')||t;if(d<b.date)d=b.date;if(d>t)d=t;b.phase={k,since:d};
+     // garder le calendrier cohérent : la fermentation s'arrête à cette date quand on passe en garde
+     if(k==='garde'&&b.recipe?.ferm?.length>1){const f0=b.recipe.ferm[0];if(d>b.date)f0.days=Math.max(1,diff(b.date,d))}
+     // dry hop : le houblonnage le plus proche prend la date indiquée
+     if(k==='dh'){const hs=(b.recipe?.hops||[]).filter(h=>h.use==='dry');if(hs.length){const h=hs.reduce((a,x)=>Math.abs(diff(addDays(b.date,num(x.time)),d))<Math.abs(diff(addDays(b.date,num(a.time)),d))?x:a);h.time=diff(b.date,d)}}
+     toast(lab+' depuis le '+fD(d))}})},
  nextPhase:el=>{const b=byId('brews',el.dataset.id);const d=brewDates(b),t=today();const i=d.steps.findIndex(x=>t>=x.start&&t<x.end);if(i<0)return;
    b.recipe.ferm[i].days=Math.max(0,diff(d.steps[i].start,t));save();render();toast(i<d.steps.length-1?d.steps[i+1].name+' à partir d\'aujourd\'hui':'Prête à conditionner')},
  newStock:()=>stockForm(),
