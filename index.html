@@ -341,6 +341,9 @@ function lastSg(b){const r=(b.readings||[]).filter(x=>num(x.sg)>0);return r.leng
 const FORMATS=[['btl33','Bouteille 33 cL',0.33],['btl44','Bouteille 44 cL',0.44],['btl75','Bouteille 75 cL',0.75],['fut20','Fût 20 L',20],['fut30inox','Fût 30 L inox',30],['fut30kk','Fût 30 L KeyKeg',30],['fut30kktp','Fût 30 L KKTP',30]];
 const fmtOf=k=>FORMATS.find(f=>f[0]===k)||[k,k||'Autre',0];
 const isKeg=k=>/^fut/.test(k||'');
+function packsOf(b){if(Array.isArray(b.packs)&&b.packs.length)return b.packs;if(!num(b.packQty))return [];return [{format:b.packFormat||(b.packType==='Fût'?'fut30inox':'btl33'),qty:num(b.packQty)}]}
+const packsTxt=b=>packsOf(b).map(p=>fN(num(p.qty))+' × '+fmtOf(p.format)[1]).join(' · ');
+const pkRow=(f,q)=>`<div class="fr pk-row" style="margin-top:8px;align-items:end"><label class="f">Format<select class="pk-f">${optH(FORMATS.map(x=>[x[0],x[1]]),f)}</select></label><div style="display:flex;gap:6px;align-items:end"><label class="f" style="flex:1">Nombre<input class="pk-q" inputmode="numeric" value="${q||''}" placeholder="0"></label><button type="button" class="btn sm" data-pkdel aria-label="Retirer ce format">✕</button></div></div>`;
 const unitOf=(k,n)=>isKeg(k)?(n>1?'fûts':'fût'):(n>1?'bouteilles':'bouteille');
 function stk(){if(!Array.isArray(S.stock))S.stock=[];if(!Array.isArray(S.stockMoves))S.stockMoves=[];return S.stock}
 function stockMove(l,delta,reason){stk();S.stockMoves.unshift({date:today(),beer:l.beer,format:l.format,lot:l.lot||'',delta,reason});S.stockMoves=S.stockMoves.slice(0,300)}
@@ -400,7 +403,7 @@ V.brasserie=()=>{const t=today(),todo=todos();const sys=systems(),ferms=fermente
        const byF={};g.lines.forEach(l=>{byF[l.format]=(byF[l.format]||0)+num(l.qty)});
        const lots=[...new Set(g.lines.map(l=>l.lot).filter(Boolean))];
        const wait=g.brews.filter(b=>brewStatus(b)!=='ready');const one=!g.lines.length&&g.brews.length===1?g.brews[0]:null;
-       return `<div class="row click" data-href="${one?'#/brassins/'+one.id:'#/stock'}"><div class="main"><b>${esc(g.beer)}</b><span class="small muted">${Object.entries(byF).map(([f,q])=>fN(q)+' × '+esc(fmtOf(f)[1])).join(' · ')||esc(g.brews.map(b=>(b.packType||'')+(b.packQty?' · '+fN(num(b.packQty)):'')).join(', '))}${lots.length?' · lot '+esc(lots.join(', ')):''}</span></div>${wait.length?`<span class="badge warn">${g.lines.length?'Un lot en refermentation':'En refermentation'}</span><span class="small muted">prête ${rel(wait[0].readyDate)}</span>`:`<span class="badge ok">Prête</span>`}</div>`}).join('')}</div>`})()}</div>
+       return `<div class="row click" data-href="${one?'#/brassins/'+one.id:'#/stock'}"><div class="main"><b>${esc(g.beer)}</b><span class="small muted">${Object.entries(byF).map(([f,q])=>fN(q)+' × '+esc(fmtOf(f)[1])).join(' · ')||esc(g.brews.map(b=>packsTxt(b)||b.packType||'').join(', '))}${lots.length?' · lot '+esc(lots.join(', ')):''}</span></div>${wait.length?`<span class="badge warn">${g.lines.length?'Un lot en refermentation':'En refermentation'}</span><span class="small muted">prête ${rel(wait[0].readyDate)}</span>`:`<span class="badge ok">Prête</span>`}</div>`}).join('')}</div>`})()}</div>
   <div class="sec"><div class="sec-h"><h2>Mon grenier</h2><a class="btn sm" href="#/grenier">Voir le grenier</a></div>
    ${S.ingredients.length?(low.length?`<div class="note warn">${low.length} article(s) à racheter : ${low.slice(0,6).map(i=>esc(i.name)).join(', ')}${low.length>6?'…':''}</div>`:`<div class="note ok">${S.ingredients.length} articles en stock, rien sous le seuil d'alerte.</div>`)
     :emptyBox('Grenier vide','Note ce que tu as en stock : tu verras ici ce qu\'il faut racheter.','<a class="btn" href="#/grenier">Remplir le grenier</a>')}</div>
@@ -498,21 +501,30 @@ function chart(b,og,fg){const rd=(b.readings||[]).filter(x=>num(x.sg)>0).sort((a
    <path d="${path}" fill="none" stroke="#b8720a" stroke-width="2.5"/>${pts.map(p=>`<circle cx="${X(diff(b.date,p.date))}" cy="${Y(num(p.sg))}" r="3.5" fill="#b8720a"/>`).join('')}
    <text x="${P}" y="${H-8}" font-size="10" fill="#7d7263">J0</text><text x="${W-10}" y="${H-8}" font-size="10" text-anchor="end" fill="#7d7263">J${days}</text></svg>`}
 function brewCond(b,c){const r=b.recipe;const vol=num(b.packVolume)||num(b.volMeasured)||num(b.volume);const cs=carbSugar(num(r.carb)||2.4,num(r.packTemp)||20,vol);
-  if(b.status==='packaged'||b.status==='done')return `<div class="card"><h2>Conditionné le ${fD(b.packDate)}</h2><p class="muted">${esc(b.packType)} · ${fN(num(b.packQty))} ${b.packType==='Fût'?'fût(s)':'bouteilles'} · ${fN(num(b.packVolume))} L${b.packSugar?' · '+fN(num(b.packSugar))+' g de sucre':''}</p>
+  if(b.status==='packaged'||b.status==='done')return `<div class="card"><h2>Conditionné le ${fD(b.packDate)}</h2><p class="muted">${esc(packsTxt(b))} · ${fN(num(b.packVolume))} L${b.packSugar?' · '+fN(num(b.packSugar))+' g de sucre':''}</p>${b.status!=='done'?`<div class="actions" style="margin-bottom:8px"><button class="btn sm" data-act="packMore" data-id="${b.id}">+ Ajouter un format</button></div>`:''}
     <p>Prête à boire le <b>${fD(b.readyDate)}</b> (${rel(b.readyDate)}).</p>${b.status!=='done'?`<button class="btn" data-act="doneBrew" data-id="${b.id}">Marquer comme terminé (tout bu ou vendu)</button>`:''}</div>`;
   return `<div class="two"><div class="card"><h2 style="margin-bottom:10px">Mise en bouteille ou en fût</h2>
-   <div class="fr"><label class="f">Date<input type="date" id="pkDate" value="${today()}"></label><label class="f">Format<select id="pkFmt">${optH(FORMATS.map(f=>[f[0],f[1]]),'btl33')}</select></label></div>
-   <div class="fr" style="margin-top:10px"><label class="f">Volume conditionné (L)<input id="pkVol" inputmode="decimal" value="${fN(vol)}"></label><label class="f">Nombre (bouteilles ou fûts)<input id="pkQty" inputmode="numeric" placeholder="ex. 60"></label></div>
+   <div class="fr"><label class="f">Date<input type="date" id="pkDate" value="${today()}"></label><label class="f">Volume conditionné (L)<input id="pkVol" inputmode="decimal" value="${fN(vol)}"></label></div>
+   <div id="pkRows">${pkRow('fut30inox')}${pkRow('btl33')}</div>
+   <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><button type="button" class="btn sm" id="pkAdd">+ Ajouter un format</button><span class="small muted" id="pkSum"></span></div>
    <div class="fr" style="margin-top:10px"><label class="f">CO₂ visé (volumes)<input id="pkCo2" inputmode="decimal" value="${fN(num(r.carb)||2.4)}"></label><label class="f">Température max de fermentation (°C)<input id="pkT" inputmode="decimal" value="${fN(num(r.packTemp)||num(r.ferm?.[0]?.temp)||20)}"></label></div>
    <div class="note" id="pkCalc" style="margin-top:10px"></div>
    <label class="f" style="margin-top:10px">Jours avant d'être prête<input id="pkDays" inputmode="numeric" value="14"></label>
    <div class="actions" style="margin-top:12px"><button class="btn pri" data-act="pack" data-id="${b.id}">Valider le conditionnement</button></div></div>
    <div><div class="note">En bouteilles, le sucre de refermentation se calcule tout seul. En fût, on carbonate plutôt au CO₂ : environ <b>${fx(Math.max(0,((num(r.carb)||2.4)-1.0)*0.75),1)} bar</b> à 4 °C pour ${fN(num(r.carb)||2.4)} volumes.</div></div></div>`}
-V.brassins.after=()=>{const f=()=>{const v=num($('#pkVol')?.value),co=num($('#pkCo2')?.value),t=num($('#pkT')?.value);if(!$('#pkCalc'))return;const cs=carbSugar(co,t,v);
-  const fm=$('#pkFmt').value,q=$('#pkQty');if(q)q.placeholder='ex. '+Math.floor(v/(fmtOf(fm)[2]||1));$('#pkCalc').innerHTML=isKeg(fm)?`Carbonatation au CO₂ : environ <b>${fx(Math.max(0,(co-1.0)*0.75))} bar</b> à 4 °C pendant 5 à 7 jours.`:`Sucre de refermentation : <b>${Math.round(cs.g)} g de sucre blanc</b> (${fx(cs.gl)} g/L) ou ${Math.round(cs.dextrose)} g de dextrose. CO₂ déjà dissous : ${fx(cs.resid,2)} vol.`};
-  ['pkVol','pkCo2','pkT','pkFmt'].forEach(id=>{const e=$('#'+id);if(e)e.oninput=e.onchange=f});f();
+V.brassins.after=()=>{const f=()=>{if(!$('#pkCalc'))return;const v=num($('#pkVol')?.value),co=num($('#pkCo2')?.value),t=num($('#pkT')?.value);const P=pkRead();
+  const bl=P.filter(p=>!isKeg(p.format)).reduce((a,p)=>a+p.qty*(fmtOf(p.format)[2]||0),0),kl=P.filter(p=>isKeg(p.format)).reduce((a,p)=>a+p.qty*(fmtOf(p.format)[2]||0),0);const cs=carbSugar(co,t,bl);
+  $('#pkSum').textContent=P.length?`${fN(Math.round((bl+kl)*10)/10)} L sur ${fN(v)} L${v&&bl+kl>v+0.5?' : plus que le volume conditionné !':v-(bl+kl)>0.5?' · reste '+fN(Math.round((v-bl-kl)*10)/10)+' L':''}`:'';
+  $('#pkCalc').innerHTML=(kl?`Fûts : carbonatation au CO₂, environ <b>${fx(Math.max(0,(co-1.0)*0.75))} bar</b> à 4 °C pendant 5 à 7 jours.`:'')+(kl&&bl?'<br>':'')+(bl?`Bouteilles (${fN(Math.round(bl*10)/10)} L) : <b>${Math.round(cs.g)} g de sucre blanc</b> (${fx(cs.gl)} g/L) ou ${Math.round(cs.dextrose)} g de dextrose. CO₂ déjà dissous : ${fx(cs.resid,2)} vol.`:'')||'Indique le nombre de fûts et de bouteilles de chaque format.'};
+  const wire=()=>{$$('#pkRows .pk-row').forEach(r=>{$$('select,input',r).forEach(e=>e.oninput=e.onchange=f);const d=$('[data-pkdel]',r);d.onclick=()=>{r.remove();f()}})};
+  const add=$('#pkAdd');if(add)add.onclick=()=>{const used=pkRead(true).map(p=>p.format);const nx=(FORMATS.find(x=>!used.includes(x[0]))||FORMATS[0])[0];$('#pkRows').insertAdjacentHTML('beforeend',pkRow(nx));wire();f()};
+  wire();['pkVol','pkCo2','pkT'].forEach(id=>{const e=$('#'+id);if(e)e.oninput=e.onchange=f});f();
   $$('[data-check]').forEach(cb=>cb.onchange=()=>{const b=byId('brews',R.a);b.checks=b.checks||{};b.checks[cb.dataset.check]=cb.checked;save();cb.closest('.check').classList.toggle('done',cb.checked)});
   const og=$('#ogIn'),vol=$('#volIn');if(og)og.onchange=()=>{const b=byId('brews',R.a);b.og=num(og.value)>1?num(og.value):'';save()};if(vol)vol.onchange=()=>{const b=byId('brews',R.a);b.volMeasured=num(vol.value)||'';save()}};
+function pkRead(all){const m={};$$('#pkRows .pk-row').forEach(r=>{const k=$('.pk-f',r).value,q=Math.round(num($('.pk-q',r).value));if(all||q>0)m[k]=(m[k]||0)+q});return Object.entries(m).map(([format,qty])=>({format,qty}))}
+function packApply(b,list,date){const tot=list.reduce((a,p)=>a+p.qty,0);const types=new Set(list.map(p=>isKeg(p.format)?'Fût':'Bouteilles'));
+  b.packs=list;b.packQty=tot;b.packFormat=list[0]?.format||'';b.packType=types.size>1?'Fûts et bouteilles':[...types][0]||'';
+  return tot}
 function brewCal(b,d){const ev=[{d:b.date,t:'Brassage'}];d.steps.forEach(s=>ev.push({d:s.start,t:s.name+' ('+fN(num(s.temp))+' °C)'}));d.dry.forEach(x=>ev.push({d:x.date,t:`Dry hop ${fN(num(x.g))} g ${x.name}`}));ev.push({d:d.fermEnd,t:'Fin de fermentation → conditionnement'});
   if(b.readyDate)ev.push({d:b.readyDate,t:'Bière prête à boire'});else ev.push({d:addDays(d.fermEnd,14),t:'Bière prête à boire (estimation)'});
   ev.sort((a,c)=>a.d<c.d?-1:1);return `<div class="rows">${ev.map(e=>`<div class="row"><span class="small muted" style="min-width:110px;text-transform:capitalize">${new Date(e.d+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})}</span><div class="main">${esc(e.t)}</div><span class="small muted">${rel(e.d)}</span></div>`).join('')}</div>`}
@@ -620,7 +632,7 @@ const MOIS=['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov
 function prodData(){const H=S.prodHx||{brews:[],packs:[]};const own=new Set(S.brews.map(b=>b.hx).filter(Boolean));
   const brews=[...S.brews.filter(b=>b.status!=='planned'&&b.date).map(b=>({date:b.date})),...(H.brews||[]).filter(x=>!own.has(x.hx)&&x.date).map(x=>({date:x.date}))];
   const packs=[];
-  S.brews.filter(b=>b.packDate&&(b.status==='packaged'||b.status==='done')).forEach(b=>{const f=b.packFormat||(b.packType==='Fût'?'fut30inox':'btl33');const q=num(b.packQty);const L=num(b.packVolume)||q*(fmtOf(f)[2]||0);packs.push({date:b.packDate,L,btl:isKeg(f)?0:q,keg:isKeg(f)?q:0})});
+  S.brews.filter(b=>b.packDate&&(b.status==='packaged'||b.status==='done')).forEach(b=>{const P=packsOf(b);const c=P.reduce((a,p)=>a+num(p.qty)*(fmtOf(p.format)[2]||0),0);const L=num(b.packVolume)||c;P.forEach(p=>{const q=num(p.qty),l=q*(fmtOf(p.format)[2]||0);packs.push({date:b.packDate,L:c?L*l/c:0,btl:isKeg(p.format)?0:q,keg:isKeg(p.format)?q:0})})});
   (H.packs||[]).forEach(p=>{const q=num(p.qty);packs.push({date:p.date,L:q*(fmtOf(p.format)[2]||0),btl:isKeg(p.format)?0:q,keg:isKeg(p.format)?q:0})});
   return{brews,packs}}
 function bilanHtml(){const D=prodData();if(!D.brews.length&&!D.packs.length)return '';const mode=ui.bilan||'mois';
@@ -1286,8 +1298,17 @@ const ACT={
    save();ui.brewTab='ferm';render();toast('Bonne fermentation !')},
  addReading:el=>readingForm(byId('brews',el.dataset.id)),
  delReading:el=>{const b=byId('brews',el.dataset.id);b.readings.splice(num(el.dataset.i),1);save();render()},
- pack:el=>{const b=byId('brews',el.dataset.id);const date=$('#pkDate').value||today();const fmt=$('#pkFmt').value;const type=isKeg(fmt)?'Fût':'Bouteilles';const vol=num($('#pkVol').value);const cs=carbSugar(num($('#pkCo2').value),num($('#pkT').value),vol);
-   Object.assign(b,{status:'packaged',packDate:date,packType:type,packVolume:vol,packQty:num($('#pkQty').value)||Math.floor(vol/(fmtOf(fmt)[2]||1)),packFormat:fmt,packSugar:type==='Fût'?0:Math.round(cs.g),readyDate:addDays(date,num($('#pkDays').value)||14)});if(b.packQty){const n={id:uid(),beer:b.name,format:fmt,qty:b.packQty,lot:b.lot||'',date,ddm:'',note:'',brewId:b.id};stk().push(n);stockMove(n,b.packQty,'Conditionnement')}save();render();toast('Conditionné : '+fN(b.packQty)+' '+unitOf(fmt,b.packQty)+' ajouté(e)s au stock')},
+ pack:el=>{const b=byId('brews',el.dataset.id);const date=$('#pkDate').value||today();const list=pkRead();if(!list.length)return toast('Indique au moins un nombre de fûts ou de bouteilles');
+   const bl=list.filter(p=>!isKeg(p.format)).reduce((a,p)=>a+p.qty*(fmtOf(p.format)[2]||0),0),all=list.reduce((a,p)=>a+p.qty*(fmtOf(p.format)[2]||0),0);const cs=carbSugar(num($('#pkCo2').value),num($('#pkT').value),bl);
+   packApply(b,list,date);Object.assign(b,{status:'packaged',packDate:date,packVolume:num($('#pkVol').value)||Math.round(all*10)/10,packSugar:Math.round(cs.g),readyDate:addDays(date,num($('#pkDays').value)||14)});
+   list.forEach(p=>{const n={id:uid(),beer:b.name,format:p.format,qty:p.qty,lot:b.lot||'',date,ddm:'',note:'',brewId:b.id};stk().push(n);stockMove(n,p.qty,'Conditionnement')});
+   save();render();toast('Ajouté au stock : '+packsTxt(b))},
+ packMore:el=>{const b=byId('brews',el.dataset.id);
+   openDlg({title:'Ajouter un format',submit:'Ajouter au stock',body:`<p class="small muted">Pour un conditionnement fait en plusieurs fois (par exemple les bouteilles quelques jours après les fûts). Déjà conditionné : ${esc(packsTxt(b))}.</p>
+    <label class="f">Date<input type="date" name="d" value="${today()}"></label><div class="fr" style="margin-top:8px"><label class="f">Format<select name="f">${optH(FORMATS.map(x=>[x[0],x[1]]),'btl75')}</select></label><label class="f">Nombre<input name="q" inputmode="numeric" required></label></div>`,
+    onSubmit:f=>{const q=Math.round(num(fv(f,'q'))),k=fv(f,'f'),d=fv(f,'d')||today();if(!(q>0)){toast('Indique un nombre');return false}
+     const list=packsOf(b).map(p=>({...p}));const ex=list.find(p=>p.format===k);if(ex)ex.qty+=q;else list.push({format:k,qty:q});packApply(b,list,d);b.packVolume=Math.max(num(b.packVolume),Math.round(list.reduce((t,p)=>t+p.qty*(fmtOf(p.format)[2]||0),0)*10)/10);
+     const n={id:uid(),beer:b.name,format:k,qty:q,lot:b.lot||'',date:d,ddm:'',note:'',brewId:b.id};stk().push(n);stockMove(n,q,'Conditionnement');toast('Ajouté au stock : '+fN(q)+' × '+fmtOf(k)[1])}})},
  setPhase:el=>{const b=byId('brews',el.dataset.id);const k=el.dataset.v,t=today();const same=b.phase?.k===k;const lab=(PHASES.find(p=>p[0]===k)||[])[1];
    openDlg({title:(same?'Date du passage en ':'Passer en ')+lab.toLowerCase(),submit:same?'Enregistrer':'Valider',
     body:`<label class="f">Depuis le<input type="date" name="d" value="${same&&b.phase.since||t}" min="${b.date}" max="${t}" required></label><p class="small muted">Change la date si tu as oublié de le noter le jour même. Le calendrier du brassin et le planning suivent.</p>`,
