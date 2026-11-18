@@ -85,6 +85,9 @@ h3{font-size:15px;margin:0}
 .badge.ok{background:var(--green-soft);color:var(--green)}.badge.warn{background:var(--warn-soft);color:var(--warn)}
 .badge.acc{background:var(--accent-soft);color:var(--accent)}.badge.blue{background:var(--blue-soft);color:var(--blue)}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
+.rc-row{display:grid;grid-template-columns:2.2fr 1fr .9fr 1.2fr 1.3fr 1.2fr auto;gap:8px;align-items:end;padding:8px 0;border-bottom:1px solid var(--line)}
+@media(max-width:700px){.rc-row{grid-template-columns:1fr 1fr 1fr}.rc-row .rc-n{grid-column:1/-1}}
+#dlg:has(#rcRows){width:min(1000px,96vw);max-width:none}
 html.locked body>*:not(#login):not(script){visibility:hidden}
 #login{position:fixed;inset:0;z-index:500;background:var(--bg,#fff);display:grid;place-items:center;padding:16px}#login[hidden]{display:none}
 .login-box{width:100%;max-width:340px;display:flex;flex-direction:column;gap:12px;text-align:center}.login-box img{margin:0 auto;border-radius:14px}.login-box h1{margin:0}.login-box .btn{justify-content:center;text-align:center}.login-box .f{text-align:left}
@@ -606,7 +609,7 @@ function saveDraft(){const r=ui.draft;if(!r.name.trim()){toast('Donne un nom à 
 V.grenier=()=>{const q=norm(ui.q);const items=S.ingredients.filter(i=>(ui.fam==='Tous'||i.family===ui.fam)&&(!q||norm(i.name).includes(q))).sort((a,b)=>isLow(b)-isLow(a)||a.name.localeCompare(b.name));
   const counts={Tous:S.ingredients.length};FAMILIES.forEach(f=>counts[f]=S.ingredients.filter(i=>i.family===f).length);
   const can=S.recipes.map(r=>({r,miss:check(needsOf(r)).filter(x=>x.missing>1e-6)}));
-  return `<div class="head"><div><div class="kicker">${S.ingredients.length} ingrédient(s)</div><h1>Mon grenier</h1></div><div class="actions"><a class="btn" href="#/courses">Liste de courses</a><button class="btn pri" data-act="newIng">Ajouter au grenier</button></div></div>
+  return `<div class="head"><div><div class="kicker">${S.ingredients.length} ingrédient(s)</div><h1>Mon grenier</h1></div><div class="actions"><a class="btn" href="#/courses">Liste de courses</a><button class="btn" data-act="recep">Réception de commande</button><button class="btn pri" data-act="newIng">Ajouter au grenier</button></div></div>
   <div class="two"><div>
    <input id="q" placeholder="Rechercher…" value="${esc(ui.q)}" style="margin-bottom:10px">
    <div class="chips" style="margin-bottom:12px">${['Tous',...FAMILIES].map(f=>`<button class="chip ${ui.fam===f?'on':''}" data-act="fam" data-v="${f}">${f} · ${counts[f]}</button>`).join('')}</div>
@@ -1230,6 +1233,36 @@ function openDlg({title,body,submit='Enregistrer',onSubmit,extra='',onOpen}){
   $$('[data-close]',form).forEach(b=>b.onclick=()=>dlg.close());if(onOpen)onOpen(form);dlg.showModal()}
 const fv=(f,n)=>f.elements[n]?String(f.elements[n].value).trim():'';
 const optH=(arr,sel)=>arr.map(v=>Array.isArray(v)?`<option value="${esc(v[0])}" ${String(v[0])===String(sel)?'selected':''}>${esc(v[1])}</option>`:`<option ${v===sel?'selected':''}>${esc(v)}</option>`).join('');
+/* ---------- réception d'une commande de MP : entrée de stock en masse ---------- */
+const rcRow=(x={})=>`<div class="rc-row"><label class="f rc-n">Article<input class="rc-name" list="dl-rc" value="${esc(x.name||'')}" placeholder="ex. Malt Pilsner"></label>
+  <label class="f">Quantité<input class="rc-q" inputmode="decimal" value="${x.qty?fN(x.qty):''}"></label><label class="f">Unité<select class="rc-u">${optH(UNITS,x.unit||'kg')}</select></label>
+  <label class="f">Lot<input class="rc-lot" value="${esc(x.lot||'')}"></label><label class="f">DDM<input type="date" class="rc-ddm" value="${esc(x.ddm||'')}"></label>
+  <label class="f">Famille<select class="rc-f">${optH(FAMILIES,x.family||'Malts')}</select></label><button type="button" class="btn sm rc-del" aria-label="Retirer la ligne">✕</button></div>`;
+function recepForm(){const shop=S.shopping.filter(x=>!x.done);
+  openDlg({title:'Réception de commande',submit:'Entrer en stock',body:`
+   <p class="small muted" style="margin-bottom:8px">Une ligne par article reçu. Un article qui existe déjà dans le grenier est complété (quantité ajoutée, lot et DDM mis à jour) ; sinon il est créé.</p>
+   <div class="fr"><label class="f">Date<input type="date" name="date" value="${today()}"></label><label class="f">Fournisseur<input name="supplier" list="dl-sup" placeholder="ex. Brouwland"></label><label class="f">N° BL / facture<input name="ref"></label></div>
+   <datalist id="dl-sup">${[...new Set(S.ingredients.map(i=>i.supplier).filter(Boolean))].map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
+   <datalist id="dl-rc">${[...new Set([...S.ingredients.map(i=>i.name),...LIB.malts.map(x=>x[0]),...LIB.hops.map(x=>x[0]),...LIB.yeasts.map(x=>x[0])])].map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
+   <div id="rcRows">${rcRow()}${rcRow()}${rcRow()}</div>
+   <div class="actions" style="margin-top:10px"><button type="button" class="btn sm" id="rcAdd">+ Ajouter une ligne</button>${shop.length?`<button type="button" class="btn sm" id="rcShop">Reprendre la liste de courses (${shop.length})</button>`:''}</div>`,
+   onOpen:f=>{const box=$('#rcRows',f);
+     const wire=()=>$$('.rc-row',box).forEach(r=>{$('.rc-del',r).onclick=()=>{r.remove();if(!$('.rc-row',box))box.insertAdjacentHTML('beforeend',rcRow()),wire()};
+       const n=$('.rc-name',r);n.onchange=()=>{const it=findIng(n.value);if(it){$('.rc-u',r).value=it.unit;$('.rc-f',r).value=it.family||'Autres'}else{const fam=LIB.malts.some(x=>norm(x[0])===norm(n.value))?'Malts':LIB.hops.some(x=>norm(x[0])===norm(n.value))?'Houblons':LIB.yeasts.some(x=>norm(x[0])===norm(n.value))?'Levures':'';if(fam)$('.rc-f',r).value=fam}}});
+     $('#rcAdd',f).onclick=()=>{box.insertAdjacentHTML('beforeend',rcRow());wire();$$('.rc-name',box).pop().focus()};
+     const sh=$('#rcShop',f);if(sh)sh.onclick=()=>{$$('.rc-row',box).filter(r=>!$('.rc-name',r).value.trim()).forEach(r=>r.remove());
+       shop.forEach(x=>{const it=findIng(x.name);box.insertAdjacentHTML('beforeend',rcRow({name:x.name,qty:num(x.qty),unit:x.unit,family:it?it.family:(x.fam||'Autres')}))});wire();sh.remove()};
+     wire()},
+   onSubmit:f=>{const date=fv(f,'date')||today(),sup=fv(f,'supplier'),ref=fv(f,'ref');const note='Réception'+(sup?' '+sup:'')+(ref?' '+ref:'');
+     const L=$$('#rcRows .rc-row',f).map(r=>({name:$('.rc-name',r).value.trim(),qty:num($('.rc-q',r).value),unit:$('.rc-u',r).value,lot:$('.rc-lot',r).value.trim(),ddm:$('.rc-ddm',r).value,family:$('.rc-f',r).value})).filter(x=>x.name&&x.qty>0);
+     if(!L.length){toast('Indique au moins un article et sa quantité');return false}
+     let add=0,upd=0;L.forEach(x=>{const it=findIng(x.name);
+       if(it){const c=conv(x.qty,x.unit,it.unit);if(c==null){toast(`${x.name} : unité ${x.unit} incompatible avec ${it.unit} dans le grenier`);return}
+         it.qty=Math.round((num(it.qty)+c)*1000)/1000;if(x.lot)it.lot=x.lot;if(x.ddm)it.ddm=x.ddm;if(sup)it.supplier=sup;S.moves.unshift({id:uid(),date,name:it.name,delta:c,unit:it.unit,note:note+(x.lot?' · lot '+x.lot:'')});upd++}
+       else{const lib=LIB.malts.find(m=>norm(m[0])===norm(x.name));S.ingredients.push({id:uid(),name:x.name,family:x.family,qty:x.qty,unit:x.unit,alert:0,ebc:lib?lib[1]:'',extract:lib?lib[2]:'',aa:'',lot:x.lot,ddm:x.ddm,supplier:sup});
+         S.moves.unshift({id:uid(),date,name:x.name,delta:x.qty,unit:x.unit,note:note+(x.lot?' · lot '+x.lot:'')});add++}
+       S.shopping=S.shopping.filter(s=>s.done||norm(s.name)!==norm(x.name))});
+     S.moves=S.moves.slice(0,300);toast(`${upd} article(s) complété(s), ${add} créé(s)`)}})}
 function ingForm(i){const isNew=!i;i=i||{family:ui.fam!=='Tous'?ui.fam:'Malts',unit:'kg',qty:'',alert:'',ebc:'',extract:'',aa:''};
   openDlg({title:isNew?'Ajouter au grenier':'Modifier',body:`
    <label class="f">Nom<input name="name" list="dl-all" value="${esc(i.name)}" required placeholder="ex. Malt Pilsner"></label>
@@ -1375,6 +1408,7 @@ const ACT={
  logout:()=>{if(!confirm('Se déconnecter ? Les données de cet appareil sont effacées ; elles restent en ligne et reviennent à la prochaine connexion.'))return;window.CLOUD.logout()},
  bilan:el=>{ui.bilan=el.dataset.v;render()},
  bilanY:el=>{ui.bilanY=+el.dataset.v;ui.bilan='mois';render()},
+ recep:()=>recepForm(),
  tool:el=>{ui.tool=el.dataset.v;go('/outils')},
  ics:()=>{const ev=[];const d=s=>s.replace(/-/g,'');const add=(date,t,u)=>ev.push(`BEGIN:VEVENT\r\nUID:${u}@brassage\r\nDTSTAMP:${d(today())}T000000Z\r\nDTSTART;VALUE=DATE:${d(date)}\r\nDTEND;VALUE=DATE:${d(addDays(date,1))}\r\nSUMMARY:${t.replace(/[,;\\]/g,' ')}\r\nEND:VEVENT`);
    S.brews.filter(b=>b.status!=='done').forEach(b=>{const x=brewDates(b);add(b.date,'Brassage '+b.name,b.id+'b');x.dry.forEach((h,i)=>add(h.date,`Dry hop ${b.name} (${h.name})`,b.id+'d'+i));add(x.fermEnd,'Fin de fermentation '+b.name,b.id+'f');add(b.readyDate||addDays(x.fermEnd,14),b.name+' prête à boire',b.id+'r')});
