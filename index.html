@@ -87,6 +87,7 @@ h3{font-size:15px;margin:0}
 .badge.ok{background:var(--green-soft);color:var(--green)}.badge.warn{background:var(--warn-soft);color:var(--warn)}
 .badge.acc{background:var(--accent-soft);color:var(--accent)}.badge.blue{background:var(--blue-soft);color:var(--blue)}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
+.tbl tr.click{cursor:pointer}.tbl tr.on td{background:var(--surface2);font-weight:600}
 .doc-foot{margin-top:18px;padding-top:10px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);text-align:center;line-height:1.6}.doc-foot b{color:var(--ink)}
 #sigPad{position:fixed;inset:0;z-index:400;background:var(--bg,#fff);display:flex;flex-direction:column;gap:10px;padding:max(12px,env(safe-area-inset-top)) 16px max(12px,env(safe-area-inset-bottom))}
 #sigPad .sig-h{display:flex;justify-content:space-between;align-items:center;gap:10px}#sigPad .sig-recap{color:var(--muted)}
@@ -1069,12 +1070,45 @@ function tapsEditor(o){const T=taps();if(!T.length)return `<div class="note smal
 const readTaps=f=>[...f.querySelectorAll('input[name=tap]:checked')].map(x=>x.value);
 const tapsTxt=o=>(o.taps||[]).length?' · '+(o.taps.length>1?o.taps.length+' tireuses':'1 tireuse'):'';
 /* --- clients --- */
-V.clients=()=>{const q=norm(ui.cq||'');const L=coll('clients').filter(c=>!q||norm([c.nom,c.ville,c.contact].join(' ')).includes(q)).sort((a,b)=>cliName(a).localeCompare(cliName(b),'fr'));
+V.clients=()=>{if(R.a)return clientPage(byId('clients',R.a));const q=norm(ui.cq||'');const L=coll('clients').filter(c=>!q||norm([c.nom,c.ville,c.contact].join(' ')).includes(q)).sort((a,b)=>cliName(a).localeCompare(cliName(b),'fr'));
   return `<div class="head"><div><div class="kicker">${coll('clients').length} client(s)</div><h1>Clients</h1></div><div class="actions"><button class="btn pri" data-act="newClient">Nouveau client</button></div></div>
   <input id="cq" placeholder="Rechercher un client, une ville…" value="${esc(ui.cq||'')}" style="margin-bottom:12px">
   ${L.length?`<div class="rows">${L.map(c=>{const nb=coll('bls').filter(b=>clientOf(b)===c).length,no=coll('orders').filter(o=>clientOf(o)===c&&o.status==='todo').length;
-    return `<div class="row click" data-act="editClient" data-id="${c.id}"><div class="main"><b>${esc(cliName(c)||'(sans nom)')}</b><span class="small muted">${[c.type,[c.cp,c.ville].filter(Boolean).join(' '),c.contact,c.tel].filter(Boolean).map(esc).join(' · ')||'&nbsp;'}</span></div>${no?`<span class="badge acc">${no} à livrer</span>`:''}<span class="small muted">${nb} BL</span></div>`}).join('')}</div>`
+    return `<div class="row click" data-href="#/clients/${c.id}"><div class="main"><b>${esc(cliName(c)||'(sans nom)')}</b><span class="small muted">${[c.type,[c.cp,c.ville].filter(Boolean).join(' '),c.contact,c.tel].filter(Boolean).map(esc).join(' · ')||'&nbsp;'}</span></div>${no?`<span class="badge acc">${no} à livrer</span>`:''}<span class="small muted">${nb} BL</span></div>`}).join('')}</div>`
    :emptyBox(coll('clients').length?'Aucun résultat':'Aucun client','Ajoute tes clients : bars, caves, particuliers… Tu les retrouveras dans les commandes et les BL.','<button class="btn pri" data-act="newClient">Nouveau client</button>')}`};
+/* ---------- fiche client : infos, historique des livraisons (total, par année, par mois, par bière), commandes, suivi ---------- */
+function cliDeliv(c){const out=[];coll('bls').filter(b=>clientOf(b)===c).forEach(b=>(b.lines||[]).filter(l=>l.format).forEach(l=>{const q=lineQty(l);out.push({date:b.date||'',beer:l.beer||'',keg:isKeg(l.format)?q:0,btl:isKeg(l.format)?0:q,L:q*(fmtOf(l.format)[2]||0)})}));return out}
+function cliAgg(L){const r={keg:0,btl:0,L:0};L.forEach(x=>{r.keg+=x.keg;r.btl+=x.btl;r.L+=x.L});return r}
+function clientPage(c){if(!c)return emptyBox('Client introuvable','','<a class="btn" href="#/clients">Retour aux clients</a>');
+  const bls=coll('bls').filter(b=>clientOf(b)===c).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const ords=coll('orders').filter(o=>clientOf(o)===c).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const D=cliDeliv(c),T=cliAgg(D);const years=[...new Set([...D.map(x=>x.date.slice(0,4)),...ords.map(o=>(o.date||'').slice(0,4))].filter(Boolean))].sort().reverse();
+  const Y=years.includes(ui.cliY)?ui.cliY:(years[0]||today().slice(0,4));
+  const nbBl=y=>bls.filter(b=>(b.date||'').startsWith(y)).length,nbCde=y=>ords.filter(o=>(o.date||'').startsWith(y)&&o.status!=='cancel').length;
+  const L1=x=>fN(Math.round(x*10)/10);
+  const yRows=years.map(y=>{const a=cliAgg(D.filter(x=>x.date.startsWith(y)));return `<tr class="click${y===Y?' on':''}" data-act="cliY" data-v="${y}"><td><b>${y}</b></td><td class="n">${nbCde(y)}</td><td class="n">${nbBl(y)}</td><td class="n">${fN(a.keg)}</td><td class="n">${fN(a.btl)}</td><td class="n">${L1(a.L)} L</td></tr>`}).join('');
+  const mRows=MOIS.map((m,i)=>{const k=Y+'-'+String(i+1).padStart(2,'0');const a=cliAgg(D.filter(x=>x.date.startsWith(k)));const nb=bls.filter(b=>(b.date||'').startsWith(k)).length;
+    return nb||a.L?`<tr><td>${m}</td><td class="n">${nb}</td><td class="n">${fN(a.keg)}</td><td class="n">${fN(a.btl)}</td><td class="n">${L1(a.L)} L</td></tr>`:''}).join('');
+  const byBeer={};D.filter(x=>x.date.startsWith(Y)).forEach(x=>{const b=byBeer[x.beer]=byBeer[x.beer]||{keg:0,btl:0,L:0};b.keg+=x.keg;b.btl+=x.btl;b.L+=x.L});
+  const bRows=Object.entries(byBeer).sort((a,b)=>b[1].L-a[1].L).map(([n,a])=>`<tr><td>${esc(n)}</td><td class="n">${fN(a.keg)}</td><td class="n">${fN(a.btl)}</td><td class="n">${L1(a.L)} L</td></tr>`).join('');
+  const info=[['Type',c.type],['Contact',c.contact],['Téléphone',c.tel&&`<a href="tel:${esc(c.tel)}">${esc(c.tel)}</a>`],['E-mail',c.email&&`<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`],['Adresse',[c.adresse,[c.cp,c.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ')],['SIRET',c.siret],['Notes',c.notes]]
+    .filter(x=>x[1]).map(([k,v])=>`<tr><td class="muted">${k}</td><td>${/^<a /.test(v)?v:esc(v)}</td></tr>`).join('');
+  const last=bls[0];const ST_O={todo:['À livrer','acc'],done:['Livrée','ok'],cancel:['Annulée','']};
+  return `<div class="head"><div><a class="small muted" href="#/clients" style="text-decoration:none">← Clients</a><h1>${esc(cliName(c)||'(sans nom)')}</h1>${last?`<div class="small muted">Dernière livraison ${fD(last.date)} (${rel(last.date)})</div>`:''}</div>
+   <div class="actions"><button class="btn" data-act="editClient" data-id="${c.id}">Modifier</button><button class="btn pri" data-act="newOrder" data-client="${c.id}">Nouvelle commande</button></div></div>
+  <div class="fr" style="margin-bottom:14px"><div class="stat"><b>${ords.filter(o=>o.status!=='cancel').length}</b><span>Commandes</span></div><div class="stat"><b>${bls.length}</b><span>Livraisons (BL)</span></div><div class="stat"><b>${fN(T.keg)}</b><span>Fûts</span></div><div class="stat"><b>${fN(T.btl)}</b><span>Bouteilles</span></div><div class="stat"><b>${L1(T.L)} L</b><span>Volume livré</span></div></div>
+  <div class="two"><div>
+   ${years.length?`<h2 style="margin-bottom:8px">Par année</h2><div class="card" style="margin-bottom:16px"><table class="tbl"><tr><th>Année</th><th class="n">Commandes</th><th class="n">BL</th><th class="n">Fûts</th><th class="n">Bouteilles</th><th class="n">Volume</th></tr>${yRows}</table><p class="small muted" style="margin-top:6px">Clique sur une année pour le détail par mois et par bière.</p></div>
+   <h2 style="margin-bottom:8px">${Y} par mois</h2><div class="card" style="margin-bottom:16px">${mRows?`<table class="tbl"><tr><th>Mois</th><th class="n">BL</th><th class="n">Fûts</th><th class="n">Bouteilles</th><th class="n">Volume</th></tr>${mRows}</table>`:'<p class="muted">Aucune livraison cette année.</p>'}</div>
+   ${bRows?`<h2 style="margin-bottom:8px">${Y} par bière</h2><div class="card" style="margin-bottom:16px"><table class="tbl"><tr><th>Bière</th><th class="n">Fûts</th><th class="n">Bouteilles</th><th class="n">Volume</th></tr>${bRows}</table></div>`:''}`
+   :emptyBox('Pas encore de livraison','L\'historique se remplit avec les BL de ce client.')}
+  </div><div>
+   ${info?`<h2 style="margin-bottom:8px">Coordonnées</h2><div class="card" style="margin-bottom:16px"><table class="tbl">${info}</table></div>`:''}
+   <h2 style="margin-bottom:8px">Suivi</h2><div class="card" style="margin-bottom:16px"><div style="display:flex;gap:6px"><input id="cliSuivi" placeholder="Appel, relance, remarque…" style="flex:1"><button class="btn" data-act="cliSuivi" data-id="${c.id}">Ajouter</button></div>
+    ${(c.suivis||[]).slice().reverse().slice(0,20).map(x=>`<div style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="small muted">${new Date(x.ts).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'})}</div>${esc(x.texte)}</div>`).join('')||'<p class="small muted" style="margin-top:8px">Aucune note de suivi.</p>'}</div>
+   <h2 style="margin-bottom:8px">Commandes</h2>${ords.length?`<div class="rows" style="margin-bottom:16px">${ords.slice(0,30).map(o=>`<div class="row"><div class="main"><b>${fD(o.date)}${o.num?' · '+esc(o.num):''}</b><span class="small muted">${esc(linesTxt(o.lines))}${(o.lines||[]).length?' · '+esc([...new Set(o.lines.map(l=>l.beer))].join(', ')):''}</span></div><span class="badge ${(ST_O[o.status]||['',''])[1]}">${(ST_O[o.status]||[o.status])[0]}</span></div>`).join('')}</div>`:'<p class="muted" style="margin-bottom:16px">Aucune commande.</p>'}
+   <h2 style="margin-bottom:8px">Bons de livraison</h2>${bls.length?`<div class="rows">${bls.slice(0,50).map(b=>`<div class="row click" data-href="#/bl/${b.id}"><div class="main"><b>${esc(b.ref)} · ${fD(b.date)}</b><span class="small muted">${esc(linesTxt((b.lines||[]).filter(l=>l.format)))}</span></div>${b.status==='signe'?'<span class="badge ok">Signé</span>':'<span class="badge warn">À signer</span>'}</div>`).join('')}</div>`:'<p class="muted">Aucun BL.</p>'}
+  </div></div>`}
 V.clients.after=()=>{const q=$('#cq');if(q)q.oninput=()=>{ui.cq=q.value;const p=q.selectionStart;render();const n=$('#cq');n.focus();n.setSelectionRange(p,p)}};
 function clientForm(c,then){const isNew=!c;c=c||{nom:'',type:'Bar / restaurant'};
   const hist=isNew?[]:[...coll('bls').filter(b=>clientOf(b)===c)].sort((a,b)=>a.date<b.date?1:-1).slice(0,8);
@@ -1242,7 +1276,7 @@ const HX_FMT_TXT=[[/30\s*l.*inox/i,'fut30inox'],[/kktp/i,'fut30kktp'],[/30\s*l.*
 function hxParseDesignation(d,unite){let t=String(d||'').replace(/^Retour — /,'');const parts=t.split(' — ');const beer=parts[0].trim();const rest=(parts.slice(1).join(' ')||'')+' '+(unite||'');
   const m=HX_FMT_TXT.find(([re])=>re.test(rest));return{beer,format:m?m[1]:(/f[uû]t/i.test(rest)?'fut30inox':'')}}
 function hexagoneSales(j){if(!j||!(j.clients||j.orders||j.bl))return null;
-  const clients=hxArr(j.clients).filter(c=>c.nom).map(c=>({hx:String(c.id||c.nom),nom:String(c.nom).trim(),type:c.type&&CTYPES.includes(c.type)?c.type:(c.type||''),contact:c.contact||'',tel:c.tel||'',email:c.email||'',adresse:c.adresse||'',cp:c.cp||'',ville:c.ville||'',siret:c.siret||'',notes:c.notes||''}));
+  const clients=hxArr(j.clients).filter(c=>c.nom).map(c=>({hx:String(c.id||c.nom),nom:String(c.nom).trim(),type:c.type&&CTYPES.includes(c.type)?c.type:(c.type||''),contact:c.contact||'',tel:c.tel||'',email:c.email||'',adresse:c.adresse||'',cp:c.cp||'',ville:c.ville||'',siret:c.siret||'',notes:c.notes||'',suivis:hxArr(c.suivis).filter(x=>x&&x.texte).map(x=>({ts:x.ts||Date.now(),texte:String(x.texte)}))}));
   const orders=[];Object.entries(j.orders||{}).forEach(([date,list])=>hxArr(list).forEach(o=>{if(!o||!o.client)return;const L=[];
     hxArr(o.lines).forEach(l=>{if(!l||!l.beer)return;['fut30inox','fut30kk','fut30kktp','fut20'].forEach(k=>{if(num(l[k])>0)L.push({beer:l.beer,format:k,qty:num(l[k]),carton:0})});
       if(num(l.cartons)>0){const sp=/peux pas/i.test(l.beer);L.push({beer:l.beer,format:sp?'btl44':'btl33',qty:num(l.cartons),carton:sp?24:12})}});
@@ -1432,8 +1466,10 @@ const ACT={
  editTask:el=>taskForm(coll('tasks').find(x=>x.id===el.dataset.id)),
  wk:el=>{const v=+el.dataset.v;ui.wk=v?addDays(ui.wk||monday(today()),7*v):'';render()},
  tapBack:el=>{const o=byId('orders',el.dataset.id);o.tapBack=today();save();render();toast('Tireuses de retour')},
+ cliY:el=>{ui.cliY=el.dataset.v;render()},
+ cliSuivi:el=>{const c=byId('clients',el.dataset.id),t=$('#cliSuivi').value.trim();if(!t)return toast('Écris la note de suivi');c.suivis=c.suivis||[];c.suivis.push({ts:Date.now(),texte:t});save();render()},
  editClient:el=>clientForm(byId('clients',el.dataset.id)),
- newOrder:()=>orderForm(),
+ newOrder:el=>orderForm(null,el&&el.dataset&&el.dataset.client?{clientId:el.dataset.client,date:today(),lines:[],note:'',status:'todo'}:undefined),
  editOrder:el=>orderForm(byId('orders',el.dataset.id)),
  deliver:el=>deliverForm(byId('orders',el.dataset.id)),
  newBl:()=>blForm(),
