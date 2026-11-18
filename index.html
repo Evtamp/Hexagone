@@ -87,6 +87,13 @@ h3{font-size:15px;margin:0}
 .badge.ok{background:var(--green-soft);color:var(--green)}.badge.warn{background:var(--warn-soft);color:var(--warn)}
 .badge.acc{background:var(--accent-soft);color:var(--accent)}.badge.blue{background:var(--blue-soft);color:var(--blue)}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
+#sigPad{position:fixed;inset:0;z-index:400;background:var(--bg,#fff);display:flex;flex-direction:column;gap:10px;padding:max(12px,env(safe-area-inset-top)) 16px max(12px,env(safe-area-inset-bottom))}
+#sigPad .sig-h{display:flex;justify-content:space-between;align-items:center;gap:10px}#sigPad .sig-recap{color:var(--muted)}
+#sigPad .sig-zone{flex:1;min-height:200px;position:relative;border:2px dashed var(--line);border-radius:14px;background:#fff;overflow:hidden}
+#sigPad canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+#sigPad .sig-hint{position:absolute;left:0;right:0;bottom:24%;text-align:center;color:#c9c0b4;font-size:20px;pointer-events:none;border-top:1px solid #e8e0d4;margin:0 10%;padding-top:6px}
+#sigPad .sig-f{display:flex;gap:8px;flex-wrap:wrap;align-items:center}#sigPad .sig-f .sp{flex:1}
+.sign .sig-cli{display:flex;flex-direction:column;gap:4px;height:auto;min-height:90px}.sig-cli img{max-width:100%;max-height:70px;object-fit:contain;align-self:flex-start}
 .rc-row{display:grid;grid-template-columns:2.2fr 1fr .9fr 1.2fr 1.3fr 1.2fr auto;gap:8px;align-items:end;padding:8px 0;border-bottom:1px solid var(--line)}
 @media(max-width:700px){.rc-row{grid-template-columns:1fr 1fr 1fr}.rc-row .rc-n{grid-column:1/-1}}
 #dlg:has(#rcRows){width:min(1000px,96vw);max-width:none}
@@ -1141,15 +1148,62 @@ V.bl=()=>{if(R.a)return blDoc(byId('bls',R.a));const q=norm(ui.bq||'');
    :emptyBox(coll('bls').length?'Aucun résultat':'Aucun bon de livraison','Un BL se crée en un clic quand tu livres une commande. Il sort les bouteilles et fûts du stock et s\'imprime.')}`};
 V.bl.after=()=>{const q=$('#bq');if(q)q.oninput=()=>{ui.bq=q.value;const p=q.selectionStart;render();const n=$('#bq');n.focus();n.setSelectionRange(p,p)}};
 function blDoc(b){if(!b)return emptyBox('BL introuvable','','<a class="btn" href="#/bl">Retour aux BL</a>');const c=clientOf(b)||{};const co=S.company||{};
-  return `<div class="head noprint"><div><a class="small muted" href="#/bl" style="text-decoration:none">← Bons de livraison</a><h1>${esc(b.ref)}</h1></div><div class="actions">
-   ${b.status==='signe'?'<button class="btn" data-act="blSign" data-id="'+b.id+'">Remettre en attente</button>':'<button class="btn" data-act="blSign" data-id="'+b.id+'">Marquer signé</button>'}${(b.lines||[]).some(l=>l.format&&num(l.qty)>0)?`<button class="btn" data-act="blRet" data-id="${b.id}">Reprise non consommé</button>`:''}<button class="btn danger" data-act="blDel" data-id="${b.id}">Supprimer</button><button class="btn pri" data-act="print">Imprimer</button></div></div>
+  return `<div class="head noprint"><div><a class="small muted" href="#/bl" style="text-decoration:none">← Bons de livraison</a><h1>${esc(b.ref)}</h1>${b.mailedAt?`<div class="small muted">Envoyé par mail à ${esc(b.mailedTo||'')} le ${new Date(b.mailedAt).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'})}</div>`:''}</div><div class="actions">
+   ${b.status==='signe'?'<button class="btn" data-act="blSign" data-id="'+b.id+'">Remettre en attente</button>':'<button class="btn pri" data-act="blSignPad" data-id="'+b.id+'">Faire signer le client</button>'}${c.email?`<button class="btn" data-act="blMail" data-id="${b.id}">Envoyer par mail</button>`:''}${(b.lines||[]).some(l=>l.format&&num(l.qty)>0)?`<button class="btn" data-act="blRet" data-id="${b.id}">Reprise non consommé</button>`:''}<button class="btn danger" data-act="blDel" data-id="${b.id}">Supprimer</button><button class="btn pri" data-act="print">Imprimer</button></div></div>
   <div class="doc"><div class="doc-top"><div><h2 style="font-size:20px">${esc(co.nom||S.brewery||'Ma brasserie')}</h2><div class="small">${[co.adresse,[co.cp,co.ville].filter(Boolean).join(' '),co.tel,co.email,co.siret?'SIRET '+co.siret:''].filter(Boolean).map(esc).join('<br>')}</div></div>
    <div style="text-align:right"><div style="font-size:22px;font-weight:800">Bon de livraison</div><div>N° <b>${esc(b.ref)}</b></div><div>Date : ${new Date(b.date+'T12:00:00').toLocaleDateString('fr-FR')}</div>${b.orderId&&byId('orders',b.orderId)?.num?`<div class="small muted">Commande ${esc(byId('orders',b.orderId).num)}</div>`:''}</div></div>
    <div style="margin-top:22px;padding:12px 14px;background:var(--surface2);border-radius:10px;max-width:360px"><div class="small muted">Livré à</div><b>${esc(c.nom||b.client||'')}</b><div class="small">${esc(b.adresse||[c.adresse,[c.cp,c.ville].filter(Boolean).join(' ')].filter(Boolean).join(', '))}${c.tel?'<br>'+esc(c.tel):''}</div></div>
    <table><thead><tr><th>Désignation</th><th>Lot</th><th class="n">Quantité</th></tr></thead><tbody>${(b.taps||[]).map(id=>`<tr><td>Tireuse à bière ${esc((byId('equipment',id)||{}).name||'')}${(byId('equipment',id)||{}).brand?' ('+esc(byId('equipment',id).brand)+')':''} — prêt</td><td></td><td class="n">1</td></tr>`).join('')}${(b.lines||[]).map(l=>`<tr${num(l.qty)<0?' class="ret"':''}><td>${esc(lineLabel(l))}${l.retDate?` <span class="small muted">(${fD(l.retDate)})</span>`:''}</td><td>${esc(l.lot||'')}</td><td class="n">${l.format?qtyLabel(l):fN(num(l.qty))+' '+esc(l.unite||'')}</td></tr>`).join('')}</tbody></table>
    <p class="small" style="margin-top:10px">${(b.lines||[]).some(l=>l.format&&num(l.qty)<0)?`Livré : ${linesTxt(b.lines.filter(l=>l.format&&num(l.qty)>0))} · Repris : ${linesTxt(b.lines.filter(l=>l.format&&num(l.qty)<0).map(l=>({...l,qty:-num(l.qty)})))} · <b>Net : ${linesTxt(b.lines.filter(l=>l.format))}</b>`:`Total : ${linesTxt(b.lines.filter(l=>l.format))}`}</p>
    ${(b.taps||[]).length&&b.dateReprise?`<p style="margin-top:12px"><b>Reprise du matériel prêté :</b> ${new Date(b.dateReprise+'T12:00:00').toLocaleDateString('fr-FR')}</p>`:''}${b.notes?`<p style="margin-top:12px"><b>Notes :</b> ${esc(b.notes)}</p>`:''}
-   <div class="sign"><div>Signature du livreur</div><div>Signature et cachet du client</div></div></div>`}
+   <div class="sign"><div>Signature du livreur</div><div class="sig-cli">Signature et cachet du client${b.signature?`<img src="${b.signature}" alt="Signature du client"><span class="small muted">${esc(b.sigNom||'')}${b.sigDate?' · signé le '+new Date(b.sigDate).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}):''}</span>`:''}</div></div></div>`}
+/* ---------- signature du BL sur l'écran (doigt, stylet ou souris) ---------- */
+function blSignPad(b){const c=clientOf(b)||{};const el=document.createElement('div');el.id='sigPad';
+  el.innerHTML=`<div class="sig-h"><b>${esc(b.ref)} · ${esc(c.nom||b.client||'')}</b><button type="button" class="iconbtn" data-sig="x" aria-label="Fermer">✕</button></div>
+   <div class="sig-recap small">${esc(linesTxt((b.lines||[]).filter(l=>l.format)))}${(b.taps||[]).length?' · '+b.taps.length+' tireuse(s) prêtée(s)':''}</div>
+   <label class="f">Nom du signataire<input id="sigNom" value="${esc(c.contact||'')}" autocomplete="off"></label>
+   <div class="sig-zone"><canvas></canvas><span class="sig-hint">Signez ici</span></div>
+   <div class="sig-f"><button type="button" class="btn" data-sig="clear">Effacer</button><span class="sp"></span><button type="button" class="btn" data-sig="x">Annuler</button><button type="button" class="btn pri" data-sig="ok">Valider la signature</button></div>`;
+  document.body.appendChild(el);document.body.style.overflow='hidden';
+  const cv=$('canvas',el),ctx=cv.getContext('2d');let drawn=false,last=null;
+  const size=()=>{const r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;cv.width=r.width*d;cv.height=r.height*d;ctx.setTransform(d,0,0,d,0,0);ctx.lineWidth=2.4;ctx.lineCap=ctx.lineJoin='round';ctx.strokeStyle='#1d1a16';drawn=false;$('.sig-hint',el).hidden=false};
+  requestAnimationFrame(size);
+  const pt=e=>{const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+  cv.onpointerdown=e=>{e.preventDefault();cv.setPointerCapture(e.pointerId);last=pt(e);ctx.beginPath();ctx.arc(last[0],last[1],1.2,0,7);ctx.fillStyle='#1d1a16';ctx.fill();drawn=true;$('.sig-hint',el).hidden=true};
+  cv.onpointermove=e=>{if(!last)return;e.preventDefault();const p=pt(e);ctx.beginPath();ctx.moveTo(last[0],last[1]);ctx.lineTo(p[0],p[1]);ctx.stroke();last=p};
+  cv.onpointerup=cv.onpointercancel=()=>{last=null};
+  const close=()=>{el.remove();document.body.style.overflow=''};
+  el.onclick=e=>{const a=e.target.closest('[data-sig]');if(!a)return;const k=a.dataset.sig;
+    if(k==='x')return close();if(k==='clear')return size();
+    if(!drawn)return toast('Le client doit signer dans le cadre');
+    // image réduite (fond blanc) pour garder le BL léger
+    const o=document.createElement('canvas'),W=600,H=Math.round(600*cv.height/cv.width);o.width=W;o.height=H;const x=o.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,W,H);x.drawImage(cv,0,0,W,H);
+    Object.assign(b,{status:'signe',signature:o.toDataURL('image/jpeg',0.7),sigNom:$('#sigNom',el).value.trim(),sigDate:new Date().toISOString()});
+    close();save();render();toast(b.ref+' signé ✓');if((clientOf(b)||{}).email)setTimeout(()=>blSendMail(b,true),300)}}
+/* ---------- envoi du BL par mail (même service EmailJS qu'Hexagone) ---------- */
+let EMAILJS=null;
+function emailjsLoad(){if(EMAILJS)return EMAILJS;EMAILJS=new Promise((ok,ko)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js';
+  sc.onload=()=>{try{window.emailjs.init('BDtpVagH7aqsh6Hkm');ok(window.emailjs)}catch(e){ko(e)}};sc.onerror=()=>{EMAILJS=null;ko(new Error('pas de réseau'))};document.head.appendChild(sc)});return EMAILJS}
+function blMailHtml(b){const c=clientOf(b)||{},co=S.company||{},nom=co.nom||S.brewery||'Microbrasserie';const h=v=>esc(v==null?'':v);
+  const td='padding:8px 12px;border-bottom:1px solid #f0e8d8;font-size:13px;color:#333';
+  const rows=[...(b.taps||[]).map(id=>`<tr><td style="${td}">Tireuse à bière ${h((byId('equipment',id)||{}).name)} — prêt</td><td style="${td};text-align:center;font-weight:700">1</td><td style="${td}"></td></tr>`),
+    ...(b.lines||[]).map(l=>`<tr><td style="${td}">${h(lineLabel(l))}</td><td style="${td};text-align:center;font-weight:700">${h(l.format?qtyLabel(l):fN(num(l.qty))+' '+(l.unite||''))}</td><td style="${td};font-family:monospace;color:#888">${h(l.lot)}</td></tr>`)].join('');
+  const date=new Date(b.date+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});
+  return `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333">
+   <div style="background:#b8730a;padding:16px 22px;border-radius:8px 8px 0 0;color:#fff"><div style="font-size:17px;font-weight:800">${h(nom)}</div><div style="font-size:13px">Bon de livraison ${h(b.ref)}</div></div>
+   <div style="border:1px solid #e8dfd0;border-top:none;border-radius:0 0 8px 8px;padding:18px 22px">
+    <div style="background:#f8f5f0;border-radius:6px;padding:12px 14px;margin-bottom:16px"><div style="font-size:11px;color:#888">Livré à</div><div style="font-weight:700;font-size:15px">${h(c.nom||b.client)}</div>${b.adresse?`<div style="font-size:12px;color:#666">${h(b.adresse)}</div>`:''}<div style="font-size:12px;color:#888;margin-top:4px">Date : ${date}</div></div>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr style="border-bottom:2px solid #b8730a"><th style="text-align:left;padding:6px 12px;font-size:11px;color:#888">Article</th><th style="padding:6px 12px;font-size:11px;color:#888">Quantité</th><th style="text-align:left;padding:6px 12px;font-size:11px;color:#888">Lot</th></tr></thead><tbody>${rows}</tbody></table>
+    ${b.notes?`<div style="font-size:12px;color:#666;font-style:italic;margin-bottom:12px">${h(b.notes)}</div>`:''}
+    ${b.signature?`<div style="text-align:center;margin-top:16px"><div style="font-size:11px;color:#888;margin-bottom:6px">Signature${b.sigNom?' — '+h(b.sigNom):''}</div><img src="${b.signature}" style="max-width:220px;max-height:90px;border:1px solid #eee;border-radius:4px"/>${b.sigDate?`<div style="font-size:10px;color:#aaa;margin-top:4px">Signé le ${new Date(b.sigDate).toLocaleString('fr-FR',{dateStyle:'long',timeStyle:'short'})}</div>`:''}</div>`:''}
+    ${co.iban?`<div style="margin-top:16px;padding:10px 14px;background:#f8f5f0;border-radius:6px;font-size:12px;color:#555">${co.banque?'<b>Banque :</b> '+h(co.banque)+'<br>':''}<b>IBAN :</b> ${h(co.iban)}${co.bic?'<br><b>BIC :</b> '+h(co.bic):''}</div>`:''}
+    <div style="margin-top:18px;padding-top:12px;border-top:1px solid #f0e8d8;font-size:11px;color:#aaa;text-align:center">${h(nom)}${co.tel?' · '+h(co.tel):''}${co.email?' · '+h(co.email):''}<br>${h(b.ref)} — ${b.status==='signe'?'Signé':'En attente de signature'}</div>
+   </div></div>`}
+function blSendMail(b,auto){const c=clientOf(b)||{};if(!c.email)return toast('Aucun e-mail pour ce client : ajoute-le dans sa fiche');const nom=(S.company||{}).nom||S.brewery||'Microbrasserie';
+  toast('Envoi du BL à '+c.email+'…');
+  emailjsLoad().then(ej=>ej.send('service_ko27c19','template_nhbqtxc',{to_email:c.email,to_name:c.nom||b.client,subject:`Bon de livraison ${b.ref} — ${c.nom||b.client}`,message:blMailHtml(b),from_name:nom}))
+   .then(()=>{b.mailedAt=new Date().toISOString();b.mailedTo=c.email;save();if(location.hash.includes(b.id))render();toast('BL '+b.ref+' envoyé à '+c.email)})
+   .catch(e=>{console.error('EmailJS',e);toast((auto?'BL signé, mais l\'envoi du mail a échoué : ':'Échec de l\'envoi : ')+(e&&(e.text||e.message)||e))})}
 /* reprise des fûts / bouteilles non consommés : ligne négative sur le BL + retour en stock */
 function blRetLines(b){const key=l=>norm(l.beer)+'|'+l.format+'|'+(l.lot||'');const back={};
   (b.lines||[]).filter(l=>l.format&&num(l.qty)<0).forEach(l=>{back[key(l)]=(back[key(l)]||0)-lineQty(l)});
@@ -1377,7 +1431,9 @@ const ACT={
  deliver:el=>deliverForm(byId('orders',el.dataset.id)),
  newBl:()=>blForm(),
  blRet:el=>blRetForm(byId('bls',el.dataset.id)),
- blSign:el=>{const b=byId('bls',el.dataset.id);b.status=b.status==='signe'?'attente':'signe';save();render()},
+ blSign:el=>{const b=byId('bls',el.dataset.id);if(b.status==='signe'){if(b.signature&&!confirm('Remettre en attente ? La signature du client sera effacée.'))return;b.status='attente';delete b.signature;delete b.sigNom;delete b.sigDate}else b.status='signe';save();render()},
+ blSignPad:el=>blSignPad(byId('bls',el.dataset.id)),
+ blMail:el=>blSendMail(byId('bls',el.dataset.id)),
  blDel:el=>{const b=byId('bls',el.dataset.id);if(!confirm('Supprimer ce BL ?'+(b.stockDone?'\nLes bouteilles et fûts sortis reviennent en stock.':'')))return;
    if(b.stockDone&&!b.hx)(b.lines||[]).filter(l=>l.format).forEach(l=>{const q=lineQty(l);let t=stk().find(x=>norm(x.beer)===norm(l.beer)&&x.format===l.format&&(x.lot||'')===(String(l.lot||'').split(', ')[0]));if(!t){t={id:uid(),beer:l.beer,format:l.format,qty:0,lot:String(l.lot||'').split(', ')[0],date:b.date};stk().push(t)}t.qty=num(t.qty)+q;stockMove(t,q,'Annulation '+b.ref)});
    const o=b.orderId&&byId('orders',b.orderId);if(o){o.status='todo';o.blId=''}S.bls=coll('bls').filter(x=>x.id!==b.id);save();go('/bl')},
