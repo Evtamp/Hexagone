@@ -1219,7 +1219,14 @@ function tarifCard(){const P=PR(),bn=beerNames();const cell=(f,b)=>{const v=(P[f
   return `<div class="card" style="grid-column:1/-1"><h2>Tarif HT</h2><p class="small muted" style="margin:6px 0 10px">Prix HT par fût ou par bouteille. Remplis la ligne « Prix par défaut », puis seulement les bières qui ont un autre prix. Ces prix se mettent tout seuls dans les commandes (moins la remise du client) ; ils restent modifiables ligne par ligne.</p>
    <div style="overflow-x:auto"><table class="tbl tarif"><tr><th>Bière</th>${FORMATS.map(f=>`<th>${esc(f[1])}</th>`).join('')}</tr><tr class="on"><td><b>Prix par défaut</b></td>${FORMATS.map(f=>cell(f[0],'*')).join('')}</tr>${bn.map(b=>`<tr><td>${esc(b)}</td>${FORMATS.map(f=>cell(f[0],b)).join('')}</tr>`).join('')}</table></div>
    <div class="fr" style="margin-top:10px"><label class="f">Location d'une tireuse (HT)<input data-tarif="tap" inputmode="decimal" value="${P.tap!=null&&P.tap!==''?esc(String(P.tap).replace('.',',')):''}" placeholder="€"></label><label class="f">Taux de TVA (%)<input data-tarif="tva" inputmode="decimal" value="${esc(String(tvaRate()).replace('.',','))}"></label></div>
-   <label class="f" style="flex-direction:row;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" data-tarif="ttc" ${showTTC()?'checked':''} style="width:auto"> Afficher la TVA et le total TTC sur les BL</label></div>`}
+   <label class="f" style="flex-direction:row;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" data-tarif="ttc" ${showTTC()?'checked':''} style="width:auto"> Afficher la TVA et le total TTC sur les BL</label>
+   <div class="actions" style="margin-top:10px"><button class="btn" data-act="applyTarif">Appliquer le tarif aux anciens BL et commandes…</button></div></div>`}
+/* applique le tarif (et la remise client) aux documents existants ; dry=true ne fait que compter */
+function tarifApply(o,dry){let docs=0,lines=0;const sel=[...(o.bls?coll('bls'):[]),...(o.orders?coll('orders').filter(x=>x.status!=='cancel'):[])];
+  sel.filter(d=>(d.date||'')>=(o.from||'')&&(!o.to||(d.date||'')<=o.to)).forEach(d=>{const c=clientOf(d);const cid=c?c.id:d.clientId;let n=0;
+    (d.lines||[]).filter(l=>l.format&&l.beer).forEach(l=>{if(o.mode!=='tout'&&num(l.pu))return;const p=priceFor(l.beer,l.format,cid);if(!p||p===num(l.pu))return;n++;if(!dry)l.pu=p});
+    if((d.taps||[]).length&&tapTarif()&&(o.mode==='tout'||!num(d.tapPu))&&num(d.tapPu)!==tapTarif()){n++;if(!dry)d.tapPu=tapTarif()}
+    if(n){docs++;lines+=n}});return {docs,lines}}
 function blTotals(b){const ht=docHT(b),r=tvaRate();
   return `<table class="bl-tot"><tr><td>Total HT</td><td class="n"><b>${eur(ht)}</b></td></tr>${showTTC()?`<tr><td>TVA ${fN(r)} %</td><td class="n">${eur(ht*r/100)}</td></tr><tr class="ttc"><td>Total TTC</td><td class="n">${eur(ht*(1+r/100))}</td></tr>`:''}</table>`}
 function blFoot(){const co=S.company||{};const nom=co.nom||S.brewery||'';
@@ -1501,6 +1508,16 @@ const ACT={
  editTask:el=>taskForm(coll('tasks').find(x=>x.id===el.dataset.id)),
  wk:el=>{const v=+el.dataset.v;ui.wk=v?addDays(ui.wk||monday(today()),7*v):'';render()},
  tapBack:el=>{const o=byId('orders',el.dataset.id);o.tapBack=today();save();render();toast('Tireuses de retour')},
+ applyTarif:()=>{const ys=[...coll('bls'),...coll('orders')].map(b=>b.date||'').filter(Boolean).sort();const rd=f=>({from:fv(f,'from'),to:fv(f,'to'),mode:f.elements.mode.value,bls:f.elements.bls.checked,orders:f.elements.orders.checked});
+   openDlg({title:'Appliquer le tarif aux anciens documents',submit:'Appliquer',
+    body:`<p class="small muted" style="margin-bottom:10px">Le prix HT de chaque ligne est recalculé avec le tarif de Réglages et la remise du client. Les lignes d'une bière ou d'un format sans tarif ne sont pas touchées.</p>
+     <div class="fr"><label class="f">Du<input type="date" name="from" value="${esc(ys[0]||today().slice(0,4)+'-01-01')}"></label><label class="f">Au<input type="date" name="to" value="${today()}"></label></div>
+     <label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="radio" name="mode" value="vide" checked style="width:auto"> Seulement les lignes sans prix</label>
+     <label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="radio" name="mode" value="tout" style="width:auto"> Remplacer aussi les prix déjà saisis</label>
+     <div class="fr"><label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" name="bls" checked style="width:auto"> Bons de livraison</label><label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" name="orders" checked style="width:auto"> Commandes</label></div>
+     <p id="taCnt" style="margin-top:8px"></p>`,
+    onOpen:f=>{const up=()=>{const r=tarifApply(rd(f),true);$('#taCnt',f).innerHTML=r.lines?`<b>${r.lines}</b> ligne${r.lines>1?'s':''} à mettre à jour dans <b>${r.docs}</b> document${r.docs>1?'s':''}.`:'<span class="muted">Rien à mettre à jour avec ces choix.</span>'};f.oninput=up;f.onchange=up;up()},
+    onSubmit:f=>{const r=tarifApply(rd(f),false);toast(r.lines?`${r.lines} ligne${r.lines>1?'s':''} mise${r.lines>1?'s':''} à jour dans ${r.docs} document${r.docs>1?'s':''}`:'Rien à mettre à jour')}})},
  cliY:el=>{ui.cliY=el.dataset.v;render()},
  cliSuivi:el=>{const c=byId('clients',el.dataset.id),t=$('#cliSuivi').value.trim();if(!t)return toast('Écris la note de suivi');c.suivis=c.suivis||[];c.suivis.push({ts:Date.now(),texte:t});save();render()},
  editClient:el=>clientForm(byId('clients',el.dataset.id)),
