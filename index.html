@@ -880,13 +880,15 @@ function hexagoneCellarDialog(j){
 /* ---------- Stock bière ---------- */
 /* brassin d'une ligne de stock ; « en cave » = conditionné mais pas encore prêt (refermentation / garde) */
 function stockBrew(l){return (l.brewId&&byId('brews',l.brewId))||(l.lot?S.brews.find(b=>b.status==='packaged'&&b.lot&&b.lot===l.lot&&norm(b.name)===norm(l.beer)):null)||null}
-function enCave(l){const b=stockBrew(l);return b&&b.status==='packaged'&&brewStatus(b)==='conditioning'?b:null}
+function enCave(l){if(l.ready)return l.ready>today()?{readyDate:l.ready}:null;
+  let b=stockBrew(l);if(!b)b=S.brews.find(x=>x.status==='packaged'&&norm(x.name)===norm(l.beer)&&brewStatus(x)==='conditioning'&&(!l.date||!x.packDate||l.date>=addDays(x.packDate,-2)));
+  return b&&b.status==='packaged'&&brewStatus(b)==='conditioning'?b:null}
 V.stock=()=>{const all=stk().filter(l=>num(l.qty)>0);const f=ui.sf||'Tous';
   const list=all.filter(l=>f==='Tous'||(f==='En cave'?!!enCave(l):f==='Prêtes'?!enCave(l):(f==='Fûts')===isKeg(l.format)));
   const cv=all.filter(l=>enCave(l)),Tc=stockTotals(cv);
   const beers=[...new Set(list.map(l=>l.beer))].sort((a,b)=>a.localeCompare(b));const T=stockTotals(all);
   return `<div class="head"><div><div class="kicker">${totTxt(T)}${T.L?' · '+fN(Math.round(T.L))+' L':''}</div><h1>Stock de bière</h1></div><div class="actions"><button class="btn pri" data-act="newStock">Entrée en stock</button></div></div>
-  ${cv.length?`<div class="fr" style="margin-bottom:12px"><div class="stat click" data-act="sf" data-v="En cave" style="cursor:pointer"><b>${totTxt(Tc)}</b><span>En cave (pas encore prêtes) · ${fN(Math.round(Tc.L))} L</span></div><div class="stat click" data-act="sf" data-v="Prêtes" style="cursor:pointer"><b>${totTxt(stockTotals(all.filter(l=>!enCave(l))))||'0'}</b><span>Prêtes à vendre</span></div></div>`:''}
+  ${cv.length?`<div class="fr" style="margin-bottom:12px"><div class="stat click" data-act="sf" data-v="En cave" style="cursor:pointer"><b>${totTxt(Tc)}</b><span>En cave (pas encore prêtes) · ${fN(Math.round(Tc.L))} L</span></div><div class="stat click" data-act="sf" data-v="Prêtes" style="cursor:pointer"><b>${(r=>r.length?totTxt(stockTotals(r)):'0')(all.filter(l=>!enCave(l)))}</b><span>Prêtes à vendre</span></div></div>`:''}
   <div class="chips" style="margin-bottom:14px">${['Tous','Bouteilles','Fûts','En cave','Prêtes'].map(x=>`<button class="chip ${f===x?'on':''}" data-act="sf" data-v="${x}">${x}${x==='En cave'&&cv.length?' ('+cv.length+')':''}</button>`).join('')}</div>
   ${beers.length?`<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));align-items:start">${beers.map(be=>{const L=list.filter(l=>l.beer===be).sort((a,b)=>(a.format+a.date)<(b.format+b.date)?-1:1);const t=stockTotals(L);
     return `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><h3>${esc(be)}</h3><span class="small muted">${fN(Math.round(t.L))} L</span></div><div class="small muted" style="margin-bottom:8px">${totTxt(t)}</div>
@@ -894,16 +896,17 @@ V.stock=()=>{const all=stk().filter(l=>num(l.qty)>0);const f=ui.sf||'Tous';
        <button class="btn sm" data-act="stockOut" data-id="${l.id}" aria-label="Sortir">−</button><div class="qty" style="min-width:44px">${fN(num(l.qty))}</div><button class="btn sm" data-act="stockIn" data-id="${l.id}" aria-label="Ajouter">+</button></div>`).join('')}</div></div>`}).join('')}</div>`
    :emptyBox(all.length?(f==='En cave'?'Rien en cave':'Rien dans ce filtre'):'Aucune bière en stock','Tes bouteilles et fûts arrivent ici quand tu valides un conditionnement. Tu peux aussi saisir ton stock à la main.','<button class="btn pri" data-act="newStock">Entrée en stock</button>')}
   ${S.stockMoves&&S.stockMoves.length?`<div class="sec"><h2 style="margin-bottom:10px">Derniers mouvements</h2><div class="rows">${S.stockMoves.slice(0,15).map(m=>`<div class="row"><div class="main"><b>${esc(m.beer)} · ${esc(fmtOf(m.format)[1])}</b><span class="small muted">${fD(m.date)} · ${esc(m.reason||'')}${m.lot?' · lot '+esc(m.lot):''}</span></div><div class="qty" style="color:var(${m.delta<0?'--warn':'--green'})">${m.delta>0?'+':''}${fN(m.delta)}</div></div>`).join('')}</div></div>`:''}`};
-function stockForm(l){const isNew=!l;l=l||{beer:'',format:'btl33',qty:'',lot:'',date:today(),ddm:'',note:''};
+function stockForm(l){const isNew=!l;l=l||{beer:'',format:'btl33',qty:'',lot:'',date:today(),ddm:'',note:'',ready:''};
   const names=[...new Set([...S.recipes.map(r=>r.name),...stk().map(x=>x.beer)])].filter(Boolean).sort();
   openDlg({title:isNew?'Entrée en stock':'Modifier la ligne de stock',body:`
    <label class="f">Bière<input name="beer" list="dl-beers" value="${esc(l.beer)}" required placeholder="ex. Super Nièvre"></label><datalist id="dl-beers">${names.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
    <div class="fr"><label class="f">Format<select name="format">${optH(FORMATS.map(f=>[f[0],f[1]]),l.format)}</select></label><label class="f">Quantité<input name="qty" inputmode="numeric" value="${esc(l.qty)}"></label></div>
    <div class="fr"><label class="f">Lot<input name="lot" value="${esc(l.lot)}"></label><label class="f">Date<input type="date" name="date" value="${esc(l.date)}"></label><label class="f">DDM<input type="date" name="ddm" value="${esc(l.ddm)}"></label></div>
+   <label class="f">En cave jusqu'au (refermentation, garde)<input type="date" name="ready" value="${esc(l.ready||'')}"><span class="small muted">Laisse vide si elle est prête${(b=>b?' · brassin : prête le '+fD(b.readyDate):'')(!l.ready&&l.id?enCave(l):null)}</span></label>
    <label class="f">Note<input name="note" value="${esc(l.note)}"></label>`,
    extra:isNew?'':'<button type="button" class="btn danger" id="del">Supprimer</button>',
    onOpen:f=>{const d=$('#del',f);if(d)d.onclick=()=>{if(confirm('Supprimer cette ligne de stock ?')){stockMove(l,-num(l.qty),'Suppression');S.stock=stk().filter(x=>x.id!==l.id);save();dlg.close();render()}}},
-   onSubmit:f=>{const o={beer:fv(f,'beer'),format:fv(f,'format'),qty:Math.max(0,num(fv(f,'qty'))),lot:fv(f,'lot'),date:fv(f,'date'),ddm:fv(f,'ddm'),note:fv(f,'note')};
+   onSubmit:f=>{const o={beer:fv(f,'beer'),format:fv(f,'format'),qty:Math.max(0,num(fv(f,'qty'))),lot:fv(f,'lot'),date:fv(f,'date'),ddm:fv(f,'ddm'),note:fv(f,'note'),ready:fv(f,'ready')};
      if(!o.beer){toast('Nom de bière manquant');return false}
      if(isNew){const ex=stk().find(x=>x.beer===o.beer&&x.format===o.format&&(x.lot||'')===o.lot);if(ex){ex.qty=num(ex.qty)+o.qty;stockMove(ex,o.qty,'Entrée')}else{const n={id:uid(),...o};stk().push(n);stockMove(n,o.qty,'Entrée')}}
      else{if(o.qty!==num(l.qty))stockMove({...l,...o},o.qty-num(l.qty),'Correction');Object.assign(l,o)}
