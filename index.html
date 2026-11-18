@@ -359,7 +359,7 @@ function needsOf(r,scale=1){const L=[];(r.malts||[]).forEach(m=>m.name&&L.push({
   (r.others||[]).forEach(o=>o.name&&L.push({name:o.name,qty:num(o.qty)*scale,unit:o.unit||'g',fam:'Autres'}));
   const m={};L.forEach(x=>{const k=norm(x.name)+'|'+x.unit;if(m[k])m[k].qty+=x.qty;else m[k]={...x}});return Object.values(m)}
 function check(needs){return needs.map(n=>{const it=findIng(n.name);let have=0;if(it){const c=conv(num(it.qty),it.unit,n.unit);have=c==null?0:c}return{...n,have,missing:Math.max(0,n.qty-have),found:!!it}})}
-function deduct(b){needsOf(b.recipe).forEach(n=>{const it=findIng(n.name);if(!it)return;const c=conv(n.qty,n.unit,it.unit);if(c==null)return;it.qty=Math.max(0,num(it.qty)-c);logMove(it.name,-c,it.unit,'Brassin '+b.lot)});b.deducted=true}
+function deduct(b){b.ingLots=b.ingLots||{};needsOf(b.recipe).forEach(n=>{const it=findIng(n.name);if(!it)return;if(b.ingLots[norm(n.name)+'|'+n.unit]==null&&it.lot)b.ingLots[norm(n.name)+'|'+n.unit]=it.lot;const c=conv(n.qty,n.unit,it.unit);if(c==null)return;it.qty=Math.max(0,num(it.qty)-c);logMove(it.name,-c,it.unit,'Brassin '+b.lot)});b.deducted=true}
 const isLow=i=>num(i.alert)>0&&num(i.qty)<=num(i.alert);
 
 /* ================= navigation ================= */
@@ -463,6 +463,13 @@ function brewSteps(b,c){const r=b.recipe,st=[];const sparge=r.mash?.method!=='bi
   st.push({k:'og',t:`Mesurer la densité initiale (prévue <b>${sg(c.og)}</b>) et le volume (prévu ${fN(c.V)} L).`,input:true});
   st.push({k:'yeast',t:`Ensemencer : ${esc(r.yeast?.name||'levure')} ${r.yeast?.qty?fN(num(r.yeast.qty))+' '+esc(r.yeast.unit||''):''}. Aérer le moût.`});
   return st}
+/* ingrédients du brassin avec leur n° de lot (traçabilité) */
+const ingKey=n=>norm(n.name)+'|'+n.unit;
+function ingLotOf(b,n){const L=b.ingLots||{};if(L[ingKey(n)]!=null)return L[ingKey(n)];const it=findIng(n.name);return it&&it.lot||''}
+function brewIngHtml(b){const N=needsOf(b.recipe||{});if(!N.length)return '';const fams=['Malts','Houblons','Levures','Autres'];
+  return `<h2 style="margin-bottom:10px">Ingrédients et lots</h2><div class="card" style="margin-bottom:16px"><table class="tbl ing-lots"><tr><th>Ingrédient</th><th class="n">Quantité</th><th>N° de lot</th></tr>
+   ${fams.map(f=>N.filter(n=>n.fam===f).map(n=>`<tr><td>${esc(n.name)}<div class="small muted">${f}</div></td><td class="n">${fN(Math.round(n.qty*1000)/1000)} ${esc(n.unit)}</td><td><input data-inglot="${esc(ingKey(n))}" value="${esc(ingLotOf(b,n))}" placeholder="lot" style="min-width:90px"></td></tr>`).join('')).join('')}</table>
+   <p class="small muted" style="margin-top:6px">Le lot vient du grenier ; tu peux le corriger ici, il reste enregistré avec ce brassin.</p></div>`}
 function brewDay(b,c){const st=brewSteps(b,c);b.checks=b.checks||{};const n=st.filter(x=>b.checks[x.k]).length;
   const started=b.status!=='planned';
   return `<div class="two"><div><div class="sec-h"><h2>Déroulé guidé</h2><span class="small muted">${n}/${st.length} étapes</span></div>
@@ -470,7 +477,7 @@ function brewDay(b,c){const st=brewSteps(b,c);b.checks=b.checks||{};const n=st.f
     ${x.input?`<div class="fr" style="margin-top:8px"><label class="f">DI mesurée<input id="ogIn" inputmode="decimal" placeholder="${sg(c.og)}" value="${esc(b.og||'')}"></label><label class="f">Volume (L)<input id="volIn" inputmode="decimal" value="${esc(b.volMeasured||'')}" placeholder="${fN(c.V)}"></label></div>`:''}
     </div>${x.timer?`<button class="btn sm" data-act="timer" data-min="${x.timer}" data-label="${esc(x.k==='boil'?'Ébullition':'Palier')}" data-adds='${esc(JSON.stringify(x.adds||[]))}'>⏱ ${x.timer} min</button>`:''}</div>`).join('')}</div>
    <div class="actions" style="margin-top:12px">${b.status==='planned'||b.status==='fermenting'&&false?'':''}${b.status!=='fermenting'&&b.status!=='packaged'&&b.status!=='done'?`<button class="btn pri" data-act="finishBrewday" data-id="${b.id}">Brassage terminé → fermentation</button>`:'<span class="note ok">Brassage terminé ✓</span>'}</div></div>
-   <div><h2 style="margin-bottom:10px">Volumes et températures</h2><div class="card"><table class="tbl">
+   <div>${brewIngHtml(b)}<h2 style="margin-bottom:10px">Volumes et températures</h2><div class="card"><table class="tbl">
     <tr><td>Grain</td><td class="n">${fN(c.kg)} kg</td></tr><tr><td>Eau d'empâtage</td><td class="n">${fx(c.mashWater)} L</td></tr><tr><td>Température d'empâtage (eau)</td><td class="n">${fx(c.strike)} °C</td></tr>
     <tr><td>Eau de rinçage</td><td class="n">${fx(c.sparge)} L</td></tr><tr><td>Volume avant ébullition</td><td class="n">${fx(c.preboil)} L</td></tr><tr><td>Volume en fermenteur</td><td class="n">${fN(c.V)} L</td></tr>
     <tr><td>Densité avant ébullition (approx.)</td><td class="n">${sg(1+(c.og-1)*c.V/Math.max(1,c.preboil))}</td></tr></table></div>
@@ -520,6 +527,7 @@ V.brassins.after=()=>{const f=()=>{if(!$('#pkCalc'))return;const v=num($('#pkVol
   const wire=()=>{$$('#pkRows .pk-row').forEach(r=>{$$('select,input',r).forEach(e=>e.oninput=e.onchange=f);const d=$('[data-pkdel]',r);d.onclick=()=>{r.remove();f()}})};
   const add=$('#pkAdd');if(add)add.onclick=()=>{const used=pkRead(true).map(p=>p.format);const nx=(FORMATS.find(x=>!used.includes(x[0]))||FORMATS[0])[0];$('#pkRows').insertAdjacentHTML('beforeend',pkRow(nx));wire();f()};
   wire();['pkVol','pkCo2','pkT'].forEach(id=>{const e=$('#'+id);if(e)e.oninput=e.onchange=f});f();
+  $$('[data-inglot]').forEach(e=>e.onchange=()=>{const b=byId('brews',R.a);b.ingLots=b.ingLots||{};b.ingLots[e.dataset.inglot]=e.value.trim();save()});
   $$('[data-check]').forEach(cb=>cb.onchange=()=>{const b=byId('brews',R.a);b.checks=b.checks||{};b.checks[cb.dataset.check]=cb.checked;save();cb.closest('.check').classList.toggle('done',cb.checked)});
   const og=$('#ogIn'),vol=$('#volIn');if(og)og.onchange=()=>{const b=byId('brews',R.a);b.og=num(og.value)>1?num(og.value):'';save()};if(vol)vol.onchange=()=>{const b=byId('brews',R.a);b.volMeasured=num(vol.value)||'';save()}};
 function pkRead(all){const m={};$$('#pkRows .pk-row').forEach(r=>{const k=$('.pk-f',r).value,q=Math.round(num($('.pk-q',r).value));if(all||q>0)m[k]=(m[k]||0)+q});return Object.entries(m).map(([format,qty])=>({format,qty}))}
