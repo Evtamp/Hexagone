@@ -274,8 +274,9 @@ window.cloudReady=()=>{const C=window.CLOUD;SY.on=true;syncStatus('wait');
       syncKeys().forEach(k=>{if(remoteEmpty||SY.dirty[k]||val[k]==null)return;let v;try{v=JSON.parse(val[k])}catch(e){return}
         if(JSON.stringify(S[k])!==val[k]){S[k]=v;changed=true}SY.sent[k]=val[k]});
       try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}syncSaveDirty();syncFlush();if(changed)syncRender();syncStatus('ok');return}
-    syncKeys().forEach(k=>{if(val[k]==null||val[k]===SY.sent[k])return;let v;try{v=JSON.parse(val[k])}catch(e){return}
-      S[k]=v;SY.sent[k]=val[k];delete SY.dirty[k];changed=true});
+    // une collection modifiée ici et pas encore confirmée par le serveur garde la version locale
+    syncKeys().forEach(k=>{if(val[k]==null||val[k]===SY.sent[k]||SY.dirty[k])return;let v;try{v=JSON.parse(val[k])}catch(e){return}
+      S[k]=v;SY.sent[k]=val[k];changed=true});
     if(changed){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}syncSaveDirty();syncRender()}},
     e=>{SY.err=String(e&&e.code||e);syncStatus('err')})};
 window.cloudFailed=e=>{SY.err=String(e&&e.code||e||'');syncStatus('off')};
