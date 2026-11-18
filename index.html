@@ -371,7 +371,7 @@ const ic=k=>`<svg class="i" viewBox="0 0 24 24">${ICONS[k]}</svg>`;
 function parse(){const h=location.hash.replace(/^#\/?/,'').split('/');R={view:h[0]||'brasserie',a:h[1]||'',b:h[2]||''}}
 function nav(){const BV=[...VIEWS,['menu','Plus']];$('#tabs').innerHTML=VIEWS.map(([k,l])=>`<a href="#/${k}" class="${R.view===k?'on':''}">${l}</a>`).join('');
   $('#bottom').innerHTML=BOTTOM.map(k=>BV.find(v=>v[0]===k)).map(([k,l])=>`<a href="#/${k}" class="${R.view===k||(k==='menu'&&!BOTTOM.includes(R.view))?'on':''}">${ic(k)}<span>${l}</span></a>`).join('')}
-function render(){parse();nav();const f=V[R.view]||V.brasserie;$('#app').innerHTML=f();if(f.after)f.after();renderTimer();
+function render(){parse();nav();const f=V[R.view]||V.brasserie;try{$('#app').innerHTML=f();if(f.after)f.after()}catch(e){console.error(e);$('#app').innerHTML=emptyBox('Cette page n\'a pas pu s\'afficher','Erreur : '+esc(e&&e.message||e)+'. Envoie une capture de ce message.')}renderTimer();
   document.title=(VIEWS.find(v=>v[0]===R.view)||[0,''])[1]?((VIEWS.find(v=>v[0]===R.view))[1]+' · Brassage'):'Brassage'}
 const emptyBox=(t,s,btn='')=>`<div class="empty"><b>${t}</b>${s}${btn?`<div>${btn}</div>`:''}</div>`;
 function go(h){if(location.hash==='#'+h)render();else location.hash=h}
@@ -995,6 +995,7 @@ function hexagonePlanningDialog(j){const L=hexagonePlanning(j);if(!L)return toas
    onSubmit:()=>{let a=0,u=0;L.forEach(o=>{const fe=o.hxFerm?S.equipment.find(e=>e.type==='fermenter'&&e.hx===o.hxFerm):null;const d={...o,fermId:fe?fe.id:''};delete d.hxFerm;if(hxDupBrew(d)){S.tasks=coll('tasks').filter(x=>x.hx!==d.hx);return}
      const ex=coll('tasks').find(x=>x.hx===o.hx);if(ex){Object.assign(ex,d);u++}else{coll('tasks').push({id:uid(),...d});a++}});save();ui.wk='';go('/planning');toast(a+' tâche(s) ajoutée(s)'+(u?', '+u+' mise(s) à jour':''))}})}
 /* ================= ventes : clients, commandes, BL ================= */
+const cliName=c=>String(c&&c.nom!=null?c.nom:'');
 const coll=k=>{if(!Array.isArray(S[k]))S[k]=[];return S[k]};
 const CTYPES=['Bar / restaurant','Cave / épicerie','Particulier','Comité / association','Distributeur','Autre'];
 const clientName=c=>c?c.nom:'';
@@ -1046,11 +1047,11 @@ function tapsEditor(o){const T=taps();if(!T.length)return `<div class="note smal
 const readTaps=f=>[...f.querySelectorAll('input[name=tap]:checked')].map(x=>x.value);
 const tapsTxt=o=>(o.taps||[]).length?' · '+(o.taps.length>1?o.taps.length+' tireuses':'1 tireuse'):'';
 /* --- clients --- */
-V.clients=()=>{const q=norm(ui.cq||'');const L=coll('clients').filter(c=>!q||norm([c.nom,c.ville,c.contact].join(' ')).includes(q)).sort((a,b)=>a.nom.localeCompare(b.nom));
+V.clients=()=>{const q=norm(ui.cq||'');const L=coll('clients').filter(c=>!q||norm([c.nom,c.ville,c.contact].join(' ')).includes(q)).sort((a,b)=>cliName(a).localeCompare(cliName(b),'fr'));
   return `<div class="head"><div><div class="kicker">${coll('clients').length} client(s)</div><h1>Clients</h1></div><div class="actions"><button class="btn pri" data-act="newClient">Nouveau client</button></div></div>
   <input id="cq" placeholder="Rechercher un client, une ville…" value="${esc(ui.cq||'')}" style="margin-bottom:12px">
   ${L.length?`<div class="rows">${L.map(c=>{const nb=coll('bls').filter(b=>clientOf(b)===c).length,no=coll('orders').filter(o=>clientOf(o)===c&&o.status==='todo').length;
-    return `<div class="row click" data-act="editClient" data-id="${c.id}"><div class="main"><b>${esc(c.nom)}</b><span class="small muted">${[c.type,[c.cp,c.ville].filter(Boolean).join(' '),c.contact,c.tel].filter(Boolean).map(esc).join(' · ')||'&nbsp;'}</span></div>${no?`<span class="badge acc">${no} à livrer</span>`:''}<span class="small muted">${nb} BL</span></div>`}).join('')}</div>`
+    return `<div class="row click" data-act="editClient" data-id="${c.id}"><div class="main"><b>${esc(cliName(c)||'(sans nom)')}</b><span class="small muted">${[c.type,[c.cp,c.ville].filter(Boolean).join(' '),c.contact,c.tel].filter(Boolean).map(esc).join(' · ')||'&nbsp;'}</span></div>${no?`<span class="badge acc">${no} à livrer</span>`:''}<span class="small muted">${nb} BL</span></div>`}).join('')}</div>`
    :emptyBox(coll('clients').length?'Aucun résultat':'Aucun client','Ajoute tes clients : bars, caves, particuliers… Tu les retrouveras dans les commandes et les BL.','<button class="btn pri" data-act="newClient">Nouveau client</button>')}`};
 V.clients.after=()=>{const q=$('#cq');if(q)q.oninput=()=>{ui.cq=q.value;const p=q.selectionStart;render();const n=$('#cq');n.focus();n.setSelectionRange(p,p)}};
 function clientForm(c,then){const isNew=!c;c=c||{nom:'',type:'Bar / restaurant'};
@@ -1080,7 +1081,7 @@ V.commandes=()=>{const t=today();const todo=coll('orders').filter(o=>o.status===
   <div class="two"><div><h2 style="margin-bottom:10px">À livrer</h2>${todo.length?`<div class="rows">${todo.map(row).join('')}</div>`:emptyBox('Rien à livrer','Note les commandes de tes clients : tu verras ce qu\'il faut préparer, et le BL se fera en un clic.','<button class="btn pri" data-act="newOrder">Nouvelle commande</button>')}</div>
    <div><h2 style="margin-bottom:10px">À préparer</h2>${Object.keys(need).length?`<div class="rows">${Object.entries(need).sort().map(([k,q])=>{const [b,f]=k.split('|');const st=stockFor(b,f);return `<div class="row"><div class="main"><b>${esc(b)}</b><span class="small muted">${esc(fmtOf(f)[1])} · en stock ${fN(st)}</span></div><div class="qty" style="${st<q?'color:var(--warn)':''}">${fN(q)}</div></div>`}).join('')}</div>`:'<div class="note">Le total des commandes à livrer, comparé à ton stock, s\'affiche ici.</div>'}</div></div>
   ${past.length?`<div class="sec"><h2 style="margin-bottom:10px">Livrées</h2><div class="rows">${past.map(row).join('')}</div></div>`:''}`};
-function clientSelect(id){return `<div style="display:flex;gap:6px;align-items:flex-end"><label class="f" style="flex:1">Client<select name="clientId"><option value="">— choisir —</option>${optH(coll('clients').slice().sort((a,b)=>a.nom.localeCompare(b.nom)).map(c=>[c.id,c.nom]),id)}</select></label><button type="button" class="btn" id="newCli">+ Client</button></div>`}
+function clientSelect(id){return `<div style="display:flex;gap:6px;align-items:flex-end"><label class="f" style="flex:1">Client<select name="clientId"><option value="">— choisir —</option>${optH(coll('clients').slice().sort((a,b)=>cliName(a).localeCompare(cliName(b),'fr')).map(c=>[c.id,c.nom]),id)}</select></label><button type="button" class="btn" id="newCli">+ Client</button></div>`}
 function wireClient(f,reopen){const b=$('#newCli',f);if(b)b.onclick=()=>{const keep=reopen(f);dlg.close();clientForm(null,c=>keep(c))}}
 function orderForm(o,pre){const isNew=!o;o=o||pre||{clientId:'',date:today(),lines:[],note:'',status:'todo'};
   openDlg({title:isNew?'Nouvelle commande':'Commande'+(o.num?' '+esc(o.num):''),submit:'Enregistrer',body:`${clientSelect(o.clientId||(clientOf(o)||{}).id)}
@@ -1168,12 +1169,12 @@ function hxParseDesignation(d,unite){let t=String(d||'').replace(/^Retour — /,
 function hexagoneSales(j){if(!j||!(j.clients||j.orders||j.bl))return null;
   const clients=hxArr(j.clients).filter(c=>c.nom).map(c=>({hx:String(c.id||c.nom),nom:String(c.nom).trim(),type:c.type&&CTYPES.includes(c.type)?c.type:(c.type||''),contact:c.contact||'',tel:c.tel||'',email:c.email||'',adresse:c.adresse||'',cp:c.cp||'',ville:c.ville||'',siret:c.siret||'',notes:c.notes||''}));
   const orders=[];Object.entries(j.orders||{}).forEach(([date,list])=>hxArr(list).forEach(o=>{if(!o||!o.client)return;const L=[];
-    (o.lines||[]).forEach(l=>{if(!l||!l.beer)return;['fut30inox','fut30kk','fut30kktp','fut20'].forEach(k=>{if(num(l[k])>0)L.push({beer:l.beer,format:k,qty:num(l[k]),carton:0})});
+    hxArr(o.lines).forEach(l=>{if(!l||!l.beer)return;['fut30inox','fut30kk','fut30kktp','fut20'].forEach(k=>{if(num(l[k])>0)L.push({beer:l.beer,format:k,qty:num(l[k]),carton:0})});
       if(num(l.cartons)>0){const sp=/peux pas/i.test(l.beer);L.push({beer:l.beer,format:sp?'btl44':'btl33',qty:num(l.cartons),carton:sp?24:12})}});
     const tl=hxArr(o.tireuseLines).map(x=>String(x.tireuseId||'')).filter(Boolean);
     if(L.length||tl.length)orders.push({hxTaps:tl,dateReprise:hxDay(o.dateReprise)||'',hx:String(o.id||date+o.client),client:String(o.client).trim(),date:hxDay(date)||date,note:o.note||'',lines:L,status:(hxDay(date)||date)<today()?'done':'todo'})}));
   const bls=hxArr(j.bl).filter(b=>b&&b.client).map(b=>({hx:String(b.id),ref:b.ref||'BL-'+b.id,client:String(b.client).trim(),date:hxDay(b.date)||hxDay(b.ts)||today(),adresse:b.adresse||'',notes:b.notes||'',status:b.statut==='signe'?'signe':'attente',stockDone:true,
-    lines:(b.lines||[]).filter(l=>l&&(l.designation||l.qte)).map(l=>{const p=hxParseDesignation(l.designation,l.unite);return p.format?{beer:p.beer,format:p.format,qty:num(l.qte),carton:0,lot:l.lotRef||'',label:/^Retour/.test(l.designation||'')?l.designation:''}:{label:l.designation||'',qty:num(l.qte),unite:l.unite||'',lot:l.lotRef||''}})}));
+    lines:hxArr(b.lines).filter(l=>l&&(l.designation||l.qte)).map(l=>{const p=hxParseDesignation(l.designation,l.unite);return p.format?{beer:p.beer,format:p.format,qty:num(l.qte),carton:0,lot:l.lotRef||'',label:/^Retour/.test(l.designation||'')?l.designation:''}:{label:l.designation||'',qty:num(l.qte),unite:l.unite||'',lot:l.lotRef||''}})}));
   const co=j.params&&j.params.brasserie||null;
   const tps=hxArr(j.tireuses).map(t=>({hx:String(t.id),name:'Tireuse '+(t.num||t.id),brand:t.modele||''}));
   return{clients,orders,bls,co,tps}}
