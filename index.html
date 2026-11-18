@@ -159,7 +159,7 @@ label.cb input{width:auto}
 /* jour J */
 .check{display:flex;gap:12px;align-items:center;padding:12px 14px;border-top:1px solid var(--line)}
 .check:first-child{border-top:0}
-.check input{width:22px;height:22px;margin-top:1px;flex:none;accent-color:var(--green)}
+.check>input[type=checkbox]{width:22px;height:22px;margin-top:1px;flex:none;accent-color:var(--green)}
 .check.done .txt{color:var(--muted);text-decoration:line-through}
 .check .txt{flex:1;min-width:0}
 .timer{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:30;background:var(--ink);color:#fff;border-radius:16px;padding:10px 16px;display:flex;gap:14px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:calc(100vw - 32px)}
