@@ -527,7 +527,11 @@ function chart(b,og,fg){const rd=(b.readings||[]).filter(x=>num(x.sg)>0).sort((a
    <text x="${P}" y="${H-8}" font-size="10" fill="#7d7263">J0</text><text x="${W-10}" y="${H-8}" font-size="10" text-anchor="end" fill="#7d7263">J${days}</text></svg>`}
 function brewCond(b,c){const r=b.recipe;const vol=num(b.packVolume)||num(b.volMeasured)||num(b.volume);const cs=carbSugar(num(r.carb)||2.4,num(r.packTemp)||20,vol);
   if(b.status==='packaged'||b.status==='done')return `<div class="card"><h2>Conditionné le ${fD(b.packDate)}</h2><p class="muted">${esc(packsTxt(b))} · ${fN(num(b.packVolume))} L${b.packSugar?' · '+fN(num(b.packSugar))+' g de sucre':''}</p>${b.status!=='done'?`<div class="actions" style="margin-bottom:8px"><button class="btn sm" data-act="packMore" data-id="${b.id}">+ Ajouter un format</button></div>`:''}
-    <p>Prête à boire le <b>${fD(b.readyDate)}</b> (${rel(b.readyDate)}).</p>${b.status!=='done'?`<button class="btn" data-act="doneBrew" data-id="${b.id}">Marquer comme terminé (tout bu ou vendu)</button>`:''}</div>`;
+    <p>Prête à boire le <b>${fD(b.readyDate)}</b> (${rel(b.readyDate)}).</p>
+    ${(()=>{if(b.status==='done')return'';const L=stk().filter(l=>l.brewId===b.id);
+      if(!L.length&&packsOf(b).length)return `<div class="card" style="border-color:var(--warn);margin:10px 0"><b>Ce conditionnement n'est pas dans le stock de bière.</b><p class="small muted" style="margin:4px 0 8px">Il a pu être perdu lors d'une synchronisation. Tu peux le remettre en stock : ${esc(packsTxt(b))}.</p><button class="btn pri" data-act="packStock" data-id="${b.id}">Mettre en stock</button></div>`;
+      const T=stockTotals(L.filter(l=>num(l.qty)>0));return L.some(l=>num(l.qty)>0)?`<p class="small muted" style="margin:6px 0 10px">En stock : ${totTxt(T)} · <a href="#/stock">voir le stock</a></p>`:''})()}
+    ${b.status!=='done'?`<button class="btn" data-act="doneBrew" data-id="${b.id}">Marquer comme terminé (tout bu ou vendu)</button>`:''}</div>`;
   return `<div class="two"><div class="card"><h2 style="margin-bottom:10px">Mise en bouteille ou en fût</h2>
    <div class="fr"><label class="f">Date<input type="date" id="pkDate" value="${today()}"></label><label class="f">Volume conditionné (L)<input id="pkVol" inputmode="decimal" value="${fN(vol)}"></label></div>
    <div id="pkRows">${pkRow('fut30inox')}${pkRow('btl33')}</div>
@@ -1527,6 +1531,8 @@ const ACT={
      <p id="taCnt" style="margin-top:8px"></p>`,
     onOpen:f=>{const up=()=>{const r=tarifApply(rd(f),true);$('#taCnt',f).innerHTML=r.lines?`<b>${r.lines}</b> ligne${r.lines>1?'s':''} à mettre à jour dans <b>${r.docs}</b> document${r.docs>1?'s':''}.`:'<span class="muted">Rien à mettre à jour avec ces choix.</span>'};f.oninput=up;f.onchange=up;up()},
     onSubmit:f=>{const r=tarifApply(rd(f),false);toast(r.lines?`${r.lines} ligne${r.lines>1?'s':''} mise${r.lines>1?'s':''} à jour dans ${r.docs} document${r.docs>1?'s':''}`:'Rien à mettre à jour')}})},
+ packStock:el=>{const b=byId('brews',el.dataset.id);if(!b||stk().some(l=>l.brewId===b.id))return render();const d=b.packDate||today();
+   packsOf(b).forEach(p=>{const n={id:uid(),beer:b.name,format:p.format,qty:num(p.qty),lot:b.lot||'',date:d,ddm:'',note:'',brewId:b.id};stk().push(n);stockMove(n,n.qty,'Conditionnement (remise en stock)')});save();render();toast('Mis en stock : '+packsTxt(b))},
  cliY:el=>{ui.cliY=el.dataset.v;render()},
  cliSuivi:el=>{const c=byId('clients',el.dataset.id),t=$('#cliSuivi').value.trim();if(!t)return toast('Écris la note de suivi');c.suivis=c.suivis||[];c.suivis.push({ts:Date.now(),texte:t});save();render()},
  editClient:el=>clientForm(byId('clients',el.dataset.id)),
