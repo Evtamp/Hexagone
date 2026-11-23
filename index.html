@@ -437,12 +437,12 @@ function fermCard(f){const b=S.brews.find(x=>x.fermId===f.id&&(x.status==='ferme
   else{st='<span class="badge ok">Libre</span>';info='<div class="small muted">Disponible</div>'}
   return `<div class="card click" style="display:flex;gap:12px" data-href="${b?'#/brassins/'+b.id:'#/equipement'}"><div class="tank"><i style="height:${Math.round(fill*100)}%"></i></div><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><h3>${esc(f.name)}</h3>${st}</div><div class="small muted">${fN(num(f.capacity))} L</div><div style="margin-top:6px">${info}</div></div></div>`}
 function todos(){const t=today(),L=[];
-  coll('tasks').filter(k=>!k.done&&(k.date===t||k.date===addDays(t,1))).forEach(k=>L.push({d:k.date,lvl:'acc',txt:`${esc(ttOf(k.type)[1])}${k.title?' : <b>'+esc(k.title)+'</b>':''}${k.beer?' · '+esc(k.beer):''}`,href:'#/planning'}));
+  coll('tasks').filter(k=>!k.done&&(k.date===t||k.date===addDays(t,1))&&!hxDupBrew(k)).forEach(k=>L.push({d:k.date,lvl:'acc',txt:`${esc(ttOf(k.type)[1])}${k.title?' : <b>'+esc(k.title)+'</b>':''}${k.beer?' · '+esc(k.beer):''}`,href:'#/planning'}));
   coll('orders').filter(o=>o.status==='done'&&(o.taps||[]).length&&!o.tapBack&&o.dateReprise&&diff(t,o.dateReprise)<=1).forEach(o=>L.push({d:o.dateReprise,lvl:o.dateReprise<t?'warn':'acc',txt:`Récupérer ${o.taps.length>1?'les tireuses':'la tireuse'} chez <b>${esc((clientOf(o)||{}).nom||o.client||'')}</b>`,href:'#/commandes'}));
   S.brews.forEach(b=>{const s=brewStatus(b),h='#/brassins/'+b.id;
     if(s==='planned'&&diff(t,b.date)<=1)L.push({d:b.date,lvl:'acc',txt:`Brassage ${rel(b.date)} : <b>${esc(b.name)}</b>`,href:h});
     if(s==='brewday')L.push({d:b.date,lvl:'acc',txt:`Jour de brassage : <b>${esc(b.name)}</b>, ouvre le déroulé guidé`,href:h});
-    if(s==='fermenting'){const d=brewDates(b);d.dry.forEach(x=>{if(x.date===t)L.push({d:t,lvl:'acc',txt:`Dry hop : ${fN(num(x.g))} g de ${esc(x.name)} dans <b>${esc(b.name)}</b>`,href:h})});
+    if(s==='fermenting'){const d=brewDates(b);d.steps.forEach((st,i)=>{if(i&&(st.start===t||st.start===addDays(t,1)))L.push({d:st.start,lvl:'acc',txt:`${/garde/i.test(st.name)?'Mise en garde':esc(st.name)} : <b>${esc(b.name)}</b> à ${fN(num(st.temp))} °C${num(st.days)?' pour '+fN(num(st.days))+' j':''}`,href:h})});d.dry.forEach(x=>{if(x.date===t)L.push({d:t,lvl:'acc',txt:`Dry hop : ${fN(num(x.g))} g de ${esc(x.name)} dans <b>${esc(b.name)}</b>`,href:h})});
       if(diff(t,d.fermEnd)<=1)L.push({d:d.fermEnd,lvl:d.fermEnd<t?'warn':'acc',txt:`Fin de fermentation ${rel(d.fermEnd)} : <b>${esc(b.name)}</b>, contrôle la densité puis conditionne`,href:h})}
     if(b.status==='packaged'&&b.readyDate===t)L.push({d:t,lvl:'',txt:`<b>${esc(b.name)}</b> est prête à boire 🍺`,href:h});
   });
