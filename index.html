@@ -375,8 +375,9 @@ function needsOf(r,scale=1){const L=[];(r.malts||[]).forEach(m=>m.name&&L.push({
   if(r.yeast?.name)L.push({name:r.yeast.name,qty:Math.ceil(num(r.yeast.qty)*scale*100)/100,unit:r.yeast.unit||'sachet',fam:'Levures'});
   (r.others||[]).forEach(o=>o.name&&L.push({name:o.name,qty:num(o.qty)*scale,unit:o.unit||'g',fam:'Autres'}));
   const m={};L.forEach(x=>{const k=norm(x.name)+'|'+x.unit;if(m[k])m[k].qty+=x.qty;else m[k]={...x}});return Object.values(m)}
+function brewNeeds(b){const Q=b.ingQty||{};return needsOf(b.recipe||{}).map(n=>{const k=norm(n.name)+'|'+n.unit;return Q[k]!=null&&Q[k]!==''?{...n,qty:num(Q[k]),plan:n.qty}:n})}
 function check(needs){return needs.map(n=>{const it=findIng(n.name);let have=0;if(it){const c=conv(num(it.qty),it.unit,n.unit);have=c==null?0:c}return{...n,have,missing:Math.max(0,n.qty-have),found:!!it}})}
-function deduct(b){b.ingLots=b.ingLots||{};needsOf(b.recipe).forEach(n=>{const it=findIng(n.name);if(!it)return;if(b.ingLots[norm(n.name)+'|'+n.unit]==null&&it.lot)b.ingLots[norm(n.name)+'|'+n.unit]=it.lot;const c=conv(n.qty,n.unit,it.unit);if(c==null)return;it.qty=Math.max(0,num(it.qty)-c);logMove(it.name,-c,it.unit,'Brassin '+b.lot)});b.deducted=true}
+function deduct(b){b.ingLots=b.ingLots||{};brewNeeds(b).forEach(n=>{const it=findIng(n.name);if(!it)return;if(b.ingLots[norm(n.name)+'|'+n.unit]==null&&it.lot)b.ingLots[norm(n.name)+'|'+n.unit]=it.lot;const c=conv(n.qty,n.unit,it.unit);if(c==null)return;it.qty=Math.max(0,num(it.qty)-c);logMove(it.name,-c,it.unit,'Brassin '+b.lot)});b.deducted=true}
 const isLow=i=>num(i.alert)>0&&num(i.qty)<=num(i.alert);
 
 /* ================= navigation ================= */
@@ -483,10 +484,22 @@ function brewSteps(b,c){const r=b.recipe,st=[];const sparge=r.mash?.method!=='bi
 /* ingrédients du brassin avec leur n° de lot (traçabilité) */
 const ingKey=n=>norm(n.name)+'|'+n.unit;
 function ingLotOf(b,n){const L=b.ingLots||{};if(L[ingKey(n)]!=null)return L[ingKey(n)];const it=findIng(n.name);return it&&it.lot||''}
-function brewIngHtml(b){const N=needsOf(b.recipe||{});if(!N.length)return '';const fams=['Malts','Houblons','Levures','Autres'];
+function brewIngHtml(b){const N=brewNeeds(b);if(!N.length)return '';const fams=['Malts','Houblons','Levures','Autres'];
   return `<h2 style="margin-bottom:10px">Ingrédients et lots</h2><div class="card" style="margin-bottom:16px"><table class="tbl ing-lots"><tr><th>Ingrédient</th><th class="n">Quantité</th><th>N° de lot</th></tr>
-   ${fams.map(f=>N.filter(n=>n.fam===f).map(n=>`<tr><td>${esc(n.name)}<div class="small muted">${f}</div></td><td class="n">${fN(Math.round(n.qty*1000)/1000)} ${esc(n.unit)}</td><td><input data-inglot="${esc(ingKey(n))}" value="${esc(ingLotOf(b,n))}" placeholder="lot" style="min-width:90px"></td></tr>`).join('')).join('')}</table>
-   <p class="small muted" style="margin-top:6px">Le lot vient du grenier ; tu peux le corriger ici, il reste enregistré avec ce brassin.</p></div>`}
+   ${fams.map(f=>N.filter(n=>n.fam===f).map(n=>`<tr><td>${esc(n.name)}<div class="small muted">${f}</div></td><td class="n" style="white-space:nowrap"><input data-ingqty="${esc(ingKey(n))}" inputmode="decimal" value="${esc(String(Math.round(n.qty*1000)/1000).replace('.',','))}" style="width:80px;text-align:right"> ${esc(n.unit)}${n.plan!=null&&Math.abs(n.plan-n.qty)>1e-9?`<div class="small muted">recette : ${fN(Math.round(n.plan*1000)/1000)}</div>`:''}</td><td><input data-inglot="${esc(ingKey(n))}" value="${esc(ingLotOf(b,n))}" placeholder="lot" style="min-width:90px"></td></tr>`).join('')).join('')}</table>
+   <p class="small muted" style="margin-top:6px">Le lot vient du grenier ; tu peux le corriger ici, il reste enregistré avec ce brassin. Tu peux aussi corriger la quantité réellement utilisée${b.deducted?' : on te proposera de remettre ou d\'enlever la différence du grenier':''}.</p></div>`}
+/* correction d'une quantité d'ingrédient dans un brassin ; si le grenier a déjà été déduit, propose d'ajuster le stock */
+function ingQtyChange(b,key,val){const n=brewNeeds(b).find(x=>ingKey(x)===key);if(!n)return;const nv=Math.max(0,Math.round(num(val)*1000)/1000),dl=Math.round((nv-n.qty)*1000)/1000;if(!dl)return render();
+  b.ingQty=b.ingQty||{};b.ingQty[key]=nv;save();
+  const it=b.deducted&&findIng(n.name);const c=it?conv(Math.abs(dl),n.unit,it.unit):null;
+  if(!it||c==null){toast(n.name+' : '+fN(nv)+' '+n.unit+(b.deducted&&!it?' (introuvable dans le grenier)':''));return render()}
+  const out=dl>0,q=Math.round(c*1000)/1000;
+  openDlg({title:out?'Enlever du grenier ?':'Remettre dans le grenier ?',submit:out?'Enlever '+fN(q)+' '+it.unit:'Remettre '+fN(q)+' '+it.unit,
+   body:`<p>Tu as ${out?'ajouté':'retiré'} <b>${fN(Math.abs(dl))} ${esc(n.unit)}</b> de <b>${esc(n.name)}</b> dans ce brassin (${fN(n.qty)} → ${fN(nv)} ${esc(n.unit)}).</p>
+    <p style="margin-top:8px">${out?'Enlever':'Remettre'} <b>${fN(q)} ${esc(it.unit)}</b> ${out?'du':'dans le'} grenier ? En stock : ${fN(num(it.qty))} ${esc(it.unit)}${out&&num(it.qty)<c?' <span class="badge warn">stock insuffisant</span>':''}.</p>
+    <p class="small muted" style="margin-top:8px">« Annuler » garde la nouvelle quantité dans le brassin sans toucher au grenier.</p>`,
+   onSubmit:()=>{const d=out?-Math.min(c,num(it.qty)):c;it.qty=Math.max(0,num(it.qty)+d);logMove(it.name,d,it.unit,'Correction brassin '+(b.lot||b.name));toast((d>0?'Remis : +':'Enlevé : ')+fN(Math.round(d*1000)/1000)+' '+it.unit+' de '+it.name)}});
+  render()}
 function brewDay(b,c){const st=brewSteps(b,c);b.checks=b.checks||{};const n=st.filter(x=>b.checks[x.k]).length;
   const started=b.status!=='planned';
   return `<div class="two"><div><div class="sec-h"><h2>Déroulé guidé</h2><span class="small muted">${n}/${st.length} étapes</span></div>
@@ -548,6 +561,7 @@ V.brassins.after=()=>{const f=()=>{if(!$('#pkCalc'))return;const v=num($('#pkVol
   const wire=()=>{$$('#pkRows .pk-row').forEach(r=>{$$('select,input',r).forEach(e=>e.oninput=e.onchange=f);const d=$('[data-pkdel]',r);d.onclick=()=>{r.remove();f()}})};
   const add=$('#pkAdd');if(add)add.onclick=()=>{const used=pkRead(true).map(p=>p.format);const nx=(FORMATS.find(x=>!used.includes(x[0]))||FORMATS[0])[0];$('#pkRows').insertAdjacentHTML('beforeend',pkRow(nx));wire();f()};
   wire();['pkVol','pkCo2','pkT'].forEach(id=>{const e=$('#'+id);if(e)e.oninput=e.onchange=f});f();
+  $$('[data-ingqty]').forEach(e=>e.onchange=()=>ingQtyChange(byId('brews',R.a),e.dataset.ingqty,e.value));
   $$('[data-inglot]').forEach(e=>e.onchange=()=>{const b=byId('brews',R.a);b.ingLots=b.ingLots||{};b.ingLots[e.dataset.inglot]=e.value.trim();save()});
   $$('[data-check]').forEach(cb=>cb.onchange=()=>{const b=byId('brews',R.a);b.checks=b.checks||{};b.checks[cb.dataset.check]=cb.checked;save();cb.closest('.check').classList.toggle('done',cb.checked)});
   const og=$('#ogIn'),vol=$('#volIn');if(og)og.onchange=()=>{const b=byId('brews',R.a);b.og=num(og.value)>1?num(og.value):'';save()};if(vol)vol.onchange=()=>{const b=byId('brews',R.a);b.volMeasured=num(vol.value)||'';save()}};
@@ -1487,7 +1501,7 @@ const ACT={
  timer:el=>{let adds=[];try{adds=JSON.parse(el.dataset.adds||'[]')}catch(e){}startTimer(num(el.dataset.min),el.dataset.label,adds)},
  stopTimer:()=>{TM=null;lsSet('brassage.timer',null);renderTimer()},
  finishBrewday:el=>{const b=byId('brews',el.dataset.id);const og=$('#ogIn'),vol=$('#volIn');if(og&&num(og.value)>1)b.og=num(og.value);if(vol&&num(vol.value))b.volMeasured=num(vol.value);
-   const miss=check(needsOf(b.recipe)).filter(x=>x.missing>1e-6);
+   const miss=check(brewNeeds(b)).filter(x=>x.missing>1e-6);
    if(!b.deducted&&S.ingredients.length&&confirm('Déduire les ingrédients de ce brassin du grenier ?'+(miss.length?'\n(Certains manquent : le stock passera à 0 pour eux.)':'')))deduct(b);
    b.status='fermenting';if(b.og)b.readings=[{date:b.date,sg:b.og,temp:b.recipe.ferm?.[0]?.temp||'',note:'DI'}].concat((b.readings||[]).filter(x=>x.note!=='DI'));
    save();ui.brewTab='ferm';render();toast('Bonne fermentation !')},
@@ -1566,7 +1580,7 @@ const ACT={
  newIng:()=>ingForm(),editIng:el=>ingForm(byId('ingredients',el.dataset.id)),move:el=>moveForm(el.dataset.id),fam:el=>{ui.fam=el.dataset.v;render()},
  toShop:el=>{const r=byId('recipes',el.dataset.id);addShop(check(needsOf(r)).filter(x=>x.missing>1e-6).map(x=>({...x,qty:x.missing})))},
  shopFromRecipe:()=>{const r=byId('recipes',$('#shopRecipe').value);if(!r){toast('Choisis une recette');return}addShop(check(needsOf(r)).filter(x=>x.missing>1e-6).map(x=>({...x,qty:x.missing})))},
- shopFromPlan:()=>{const all={};S.brews.filter(b=>b.status==='planned'&&!b.deducted).forEach(b=>needsOf(b.recipe).forEach(n=>{const k=norm(n.name)+'|'+n.unit;if(all[k])all[k].qty+=n.qty;else all[k]={...n}}));addShop(check(Object.values(all)).filter(x=>x.missing>1e-6).map(x=>({...x,qty:x.missing})))},
+ shopFromPlan:()=>{const all={};S.brews.filter(b=>b.status==='planned'&&!b.deducted).forEach(b=>brewNeeds(b).forEach(n=>{const k=norm(n.name)+'|'+n.unit;if(all[k])all[k].qty+=n.qty;else all[k]={...n}}));addShop(check(Object.values(all)).filter(x=>x.missing>1e-6).map(x=>({...x,qty:x.missing})))},
  shopFromLow:()=>addShop(S.ingredients.filter(isLow).map(i=>({name:i.name,qty:Math.max(num(i.alert)*2-num(i.qty),num(i.alert)),unit:i.unit,fam:i.family}))),
  shopAdd:()=>{const n=$('#shopName').value.trim();if(!n)return;addShop([{name:n,qty:num($('#shopQty').value)||1,unit:$('#shopUnit').value}])},
  shopDel:el=>{S.shopping=S.shopping.filter(s=>s.id!==el.dataset.id);save();render()},
