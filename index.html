@@ -443,7 +443,7 @@ function todos(){const t=today(),L=[];
   S.brews.forEach(b=>{const s=brewStatus(b),h='#/brassins/'+b.id;
     if(s==='planned'&&diff(t,b.date)<=1)L.push({d:b.date,lvl:'acc',txt:`Brassage ${rel(b.date)} : <b>${esc(b.name)}</b>`,href:h});
     if(s==='brewday')L.push({d:b.date,lvl:'acc',txt:`Jour de brassage : <b>${esc(b.name)}</b>, ouvre le déroulé guidé`,href:h});
-    if(s==='fermenting'){const d=brewDates(b);d.steps.forEach((st,i)=>{if(i&&(st.start===t||st.start===addDays(t,1)))L.push({d:st.start,lvl:'acc',txt:`${/garde/i.test(st.name)?'Mise en garde':esc(st.name)} : <b>${esc(b.name)}</b> à ${fN(num(st.temp))} °C${num(st.days)?' pour '+fN(num(st.days))+' j':''}`,href:h})});d.dry.forEach(x=>{if(x.date===t)L.push({d:t,lvl:'acc',txt:`Dry hop : ${fN(num(x.g))} g de ${esc(x.name)} dans <b>${esc(b.name)}</b>`,href:h})});
+    if(s==='fermenting'){const d=brewDates(b);d.steps.forEach((st,i)=>{if(i&&(st.start===t||st.start===addDays(t,1)))L.push({d:st.start,lvl:'acc',txt:`${/garde/i.test(st.name)?'Mise en garde':esc(st.name)} : <b>${esc(b.name)}</b> à ${fN(num(st.temp))} °C${num(st.days)?' pour '+fN(num(st.days))+' j':''}`,href:h})});d.dry.forEach(x=>{if(x.date===t&&!(b.dryDone||{})[x.date+'|'+x.name])L.push({d:t,lvl:'acc',txt:`Dry hop : ${fN(num(x.g))} g de ${esc(x.name)} dans <b>${esc(b.name)}</b>`,href:h})});
       if(diff(t,d.fermEnd)<=1)L.push({d:d.fermEnd,lvl:d.fermEnd<t?'warn':'acc',txt:`Fin de fermentation ${rel(d.fermEnd)} : <b>${esc(b.name)}</b>, contrôle la densité puis conditionne`,href:h})}
     if(b.status==='packaged'&&b.readyDate===t)L.push({d:t,lvl:'',txt:`<b>${esc(b.name)}</b> est prête à boire 🍺`,href:h});
   });
@@ -524,7 +524,7 @@ function brewFerm(b,c,d){const rd=(b.readings||[]).slice().sort((a,x)=>a.date<x.
      <div class="seg" style="flex-wrap:wrap">${PHASES.map(([k,l])=>`<button data-act="setPhase" data-id="${b.id}" data-v="${k}" class="${ph.k===k?'on':''}">${l}</button>`).join('')}</div>
      ${ph.k==='topack'?`<div style="margin-top:8px"><button class="btn sm pri" data-act="brewTab" data-v="cond">Conditionner</button></div>`:''}</div>`})()}<div class="rows">
    ${d.steps.map(s=>`<div class="row"><div class="main"><b>${esc(s.name)}</b><span class="small muted">${fD(s.start)} → ${fD(s.end)} · ${num(s.days)} j</span></div><span class="qty">${fN(num(s.temp))} °C</span></div>`).join('')||'<div class="row muted">Aucune étape</div>'}
-   ${d.dry.map(x=>`<div class="row"><div class="main"><b>Dry hop</b><span class="small muted">${fD(x.date)} · ${fN(num(x.g))} g ${esc(x.name)}</span></div>${x.date<=today()?'<span class="badge ok">fait ?</span>':'<span class="badge blue">'+rel(x.date)+'</span>'}</div>`).join('')}
+   ${d.dry.map(x=>`<div class="row"><div class="main"><b>Dry hop</b><span class="small muted">${fD(x.date)} · ${fN(num(x.g))} g ${esc(x.name)}</span></div>${(b.dryDone||{})[x.date+'|'+x.name]?`<button class="badge ok" style="border:0;cursor:pointer" data-act="dryDone" data-id="${b.id}" data-v="${esc(x.date+'|'+x.name)}" title="Annuler">Fait ✓</button>`:x.date<=today()?`<button class="btn sm" data-act="dryDone" data-id="${b.id}" data-v="${esc(x.date+'|'+x.name)}">Marquer comme fait</button>`:'<span class="badge blue">'+rel(x.date)+'</span>'}</div>`).join('')}
    </div>
    <div class="note" style="margin-top:12px">Cuve libérée le <b>${fD(d.fermEnd)}</b>. La fermentation est finie quand la densité reste stable 3 jours de suite${cur?`, vers ${sg(c.fg)}`:''}.</div></div></div>`}
 function chart(b,og,fg){const rd=(b.readings||[]).filter(x=>num(x.sg)>0).sort((a,x)=>a.date<x.date?-1:1);const W=560,H=220,P=34;
@@ -1550,6 +1550,7 @@ const ACT={
  setReady:el=>{const b=byId('brews',el.dataset.id);openDlg({title:'Date à laquelle la bière est prête',body:`<p class="small muted" style="margin-bottom:8px">Conditionnée le ${fD(b.packDate)}. La bière reste « en cave » jusqu'à cette date.</p><div class="fr"><label class="f">Prête le<input type="date" name="d" value="${esc(b.readyDate||'')}"></label><label class="f">ou jours après le conditionnement<input name="j" inputmode="numeric" value="${b.packDate&&b.readyDate?diff(b.packDate,b.readyDate):''}"></label></div>`,
    onOpen:f=>{f.elements.j.oninput=()=>{const j=num(f.elements.j.value);if(b.packDate&&f.elements.j.value!=='')f.elements.d.value=addDays(b.packDate,j)};f.elements.d.oninput=()=>{if(b.packDate&&f.elements.d.value)f.elements.j.value=diff(b.packDate,f.elements.d.value)}},
    onSubmit:f=>{const d=fv(f,'d');if(!d){toast('Choisis une date');return false}b.readyDate=d;toast('Prête le '+fD(d))}})},
+ dryDone:el=>{const b=byId('brews',el.dataset.id);b.dryDone=b.dryDone||{};const k=el.dataset.v;if(b.dryDone[k])delete b.dryDone[k];else b.dryDone[k]=today();save();render()},
  cliY:el=>{ui.cliY=el.dataset.v;render()},
  cliSuivi:el=>{const c=byId('clients',el.dataset.id),t=$('#cliSuivi').value.trim();if(!t)return toast('Écris la note de suivi');c.suivis=c.suivis||[];c.suivis.push({ts:Date.now(),texte:t});save();render()},
  editClient:el=>clientForm(byId('clients',el.dataset.id)),
