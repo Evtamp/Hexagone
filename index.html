@@ -335,7 +335,7 @@ function ogToPlato(og){return 259-259/og}
 const abvHx=(di,df)=>di>0?133*(di-df)/di:0;
 const platoDC=sg=>135.997*sg**3-630.272*sg**2+1111.14*sg-616.868;   // De Clerck
 function brewDates(b){const r=b.recipe||{};let d=b.date;const steps=(r.ferm||[]).map(f=>{const s={...f,start:d};d=addDays(d,num(f.days));s.end=d;return s});
-  const dry=(r.hops||[]).filter(h=>h.use==='dry').map(h=>({...h,date:addDays(b.date,num(h.time))}));
+  const dry=(r.hops||[]).map((h,i)=>({...h,i})).filter(h=>h.use==='dry').map(h=>({...h,date:addDays(b.date,num(h.time))}));
   return{brew:b.date,steps,fermEnd:d,dry}}
 function brewStatus(b){if(b.status==='done')return'done';if(b.status==='packaged')return today()>=b.readyDate?'ready':'conditioning';if(b.status==='fermenting')return'fermenting';return b.date<=today()?'brewday':'planned'}
 const ST={planned:['Planifié','blue'],brewday:['Jour de brassage','acc'],fermenting:['Fermentation','acc'],conditioning:['En cave','blue'],ready:['Prête à boire','ok'],done:['Terminé','']};
@@ -375,9 +375,34 @@ function needsOf(r,scale=1){const L=[];(r.malts||[]).forEach(m=>m.name&&L.push({
   if(r.yeast?.name)L.push({name:r.yeast.name,qty:Math.ceil(num(r.yeast.qty)*scale*100)/100,unit:r.yeast.unit||'sachet',fam:'Levures'});
   (r.others||[]).forEach(o=>o.name&&L.push({name:o.name,qty:num(o.qty)*scale,unit:o.unit||'g',fam:'Autres'}));
   const m={};L.forEach(x=>{const k=norm(x.name)+'|'+x.unit;if(m[k])m[k].qty+=x.qty;else m[k]={...x}});return Object.values(m)}
-function brewNeeds(b){const Q=b.ingQty||{};return needsOf(b.recipe||{}).map(n=>{const k=norm(n.name)+'|'+n.unit;return Q[k]!=null&&Q[k]!==''?{...n,qty:num(Q[k]),plan:n.qty}:n})}
+function brewRec(b){const r=b.recipe||{};return {...r,hops:(r.hops||[]).map(h=>h.use==='dry'&&h.gUsed!=null&&h.gUsed!==''?{...h,g:h.gUsed}:h)}}
+function brewNeeds(b){const Q=b.ingQty||{},P={};needsOf(b.recipe||{}).forEach(n=>P[norm(n.name)+'|'+n.unit]=n.qty);
+  return needsOf(brewRec(b)).map(n=>{const k=norm(n.name)+'|'+n.unit;const q=Q[k]!=null&&Q[k]!==''?num(Q[k]):n.qty;return {...n,qty:q,plan:P[k]}})}
+const dhDoneOf=(b,x)=>x.dhDone||(b.dryDone||{})[x.date+'|'+x.name]||'';
+/* dry hop : quantité réellement mise, sortie du grenier au moment du DH */
+function dhForm(b,date,only){const r=b.recipe||{};const L=brewDates(b).dry.filter(x=>only!=null?x.i===only:!dhDoneOf(b,x));if(!L.length)return;
+  const legacy=b.deducted&&!b.dhSep;
+  openDlg({title:'Dry hop · '+esc(b.name),submit:'Valider le dry hop',
+   body:`<p class="small muted" style="margin-bottom:10px">Indique la quantité réellement mise. Elle reste enregistrée dans le brassin et l'historique de la recette.</p>
+    <label class="f">Date<input type="date" name="d" value="${esc(date||today())}" max="${today()}"></label>
+    ${L.map(x=>{const h=r.hops[x.i],it=findIng(x.name);return `<div class="card" style="margin-top:8px;padding:10px 12px"><b>${esc(x.name)}</b> <span class="small muted">recette : ${fN(num(h.g))} g${it?' · grenier : '+fN(num(it.qty))+' '+esc(it.unit):' · absent du grenier'}</span>
+     <div class="fr" style="margin-top:6px;align-items:end"><label class="f">Quantité mise (g)<input name="g${x.i}" inputmode="decimal" value="${esc(String(h.gUsed!=null&&h.gUsed!==''?h.gUsed:h.g).replace('.',','))}"></label>
+     ${it?`<label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" name="o${x.i}" checked style="width:auto"> ${h.dhOut||legacy?'Ajuster le grenier de la différence':'Sortir du grenier'}</label>`:''}</div></div>`}).join('')}`,
+   onSubmit:f=>{const d=fv(f,'d')||today();const msg=[];
+    L.forEach(x=>{const h=r.hops[x.i];const v=Math.max(0,Math.round(num(fv(f,'g'+x.i))*100)/100);
+     const taken=h.dhOut?num(h.gUsed!=null&&h.gUsed!==''?h.gUsed:h.g):(legacy?num(h.g):0);
+     h.gUsed=v;h.dhDone=d;
+     const it=findIng(x.name),cb=f.elements['o'+x.i];
+     if(it&&cb&&cb.checked){const dg=v-taken;const c=conv(Math.abs(dg),'g',it.unit);if(c!=null&&dg){const dl=dg>0?-Math.min(c,num(it.qty)):c;it.qty=Math.max(0,num(it.qty)+dl);logMove(it.name,dl,it.unit,'Dry hop '+(b.lot||b.name));msg.push((dl<0?'−':'+')+fN(Math.round(Math.abs(dl)*1000)/1000)+' '+it.unit+' '+it.name)}
+       h.dhOut=true;b.ingLots=b.ingLots||{};const k=norm(x.name)+'|g';if(b.ingLots[k]==null&&it.lot)b.ingLots[k]=it.lot}});
+    toast('Dry hop enregistré'+(msg.length?' · grenier : '+msg.join(', '):''))}})}
+/* historique des brassins d'une recette, avec les écarts de quantités */
+function recipeHist(r){if(!r||!r.id)return '';const L=S.brews.filter(b=>b.recipeId===r.id||norm(b.name)===norm(r.name)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));if(!L.length)return '';
+  return `<div class="sec"><h2 style="margin-bottom:10px">Historique des brassins</h2><div class="rows">${L.map(b=>{const ec=brewNeeds(b).filter(n=>n.plan!=null&&Math.abs(n.plan-n.qty)>1e-9);const st=ST[brewStatus(b)]||['',''];
+    return `<div class="row click" data-href="#/brassins/${b.id}"><div class="main"><b>${fD(b.date)}${b.lot?' · '+esc(b.lot):''}</b><span class="small muted">${fN(num(b.volMeasured)||num(b.volume))} L${b.og?' · DI '+sg(num(b.og)):''}${ec.length?' · écarts : '+ec.map(n=>`${esc(n.name)} ${fN(Math.round(n.qty*1000)/1000)} ${esc(n.unit)} (recette ${fN(Math.round(n.plan*1000)/1000)})`).join(', '):''}</span></div><span class="badge ${st[1]}">${st[0]}</span></div>`}).join('')}</div></div>`}
 function check(needs){return needs.map(n=>{const it=findIng(n.name);let have=0;if(it){const c=conv(num(it.qty),it.unit,n.unit);have=c==null?0:c}return{...n,have,missing:Math.max(0,n.qty-have),found:!!it}})}
-function deduct(b){b.ingLots=b.ingLots||{};brewNeeds(b).forEach(n=>{const it=findIng(n.name);if(!it)return;if(b.ingLots[norm(n.name)+'|'+n.unit]==null&&it.lot)b.ingLots[norm(n.name)+'|'+n.unit]=it.lot;const c=conv(n.qty,n.unit,it.unit);if(c==null)return;it.qty=Math.max(0,num(it.qty)-c);logMove(it.name,-c,it.unit,'Brassin '+b.lot)});b.deducted=true}
+function deduct(b){b.ingLots=b.ingLots||{};const DR={};(brewRec(b).hops||[]).filter(h=>h.use==='dry'&&h.name&&!h.dhOut).forEach(h=>{const k=norm(h.name)+'|g';DR[k]=(DR[k]||0)+num(h.g)});
+  brewNeeds(b).forEach(n=>{const it=findIng(n.name);if(!it)return;const k=norm(n.name)+'|'+n.unit;const q=Math.max(0,n.qty-(DR[k]||0));if(b.ingLots[k]==null&&it.lot)b.ingLots[k]=it.lot;if(!q)return;const c=conv(q,n.unit,it.unit);if(c==null)return;it.qty=Math.max(0,num(it.qty)-c);logMove(it.name,-c,it.unit,'Brassin '+b.lot)});b.deducted=true;b.dhSep=true}
 const isLow=i=>num(i.alert)>0&&num(i.qty)<=num(i.alert);
 
 /* ================= navigation ================= */
@@ -443,7 +468,7 @@ function todos(){const t=today(),L=[];
   S.brews.forEach(b=>{const s=brewStatus(b),h='#/brassins/'+b.id;
     if(s==='planned'&&diff(t,b.date)<=1)L.push({d:b.date,lvl:'acc',txt:`Brassage ${rel(b.date)} : <b>${esc(b.name)}</b>`,href:h});
     if(s==='brewday')L.push({d:b.date,lvl:'acc',txt:`Jour de brassage : <b>${esc(b.name)}</b>, ouvre le déroulé guidé`,href:h});
-    if(s==='fermenting'){const d=brewDates(b);d.steps.forEach((st,i)=>{if(i&&(st.start===t||st.start===addDays(t,1)))L.push({d:st.start,lvl:'acc',txt:`${/garde/i.test(st.name)?'Mise en garde':esc(st.name)} : <b>${esc(b.name)}</b> à ${fN(num(st.temp))} °C${num(st.days)?' pour '+fN(num(st.days))+' j':''}`,href:h})});d.dry.forEach(x=>{if(x.date===t&&!(b.dryDone||{})[x.date+'|'+x.name])L.push({d:t,lvl:'acc',txt:`Dry hop : ${fN(num(x.g))} g de ${esc(x.name)} dans <b>${esc(b.name)}</b>`,href:h})});
+    if(s==='fermenting'){const d=brewDates(b);d.steps.forEach((st,i)=>{if(i&&(st.start===t||st.start===addDays(t,1)))L.push({d:st.start,lvl:'acc',txt:`${/garde/i.test(st.name)?'Mise en garde':esc(st.name)} : <b>${esc(b.name)}</b> à ${fN(num(st.temp))} °C${num(st.days)?' pour '+fN(num(st.days))+' j':''}`,href:h})});d.dry.forEach(x=>{if(x.date===t&&!dhDoneOf(b,x))L.push({d:t,lvl:'acc',txt:`Dry hop : ${fN(num(x.g))} g de ${esc(x.name)} dans <b>${esc(b.name)}</b>`,href:h})});
       if(diff(t,d.fermEnd)<=1)L.push({d:d.fermEnd,lvl:d.fermEnd<t?'warn':'acc',txt:`Fin de fermentation ${rel(d.fermEnd)} : <b>${esc(b.name)}</b>, contrôle la densité puis conditionne`,href:h})}
     if(b.status==='packaged'&&b.readyDate===t)L.push({d:t,lvl:'',txt:`<b>${esc(b.name)}</b> est prête à boire 🍺`,href:h});
   });
@@ -524,7 +549,7 @@ function brewFerm(b,c,d){const rd=(b.readings||[]).slice().sort((a,x)=>a.date<x.
      <div class="seg" style="flex-wrap:wrap">${PHASES.map(([k,l])=>`<button data-act="setPhase" data-id="${b.id}" data-v="${k}" class="${ph.k===k?'on':''}">${l}</button>`).join('')}</div>
      ${ph.k==='topack'?`<div style="margin-top:8px"><button class="btn sm pri" data-act="brewTab" data-v="cond">Conditionner</button></div>`:''}</div>`})()}<div class="rows">
    ${d.steps.map(s=>`<div class="row"><div class="main"><b>${esc(s.name)}</b><span class="small muted">${fD(s.start)} → ${fD(s.end)} · ${num(s.days)} j</span></div><span class="qty">${fN(num(s.temp))} °C</span></div>`).join('')||'<div class="row muted">Aucune étape</div>'}
-   ${d.dry.map(x=>`<div class="row"><div class="main"><b>Dry hop</b><span class="small muted">${fD(x.date)} · ${fN(num(x.g))} g ${esc(x.name)}</span></div>${(b.dryDone||{})[x.date+'|'+x.name]?`<button class="badge ok" style="border:0;cursor:pointer" data-act="dryDone" data-id="${b.id}" data-v="${esc(x.date+'|'+x.name)}" title="Annuler">Fait ✓</button>`:x.date<=today()?`<button class="btn sm" data-act="dryDone" data-id="${b.id}" data-v="${esc(x.date+'|'+x.name)}">Marquer comme fait</button>`:'<span class="badge blue">'+rel(x.date)+'</span>'}</div>`).join('')}
+   ${d.dry.map(x=>`<div class="row"><div class="main"><b>Dry hop</b><span class="small muted">${fD(x.date)} · ${fN(num(x.g))} g ${esc(x.name)}</span></div>${dhDoneOf(b,x)?`<button class="badge ok" style="border:0;cursor:pointer" data-act="dryDone" data-id="${b.id}" data-v="${x.i}" title="Modifier">Fait${x.gUsed!=null&&x.gUsed!==''&&num(x.gUsed)!==num(x.g)?' · '+fN(num(x.gUsed))+' g':''} ✓</button>`:x.date<=today()?`<button class="btn sm" data-act="dryDone" data-id="${b.id}" data-v="${x.i}">Faire le dry hop</button>`:'<span class="badge blue">'+rel(x.date)+'</span>'}</div>`).join('')}
    </div>
    <div class="note" style="margin-top:12px">Cuve libérée le <b>${fD(d.fermEnd)}</b>. La fermentation est finie quand la densité reste stable 3 jours de suite${cur?`, vers ${sg(c.fg)}`:''}.</div></div></div>`}
 function chart(b,og,fg){const rd=(b.readings||[]).filter(x=>num(x.sg)>0).sort((a,x)=>a.date<x.date?-1:1);const W=560,H=220,P=34;
@@ -607,6 +632,7 @@ function recipeEditor(){
    <div class="card sec"><label class="f">Notes du brasseur<textarea data-k="notes">${esc(r.notes)}</textarea></label></div>
   </div>
   <div class="panel"><div class="card"><h2 style="margin-bottom:10px">Résultat</h2><div class="stats" id="stats"></div><div class="swatch" id="swatch"></div><div class="small muted" id="swatchTxt" style="margin-top:4px"></div><div id="stockChk" style="margin-top:12px"></div></div></div></div>
+  ${recipeHist(S.recipes.find(x=>x.id===r.id))}
   <datalist id="dl-malts">${LIB.malts.map(m=>`<option value="${esc(m[0])}">`).join('')}${S.ingredients.filter(i=>i.family==='Malts').map(i=>`<option value="${esc(i.name)}">`).join('')}</datalist>
   <datalist id="dl-hops">${LIB.hops.map(m=>`<option value="${esc(m[0])}">`).join('')}${S.ingredients.filter(i=>i.family==='Houblons').map(i=>`<option value="${esc(i.name)}">`).join('')}</datalist>
   <datalist id="dl-yeasts">${LIB.yeasts.map(m=>`<option value="${esc(m[0])}">`).join('')}${S.ingredients.filter(i=>i.family==='Levures').map(i=>`<option value="${esc(i.name)}">`).join('')}</datalist>
@@ -1526,7 +1552,7 @@ const ACT={
      if(k==='garde'&&b.recipe?.ferm?.length>1){const f0=b.recipe.ferm[0];if(d>b.date)f0.days=Math.max(1,diff(b.date,d))}
      // dry hop : le houblonnage le plus proche prend la date indiquée
      if(k==='dh'){const hs=(b.recipe?.hops||[]).filter(h=>h.use==='dry');if(hs.length){const h=hs.reduce((a,x)=>Math.abs(diff(addDays(b.date,num(x.time)),d))<Math.abs(diff(addDays(b.date,num(a.time)),d))?x:a);h.time=diff(b.date,d)}}
-     toast(lab+' depuis le '+fD(d))}})},
+     toast(lab+' depuis le '+fD(d));if(k==='dh'&&!same)setTimeout(()=>dhForm(b,d),60)}})},
  nextPhase:el=>{const b=byId('brews',el.dataset.id);const d=brewDates(b),t=today();const i=d.steps.findIndex(x=>t>=x.start&&t<x.end);if(i<0)return;
    b.recipe.ferm[i].days=Math.max(0,diff(d.steps[i].start,t));save();render();toast(i<d.steps.length-1?d.steps[i+1].name+' à partir d\'aujourd\'hui':'Prête à conditionner')},
  newStock:()=>stockForm(),
@@ -1550,7 +1576,7 @@ const ACT={
  setReady:el=>{const b=byId('brews',el.dataset.id);openDlg({title:'Date à laquelle la bière est prête',body:`<p class="small muted" style="margin-bottom:8px">Conditionnée le ${fD(b.packDate)}. La bière reste « en cave » jusqu'à cette date.</p><div class="fr"><label class="f">Prête le<input type="date" name="d" value="${esc(b.readyDate||'')}"></label><label class="f">ou jours après le conditionnement<input name="j" inputmode="numeric" value="${b.packDate&&b.readyDate?diff(b.packDate,b.readyDate):''}"></label></div>`,
    onOpen:f=>{f.elements.j.oninput=()=>{const j=num(f.elements.j.value);if(b.packDate&&f.elements.j.value!=='')f.elements.d.value=addDays(b.packDate,j)};f.elements.d.oninput=()=>{if(b.packDate&&f.elements.d.value)f.elements.j.value=diff(b.packDate,f.elements.d.value)}},
    onSubmit:f=>{const d=fv(f,'d');if(!d){toast('Choisis une date');return false}b.readyDate=d;toast('Prête le '+fD(d))}})},
- dryDone:el=>{const b=byId('brews',el.dataset.id);b.dryDone=b.dryDone||{};const k=el.dataset.v;if(b.dryDone[k])delete b.dryDone[k];else b.dryDone[k]=today();save();render()},
+ dryDone:el=>{const b=byId('brews',el.dataset.id);const x=brewDates(b).dry.find(y=>String(y.i)===el.dataset.v);if(x)dhForm(b,dhDoneOf(b,x)||today(),x.i)},
  cliY:el=>{ui.cliY=el.dataset.v;render()},
  cliSuivi:el=>{const c=byId('clients',el.dataset.id),t=$('#cliSuivi').value.trim();if(!t)return toast('Écris la note de suivi');c.suivis=c.suivis||[];c.suivis.push({ts:Date.now(),texte:t});save();render()},
  editClient:el=>clientForm(byId('clients',el.dataset.id)),
