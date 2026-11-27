@@ -122,6 +122,8 @@ html.locked body>*:not(#login):not(script){visibility:hidden}
 .row{display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid var(--line);min-width:0}
 .row:first-child{border-top:0}
 .row .main{flex:1;min-width:0}
+.row .ract{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;flex:none;max-width:60%}
+@media (max-width:620px){.row.ord{flex-wrap:wrap;row-gap:8px}.row.ord .main{flex:1 1 100%}.row.ord .main b{white-space:normal}.row.ord .ract{max-width:none;flex:1 1 100%;justify-content:flex-start}.row.ord .ract:empty{display:none}}
 .row .main b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row .qty{font-variant-numeric:tabular-nums;font-weight:650;text-align:right;white-space:nowrap}
 .row.low .qty{color:var(--warn)}
@@ -1202,9 +1204,9 @@ function clientForm(c,then){const isNew=!c;c=c||{nom:'',type:'Bar / restaurant'}
 V.commandes=()=>{const t=today();const todo=coll('orders').filter(o=>o.status==='todo').sort((a,b)=>a.date<b.date?-1:1);
   const past=coll('orders').filter(o=>o.status!=='todo').sort((a,b)=>a.date<b.date?1:-1).slice(0,30);
   const row=o=>{const c=clientOf(o);const sh=o.status==='todo'?orderShort(o):0;
-    return `<div class="row click" data-act="editOrder" data-id="${o.id}"><div class="main"><b>${esc(c?c.nom:o.client||'—')}</b><span class="small muted">${o.num?esc(o.num)+' · ':''}${fD(o.date)} · ${linesTxt(o.lines)}${lotsTxt(o.lines)}${tapsTxt(o)}${o.dateReprise&&(o.taps||[]).length?' · reprise '+fD(o.dateReprise):''}${o.note?' · '+esc(o.note):''}</span></div>
-     ${o.status==='todo'?`${o.date<t?'<span class="badge warn">En retard</span>':o.date===t?'<span class="badge acc">Aujourd\'hui</span>':''}${sh?'<span class="badge warn">Stock insuffisant</span>':''}<button class="btn sm pri" data-act="deliver" data-id="${o.id}">Livrer</button>`
-     :o.status==='done'?`${(o.taps||[]).length&&!o.tapBack?`<button class="btn sm" data-act="tapBack" data-id="${o.id}">Tireuses rendues</button>`:''}<span class="badge ok">Livrée</span>${o.blId&&byId('bls',o.blId)?`<a class="btn sm" href="#/bl/${o.blId}">${esc(byId('bls',o.blId).ref)}</a>`:''}`:'<span class="badge">Annulée</span>'}</div>`};
+    return `<div class="row click ord" data-act="editOrder" data-id="${o.id}"><div class="main"><b>${esc(c?c.nom:o.client||'—')}</b><span class="small muted">${o.num?esc(o.num)+' · ':''}${fD(o.date)} · ${linesTxt(o.lines)}${lotsTxt(o.lines)}${tapsTxt(o)}${o.dateReprise&&(o.taps||[]).length?' · reprise '+fD(o.dateReprise):''}${o.note?' · '+esc(o.note):''}</span></div>
+     <div class="ract">${o.status==='todo'?`${o.date<t?'<span class="badge warn">En retard</span>':o.date===t?'<span class="badge acc">Aujourd\'hui</span>':''}${sh?'<span class="badge warn">Stock insuffisant</span>':''}<button class="btn sm pri" data-act="deliver" data-id="${o.id}">Livrer</button>`
+     :o.status==='done'?`${(o.taps||[]).length&&!o.tapBack?`<button class="btn sm" data-act="tapBack" data-id="${o.id}">Tireuses rendues</button>`:''}<span class="badge ok">Livrée</span>${o.blId&&byId('bls',o.blId)?`<a class="btn sm" href="#/bl/${o.blId}">${esc(byId('bls',o.blId).ref)}</a>`:''}`:'<span class="badge">Annulée</span>'}</div></div>`};
   const need={};todo.forEach(o=>o.lines.forEach(l=>{const k=l.beer+'|'+l.format;need[k]=(need[k]||0)+lineQty(l)}));
   return `<div class="head"><div><div class="kicker">${todo.length} à livrer</div><h1>Commandes</h1></div><div class="actions"><a class="btn" href="#/clients">Clients</a><button class="btn pri" data-act="newOrder">Nouvelle commande</button></div></div>
   <div class="two"><div><h2 style="margin-bottom:10px">À livrer</h2>${todo.length?`<div class="rows">${todo.map(row).join('')}</div>`:emptyBox('Rien à livrer','Note les commandes de tes clients : tu verras ce qu\'il faut préparer, et le BL se fera en un clic.','<button class="btn pri" data-act="newOrder">Nouvelle commande</button>')}</div>
